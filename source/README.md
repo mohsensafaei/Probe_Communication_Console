@@ -1,8 +1,8 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.0.0** (Linux release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.1.0** (Linux release).
 
-The instrument-panel UI takes visual inspiration from ASUS PC Probe II: an angular silver chassis, blue panels, recessed green readouts and geometric headings. Michroma, Rajdhani and Share Tech Mono are bundled under the SIL Open Font License and loaded privately on Windows/Linux, without installing system fonts. They are open fonts, not ASUS's proprietary typography. Both dark and light appearances are available. The layout compresses on short displays; drag the divider to give the traffic table or byte inspector more room. Selecting Terminal opens up the work area and uses the terminal's direct keyboard controls; returning to another inspector tab restores the composer.
+The instrument-panel UI takes visual inspiration from ASUS PC Probe II: an angular silver chassis, blue panels, recessed green readouts and geometric headings. Michroma, Rajdhani and Share Tech Mono are bundled under the SIL Open Font License and loaded privately on Windows/Linux, without installing system fonts. They are open fonts, not ASUS's proprietary typography. The Appearance button has been replaced by Test lab; data fonts can be resized with Ctrl +/-. The layout compresses on short displays; drag the divider to give the traffic table or byte inspector more room. Selecting Terminal opens up the work area and uses the terminal's direct keyboard controls; returning to another inspector tab restores the composer.
 
 Probe uses Tkinter, pySerial and the small pure-Python pyte/wcwidth terminal libraries. There is no browser, Electron or Qt runtime. All I/O runs off the UI thread. Windows and Linux share the same source. Hardware drivers remain the operating system's responsibility. STM32 programming is intentionally excluded.
 
@@ -99,7 +99,7 @@ The serial proxy forwards **data bytes**. Baud changes, break and modem line cha
 * Checksum covers **prefix + payload**. The final wire layout is prefix + payload + checksum + suffix + line ending. Modbus CRC16 is little-endian; CCITT is big-endian with initial FFFF; CRC32 is little-endian.
 * Send files as original binary data in 4096-byte chunks, with cancellation. Composer transformations are not applied to files.
 * Repeat at a configurable interval (minimum 50 ms).
-* Keep up to 99 named commands; export/import them and run a sequence once in order or repeatedly with **Loop** enabled. Sample commands are in `examples/commands.json`.
+* Build up to 1000 named test steps in Test lab with independent millisecond delays, repeats, optional expected reply bytes and timeouts. Export/import complete sequences or legacy command shelves. Cycles 0 repeats until stopped. Samples are in `examples/test-sequence.json`.
 * Automatic echo or a fixed composer reply is available in direct modes, once per receive chunk/datagram. These replies are not protocol-aware. Echo at both ends creates a loop.
 * TCP Client and USB / Serial can reconnect automatically when disconnected. This is optional and off by default; manual Disconnect stops reconnection.
 * Live plot accepts newline-separated ASCII numbers or comma/space-separated numeric channels (up to four). It is a numeric display, not a hardware oscilloscope.
@@ -118,7 +118,7 @@ The display retains up to **2000 events / 8 MiB**. Old entries are evicted. The 
 
 File/recording disk work runs on the transport thread. Very slow storage can reduce throughput. This first release is intended for terminal/debugging traffic; it does not promise line-rate packet capture or unbounded stress testing.
 
-Search text normally; use `hex:02 A4` for a hexadecimal substring. Profiles save endpoints and composer settings. Appearance includes Probe II and Light themes and font scaling. Existing Midnight preferences migrate to Probe II. Settings may contain endpoint addresses and saved commands.
+Search text normally; use `hex:02 A4` for a hexadecimal substring. Profiles save endpoints and composer settings. Test lab opens device modeling and timed sequence editing. Ctrl +/- changes data font size. Existing Midnight preferences migrate to Probe II. Settings may contain endpoint addresses and saved commands.
 
 ## Shortcuts
 
@@ -161,4 +161,45 @@ Double-click a traffic row to load its exact hex into the composer, with all tra
 
 ### Hercules-style payload tokens
 
-Choose **Hercules** input mode to use `$FF`, `#000`–`#255`, `<STX>`, `<CR>`, `<LF>` and other named controls. `##`, `$$` and `<<` produce literal characters. The parser validates tokens and never evaluates code. **LRC8** appends the two's-complement negative sum of prefix + payload. Sequence **Loop** repeats the entire saved command shelf in order until stopped.
+Choose **Hercules** input mode to use `$FF`, `#000`–`#255`, `<STX>`, `<CR>`, `<LF>` and other named controls. `##`, `$$` and `<<` produce literal characters. The parser validates tokens and never evaluates code. **LRC8** appends the two's-complement negative sum of prefix + payload. Test lab **Cycles = 0** repeats the sequence until stopped.
+
+## Device simulator and test sequences (1.1)
+
+**Device Simulator** is a separate transport mode. It opens no physical port.
+Use **Test lab → Device simulator** to load a two-direction capture or a saved
+model. Choose a peer (and RX request direction for recordings where the application
+was the receiving server). Consecutive request chunks are joined until the first
+reply; reply chunks retain their timing relative to the last request and each
+other. The preview shows expected requests, response bytes and chunk delays.
+
+Expose a **TCP socket** or **Virtual serial (PTY)**, then Start simulator. Point
+another application at the displayed address or `/dev/pts/N` path. Requests are
+matched across split/coalesced stream reads. Each TCP client gets its own model
+state. Conversation order preserves repeated requests with stateful replies;
+Repeat conversation wraps after the final exchange. Match requests accepts
+independent commands in any order and rejects conflicting replies/prefixes.
+Unmatched bytes are ignored and reported. Reset matching cancels pending delayed
+replies and resets conversations. Stop closes endpoints and pending tasks.
+
+Models use exact bytes. A capture alone does not infer variable transaction IDs,
+checksums over changed fields, encrypted sessions or a complete hardware state
+machine. Startup RX chatter is excluded and reported. Linux PTYs represent serial
+bytes, not a USB device identity or modem-line emulation. Model size is bounded to
+8 MiB and requests to 64 KiB. Save model / Load model makes emulation reusable.
+
+**Test lab → Test sequences** uses the main window's connection, target and
+injection side. Add composer preserves its exact encoded bytes. Add/Edit steps
+sets format, payload, line ending, delay after send/reply (0–3600000 ms), repeats,
+expected reply substring (hex, optional) and reply timeout. Positive Cycles counts
+finish; 0 continues until Stop. A missing reply stops the test and names the step.
+Progress reports cycle, step, sends and checked replies. Expected replies use the
+selected client; select one client when several are connected. Run/Repeat/Replay
+stop one another. Disconnect cancels the sequence. Already written bytes cannot
+be recalled. Small millisecond delays are best effort and do not promise hard
+real-time scheduling or prove that a device cannot fail under other workloads.
+
+Import/Export stores steps and cycles in JSON. Use captured TX appends retained
+TX messages with their original inter-send timing. Save local settings retains
+steps, including timing and expected replies. Original command-shelf JSON files
+can still be imported. Synthetic runnable examples are `examples/device-model.json`
+and `examples/test-sequence.json`; they do not claim a vendor-specific POS protocol.

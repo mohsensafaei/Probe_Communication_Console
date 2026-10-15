@@ -8,6 +8,7 @@ import tkinter as tk
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
+from tkinter import ttk
 from probe.app import Probe
 from probe.engine import MODES
 
@@ -36,7 +37,7 @@ class UISmoke(unittest.TestCase):
         for mode in MODES:
             self.app.choose_mode(mode);self.app.update()
             self.assertTrue(self.app.connection_button.winfo_ismapped())
-        for fn in (self.app.tools,self.app.framing_dialog,self.app.macro_dialog,self.app.appearance,self.app.help):
+        for fn in (self.app.tools,self.app.framing_dialog,self.app.macro_dialog,self.app.help):
             fn();self.app.update()
             for w in self.app.winfo_children():
                 if isinstance(w,tk.Toplevel):w.destroy()
@@ -158,5 +159,73 @@ class UISmoke(unittest.TestCase):
         self.app.reset_counters();self.spin(lambda:self.app.engine.rx==0 and self.app.engine.tx==0)
         self.app.engine.send(b"\xff");self.spin(lambda:self.app.engine.rx==1)
         self.assertEqual(self.app.engine.tx,1)
+
+    def test_lab_layout_and_appearance_button_removed(self):
+        win=self.app.test_lab()
+        win.geometry("980x680")
+        self.app.update()
+        def descendants(widget):
+            for child in widget.winfo_children():
+                yield child
+                yield from descendants(child)
+        self.assertFalse(any(w.cget("text")=="Appearance" for w in descendants(self.app) if isinstance(w,(tk.Button,ttk.Button))))
+        for tab in (0,1):
+            self.app.testlab_notebook.select(tab);self.app.update()
+            buttons=[w for w in descendants(win) if isinstance(w,ttk.Button) and w.winfo_ismapped()]
+            for button in buttons:
+                self.assertLessEqual(button.winfo_rooty()+button.winfo_height(),win.winfo_rooty()+win.winfo_height())
+        pane=self.app.sequence_panel
+        pane.payload.insert("1.0","GG")
+        pane.action(pane.add)
+        self.assertIn("Hex",pane.feedback.get())
+        self.assertEqual(self.app.macros,[])
+        self.assertEqual(pane.payload.get("1.0","end-1c"),"GG")
+
+    @unittest.skipIf(os.name!="posix","Requires Linux PTY")
+    def test_lab_capture_to_virtual_device_without_hardware(self):
+        import serial
+        now=time.time()
+        self.app.add_event(dict(kind="data",time=now,direction="TX",peer="device",data=b"QUERY"))
+        self.app.add_event(dict(kind="data",time=now+.01,direction="RX",peer="device",data=b"ANSWER"))
+        self.app.test_lab()
+        pane=self.app.simulator_panel
+        pane.use_history()
+        self.assertEqual(len(self.app.simulator_model.exchanges),1)
+        self.app.vars["simulator_transport"].set("Virtual serial (PTY)")
+        pane.start();self.spin(lambda:self.app.engine.ready)
+        with serial.Serial(self.app.engine.app_path,115200,timeout=2) as app:
+            app.write(b"QU");app.write(b"ERY")
+            self.assertEqual(app.read(6),b"ANSWER")
+            self.spin(lambda:"requests matched" in self.app.simulator_info.get())
+        self.assertEqual(self.app.engine.serials,[])
+        pane.stop();self.spin(lambda:not self.app.active)
+
+    def test_lab_sequence_edit_export_import_and_run(self):
+        self.app.macro_dialog()
+        pane=self.app.sequence_panel
+        pane.fields["name"].set("Binary check")
+        pane.fields["delay_ms"].set("3")
+        pane.fields["repeat"].set("2")
+        pane.fields["expect"].set("00 FF")
+        pane.payload.insert("1.0","00 FF")
+        pane.add()
+        pane.table.selection_set("0");pane.duplicate()
+        pane.table.selection_set("1");pane.move(-1)
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"steps.json"
+            self.app.vars["sequence_cycles"].set("2")
+            with patch("probe.testlab_ui.filedialog.asksaveasfilename",return_value=str(path)):
+                pane.save_file()
+            self.app.macros=[]
+            with patch("probe.testlab_ui.filedialog.askopenfilename",return_value=str(path)):
+                pane.load_file()
+            self.assertEqual(len(self.app.macros),2)
+            self.assertEqual(self.app.vars["sequence_cycles"].get(),"2")
+        self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        pane.run()
+        self.spin(lambda:"Sequence complete" in self.app.sequence_info.get())
+        self.assertEqual(self.app.engine.tx,16)
+        self.assertIn("8 replies checked",self.app.sequence_info.get())
 
 if __name__=="__main__":unittest.main()

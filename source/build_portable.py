@@ -31,6 +31,8 @@ with tempfile.TemporaryDirectory(prefix="probe-bundle-check-") as check_dir:
     subprocess.run([str(executable),"--self-test"],cwd=check_dir,check=True,timeout=60)
 for name in ("README.md","FEATURE_MATRIX.md","VALIDATION.md","CHANGELOG.md","LICENSE","THIRD_PARTY_NOTICES.md"):
     shutil.copy2(root/name,folder/name)
+shutil.copytree(root/"examples", folder/"examples", dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 (folder/"probe-data").mkdir(exist_ok=True)
 licenses=folder/"licenses";licenses.mkdir(exist_ok=True)
 shutil.copy2(root/"licenses"/"pyserial-LICENSE.txt",licenses/"pyserial-LICENSE.txt")

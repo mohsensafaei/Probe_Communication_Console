@@ -1,0 +1,24 @@
+{
+  "format": "probe-device",
+  "version": 1,
+  "exchanges": [
+    {
+      "request": "50494E470D0A",
+      "replies": [
+        {
+          "hex": "504F4E470D0A",
+          "delay_ms": 10
+        }
+      ]
+    },
+    {
+      "request": "4255593A313030300D0A",
+      "replies": [
+        {
+          "hex": "415050524F5645440D0A",
+          "delay_ms": 25
+        }
+      ]
+    }
+  ]
+}

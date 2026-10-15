@@ -1,0 +1,23 @@
+{
+  "format": "probe-sequence",
+  "version": 1,
+  "cycles": 100,
+  "steps": [
+    {
+      "name": "Device ready",
+      "text": "PING\\r\\n",
+      "send_mode": "Escaped",
+      "delay_ms": 5,
+      "expect": "504f4e470d0a",
+      "timeout_ms": 1000
+    },
+    {
+      "name": "Demo purchase",
+      "text": "BUY:1000\\r\\n",
+      "send_mode": "Escaped",
+      "delay_ms": 10,
+      "expect": "415050524f5645440d0a",
+      "timeout_ms": 1000
+    }
+  ]
+}

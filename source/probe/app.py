@@ -71,6 +71,10 @@ class Probe(tk.Tk):
         self.repeat_job = None; self.sequence_job = None
         self.replay_job=None
         self.last_capture=[]
+        self.simulator_model = None
+        self.simulator_endpoint = ""
+        self.simulator_info = tk.StringVar(value="Simulator stopped. Build or load a device model to start.")
+        self.sequence_info = tk.StringVar(value="Sequence idle. Connect a transport, add steps, then Run sequence.")
         self.terminal_popup=None
         self.terminal_popout_pane=None
         self.file_cancel = threading.Event()
@@ -91,13 +95,15 @@ class Probe(tk.Tk):
                         prefix="", suffix="", interval="1000", framing="Chunks", delimiter="0A",
                         frame_size="16", gap="50", view="Text + Hex", search="", direction="All",
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
-                        theme="Probe II")
+                        theme="Probe II", sequence_cycles="1", simulator_transport="TCP socket",
+                        simulator_matching="Conversation order", simulator_timing="1")
         for k,v in defaults.items(): self.vars[k] = tk.StringVar(value=v)
         self.vars["dtr"] = tk.BooleanVar(value=False); self.vars["rts"] = tk.BooleanVar(value=False)
         self.vars["autoscroll"] = tk.BooleanVar(value=True)
         self.vars["repeat"] = tk.BooleanVar(value=False)
         self.vars["reconnect"] = tk.BooleanVar(value=False)
         self.vars["sequence_loop"] = tk.BooleanVar(value=False)
+        self.vars["simulator_repeat"] = tk.BooleanVar(value=True)
         self._load_settings()
         if self.vars["theme"].get() == "Midnight": self.vars["theme"].set("Probe II")
         if self.vars["theme"].get() == "Light": self.colors = dict(LIGHT)
@@ -180,7 +186,7 @@ class Probe(tk.Tk):
         self.sidebar.pack_propagate(False)
         brand = tk.Frame(self.sidebar,bg=c["metal"]); brand.pack(fill="x",padx=5,pady=(5,12))
         self.label(brand,"CONTROL PANEL",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(10,3))
-        self.label(brand,"01–07  /  TRANSPORT SELECT",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,10))
+        self.label(brand,f"01–{len(MODES):02}  /  TRANSPORT SELECT",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,10))
         self.nav=[]
         for i,mode in enumerate(MODES):
             button=tk.Button(self.sidebar,text=f"{i+1:02}    {mode}",anchor="w",relief="raised",bd=1,
@@ -191,7 +197,7 @@ class Probe(tk.Tk):
         self.label(self.sidebar,"ENDPOINT CONFIGURATION",9,True,color=c["blue"]).pack(anchor="w",padx=16,pady=(15,8))
         bottom=self.frame(self.sidebar); bottom.pack(side="bottom",fill="x",padx=16,pady=(0,12))
         ttk.Button(bottom,text="Help  F1",command=self.help).pack(side="left")
-        ttk.Button(bottom,text="Appearance",command=self.appearance).pack(side="right")
+        ttk.Button(bottom,text="Test lab",command=self.test_lab).pack(side="right")
         self.connection_button=ttk.Button(self.sidebar,text="Connect",style="Accent.TButton",command=self.toggle)
         self.connection_button.pack(side="bottom",fill="x",padx=16,pady=(10,8))
         config_wrap=self.frame(self.sidebar);config_wrap.pack(fill="both",expand=True,padx=16)
@@ -338,8 +344,14 @@ class Probe(tk.Tk):
         if mode in ("TCP Client","TCP Proxy","UDP"):
             field("Upstream host" if mode=="TCP Proxy" else "Remote host","host")
             field("Upstream port" if mode=="TCP Proxy" else "Remote port","port")
-        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP"):
+        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP","Device Simulator"):
             field("Listen address","bind"); field("Listen port (0 = automatic)","listen_port")
+        if mode == "Device Simulator":
+            field("Expose device as", "simulator_transport", ["TCP socket", "Virtual serial (PTY)"], True)
+            count = len(self.simulator_model.exchanges) if self.simulator_model else 0
+            self.label(self.config_frame, f"{count} recorded exchanges loaded.\nNo physical device is needed.", 9,
+                       color=c["muted"], wraplength=200, justify="left").pack(anchor="w", pady=8)
+            ttk.Button(self.config_frame, text="Open Test lab", command=self.test_lab).pack(fill="x", pady=6)
         if "Serial" in mode:
             self.port_combo=field("Physical port / serial URL","serial_port",[],False)
             ttk.Button(self.config_frame,text="Refresh ports",command=self.refresh_ports).pack(anchor="e",pady=4)
@@ -367,6 +379,7 @@ class Probe(tk.Tk):
         if mode in ("TCP Client","USB / Serial"):
             ttk.Checkbutton(self.config_frame,text="Reconnect on disconnect",variable=self.vars["reconnect"]).pack(anchor="w",pady=8)
         self.connection_button.configure(text="Start proxy" if "Proxy" in mode else "Listen" if mode in ("TCP Server","Serial ↔ TCP","UDP") else "Connect")
+        if mode == "Device Simulator": self.connection_button.configure(text="Start simulator")
         self.side_combo.configure(state="readonly" if mode in ("TCP Proxy","Serial Proxy","Serial ↔ TCP") else "disabled")
         self.vars["side"].set("Device / upstream")
 
@@ -411,9 +424,15 @@ class Probe(tk.Tk):
             if not cfg["host"].strip(): raise ValueError("Enter a remote host.")
             p=int(cfg["port"])
             if not 1<=p<=65535: raise ValueError("Remote port must be 1–65535.")
-        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP"):
+        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP","Device Simulator"):
             p=int(cfg["listen_port"])
             if not 0<=p<=65535: raise ValueError("Listen port must be 0–65535.")
+        if mode == "Device Simulator":
+            from .simulation import RequestMatcher
+            if not self.simulator_model: raise ValueError("Open Test lab and load a capture or build a device model first.")
+            RequestMatcher(self.simulator_model, cfg["simulator_matching"] == "Conversation order", cfg["simulator_repeat"])
+            scale=float(cfg["simulator_timing"])
+            if not math.isfinite(scale) or not 0 <= scale <= 10: raise ValueError("Reply timing multiplier must be 0–10.")
         if "Serial" in mode:
             if not cfg["serial_port"]: raise ValueError("Choose or enter a physical serial port.")
             if int(cfg["baud"])<1: raise ValueError("Baud must be positive.")
@@ -443,6 +462,7 @@ class Probe(tk.Tk):
             return
         try:
             cfg=self.values(); self.validate(cfg)
+            if cfg["mode"] == "Device Simulator": cfg["simulator_model"] = self.simulator_model
             if self.engine and self.engine.thread and self.engine.thread.is_alive():
                 raise RuntimeError("Previous session is still stopping.")
             self.flush_frames(); self.started=time.monotonic()
@@ -494,10 +514,14 @@ class Probe(tk.Tk):
                 state=event["state"]; self.stat_labels["state"].configure(text=state)
                 if state=="Connected":
                     self.set_status(event.get("message","Connected"))
+                    if self.vars["mode"].get() == "Device Simulator":
+                        self.simulator_endpoint = event.get("message", "Simulator ready")
+                        self.simulator_info.set(self.simulator_endpoint)
                     if "app_path" in event:
-                        self.set_status("App-side port: "+event["app_path"]+" · app uses this port; Probe owns the physical device.")
+                        self.set_status("App-side port: "+event["app_path"]+(" · simulated device; no hardware connected." if self.vars["mode"].get()=="Device Simulator" else " · app uses this port; Probe owns the physical device."))
                         self.clipboard_clear(); self.clipboard_append(event["app_path"])
                 else:
+                    if self.vars["mode"].get() == "Device Simulator": self.simulator_info.set("Simulator stopped.")
                     self.flush_frames(); self.active=False; self._lock_config(False)
                     self.connection_button.configure(text="Connect",state="normal")
                     self.stop_repeat(); self.stop_sequence();self.stop_replay()
@@ -519,6 +543,12 @@ class Probe(tk.Tk):
                 if kind=="error":self.last_error=event.get("message","")
                 self.set_status(event.get("message",""),kind=="error")
             elif kind=="file_done":self.pressed=False;self.file_button.configure(text="Send file")
+            elif kind == "scenario":
+                self.sequence_info.set(event["message"])
+                self.set_status(event["message"], event["state"] == "failed")
+            elif kind == "simulator":
+                self.simulator_info.set(self.simulator_endpoint + " · " + event["message"])
+                self.set_status(event["message"], event["state"] == "unmatched")
         now=time.monotonic()
         for key,framer in self.framers.items():
             for data in framer.tick(time.time()): self.add_event({**self.frame_meta[key],"data":data});changed=True
@@ -767,6 +797,7 @@ class Probe(tk.Tk):
     def repeat(self):
         self.stop_repeat(keep_flag=True)
         if not self.vars["repeat"].get():return
+        self.stop_sequence()
         self.stop_replay()
         try:
             delay=int(self.vars["interval"].get())
@@ -904,87 +935,40 @@ class Probe(tk.Tk):
             except Exception as exc:messagebox.showerror("Framing",str(exc),parent=win)
         ttk.Button(win,text="Apply",style="Accent.TButton",command=apply).pack(anchor="e",padx=20,pady=15)
 
+    def test_lab(self, tab=0):
+        from .testlab_ui import open_lab
+        return open_lab(self, tab)
+
     def macro_dialog(self):
-        win=self.dialog("Command sequences · up to 99 presets","780x570")
-        self.label(win,"A command shelf for your daily tests",17,True).pack(anchor="w",padx=20,pady=(20,6))
-        self.label(win,"Save the composer with its encoding, checksum and framing bytes.\nDouble-click a command to load it. Run all sends once, in order.",10,color=self.colors["muted"],justify="left").pack(anchor="w",padx=20)
-        tree=ttk.Treeview(win,columns=("name","mode","bytes","payload"),show="headings",height=7)
-        for key,title,width in [("name","COMMAND",155),("mode","MODE",80),("bytes","BYTES",60),("payload","PAYLOAD",350)]:tree.heading(key,text=title);tree.column(key,width=width)
-        tree.pack(fill="both",expand=True,padx=20,pady=15)
-        def refresh():
-            tree.delete(*tree.get_children())
-            for i,m in enumerate(self.macros):
-                try:n=len(encode(m["text"],m["send_mode"],m["encoding"],m["ending"],m["checksum"],m["prefix"],m["suffix"]))
-                except Exception:n="?"
-                tree.insert("","end",iid=str(i),values=(m["name"],m["send_mode"],n,m["text"][:80]))
-        name=tk.StringVar(value="New command")
-        bar=self.frame(win);bar.pack(fill="x",padx=20,pady=5)
-        ttk.Entry(bar,textvariable=name,width=23).pack(side="left",padx=(0,8))
-        def save():
-            if len(self.macros)>=99:messagebox.showerror("Sequences","The shelf holds 99 commands.",parent=win);return
-            try:self.payload_bytes()
-            except Exception as exc:messagebox.showerror("Sequences",str(exc),parent=win);return
-            m={k:self.vars[k].get() for k in ("send_mode","encoding","ending","checksum","prefix","suffix")}
-            m.update(name=name.get() or "Command",text=self.payload.get("1.0","end-1c"));self.macros.append(m);refresh();self.save_settings()
-        def load(*_):
-            ids=tree.selection()
-            if not ids:return
-            m=self.macros[int(ids[0])]
-            for k in ("send_mode","encoding","ending","checksum","prefix","suffix"):self.vars[k].set(m[k])
-            self.payload.delete("1.0","end");self.payload.insert("1.0",m["text"]);name.set(m["name"]);self.preview()
-        def delete():
-            ids=tree.selection()
-            if ids:self.macros.pop(int(ids[0]));refresh();self.save_settings()
-        tree.bind("<Double-1>",load)
-        ttk.Button(bar,text="Add composer",command=save).pack(side="left",padx=3)
-        ttk.Button(bar,text="Load",command=load).pack(side="left",padx=3)
-        ttk.Button(bar,text="Delete",command=delete).pack(side="left",padx=3)
-        footer=self.frame(win);footer.pack(fill="x",padx=20,pady=15)
-        self.label(footer,"Interval (ms)",10,color=self.colors["muted"]).pack(side="left")
-        ttk.Entry(footer,textvariable=self.vars["interval"],width=8).pack(side="left",padx=8)
-        ttk.Checkbutton(footer,text="Loop",variable=self.vars["sequence_loop"]).pack(side="left")
-        ttk.Button(footer,text="Stop",command=self.stop_sequence).pack(side="right",padx=5)
-        ttk.Button(footer,text="Run all once",style="Accent.TButton",command=self.run_sequence).pack(side="right")
-        ttk.Button(footer,text="Import JSON",command=lambda:(self.import_macros(),refresh())).pack(side="right",padx=5)
-        ttk.Button(footer,text="Export JSON",command=self.export_macros).pack(side="right",padx=5)
-        refresh()
+        return self.test_lab(1)
 
     def run_sequence(self):
-        self.stop_sequence();self.stop_repeat();self.stop_replay()
+        from .scenario import compile_steps, integer
+        self.stop_sequence(); self.stop_repeat(); self.stop_replay()
         try:
-            delay=int(self.vars["interval"].get())
-            if delay<50:raise ValueError("Sequence interval must be at least 50 ms.")
-            if not self.engine or not self.engine.ready:raise ValueError("Connect before running commands.")
-            payloads=[encode(m["text"],m["send_mode"],m["encoding"],m["ending"],m["checksum"],m["prefix"],m["suffix"]) for m in self.macros]
-        except Exception as exc:self.set_status(str(exc),True);return
-        def tick(index=0):
-            self.sequence_job=None
-            if index>=len(payloads):
-                if payloads and self.vars["sequence_loop"].get():index=0
-                else:self.set_status("Command sequence complete.");return
-            try:self.engine.send(payloads[index],self.vars["target"].get(),self.vars["side"].get())
-            except Exception as exc:self.set_status(str(exc),True);return
-            self.sequence_job=self.after(delay,lambda:tick(index+1))
-        tick()
+            if not self.engine or not self.engine.ready:
+                raise ValueError("Connect before running a test sequence.")
+            steps = compile_steps(self.macros, int(self.vars["interval"].get()))
+            cycles = 0 if self.vars["sequence_loop"].get() else integer(self.vars["sequence_cycles"].get(), "Cycles", 0, 1000000)
+            self.engine.start_scenario(steps, cycles, self.vars["target"].get(), self.vars["side"].get())
+            self.sequence_info.set("Starting test sequence…")
+            return True
+        except (ValueError, RuntimeError, TypeError) as exc:
+            self.sequence_info.set(str(exc)); self.set_status(str(exc), True)
+            return False
 
     def stop_sequence(self):
-        if self.sequence_job:self.after_cancel(self.sequence_job);self.sequence_job=None
+        if self.sequence_job:
+            self.after_cancel(self.sequence_job); self.sequence_job = None
+        if self.engine: self.engine.stop_scenario()
 
     def import_macros(self):
-        path=filedialog.askopenfilename(parent=self,filetypes=[("Command shelf","*.json")])
-        if not path:return
-        try:
-            macros=json.loads(Path(path).read_text(encoding="utf-8"))
-            if not isinstance(macros,list) or len(macros)>99:raise ValueError("Expected a list with at most 99 commands.")
-            for m in macros:encode(m["text"],m["send_mode"],m["encoding"],m["ending"],m["checksum"],m["prefix"],m["suffix"])
-            self.macros=macros;self.save_settings()
-        except Exception as exc:self.set_status(f"Import failed: {exc}",True)
+        self.test_lab(1)
+        self.sequence_panel.action(self.sequence_panel.load_file)
 
     def export_macros(self):
-        path=filedialog.asksaveasfilename(parent=self,defaultextension=".json",filetypes=[("Command shelf","*.json")])
-        if path:
-            try:Path(path).write_text(json.dumps(self.macros,indent=2),encoding="utf-8")
-            except OSError as exc:self.set_status(str(exc),True)
+        self.test_lab(1)
+        self.sequence_panel.action(self.sequence_panel.save_file)
 
     def add_samples(self,data):
         self.numeric_tail+=data.decode("ascii",errors="replace")
@@ -1017,7 +1001,7 @@ class Probe(tk.Tk):
     def _load_settings(self):
         try:
             config=json.loads(self.settings_path.read_text(encoding="utf-8"))
-            self.profiles=config.get("profiles",{});self.macros=config.get("macros",[])[:99]
+            self.profiles=config.get("profiles",{});self.macros=config.get("macros",[])[:1000]
             for k,v in config.get("last",{}).items():
                 if k in self.vars and k not in ("repeat","search","target","auto"):self.vars[k].set(v)
             if self.vars["mode"].get() not in MODES:self.vars["mode"].set("TCP Client")
@@ -1077,29 +1061,6 @@ class Probe(tk.Tk):
             label.pack_configure(pady=(2,2) if compact else (4,4))
         for b in self.nav:b.configure(pady=4 if compact else 7)
 
-    def appearance(self):
-        win=self.dialog("Appearance","420x240")
-        self.label(win,"Make Probe yours",17,True).pack(anchor="w",padx=20,pady=20)
-        self.combo(win,"theme",["Probe II","Light"],width=23).pack(anchor="w",padx=20)
-        row=self.frame(win);row.pack(fill="x",padx=20,pady=15)
-        ttk.Button(row,text="Smaller type",command=lambda:self.zoom(-1)).pack(side="left",padx=(0,8))
-        ttk.Button(row,text="Larger type",command=lambda:self.zoom(1)).pack(side="left")
-        def apply():
-            old=dict(self.colors);self.colors=dict(LIGHT if self.vars["theme"].get()=="Light" else DARK)
-            mapping={v:self.colors[k] for k,v in old.items()}
-            def recolor(w):
-                for key in ("bg","fg","highlightbackground","insertbackground","selectbackground","activebackground","activeforeground"):
-                    try:
-                        value=w.cget(key)
-                        if value in mapping:w.configure(**{key:mapping[value]})
-                    except tk.TclError:pass
-                for child in w.winfo_children():recolor(child)
-            recolor(self);self._style();self._mode_changed() if not self.active else None
-            for widget in self.winfo_children():self._redraw_skin(widget)
-            self.table.tag_configure("RX",foreground=self.colors["accent"]);self.table.tag_configure("TX",foreground=self.colors["blue"])
-            self.draw_plot();self.save_settings();win.destroy()
-        ttk.Button(win,text="Apply",style="Accent.TButton",command=apply).pack(anchor="e",padx=20,pady=10)
-
     def _redraw_skin(self, widget):
         if isinstance(widget,(Chassis,MeterStrip,Rail)):widget.redraw()
         for child in widget.winfo_children():self._redraw_skin(child)
@@ -1120,7 +1081,9 @@ class Probe(tk.Tk):
             "SHORTCUTS\nCtrl+Enter: send · Ctrl+L: clear · Ctrl+S: export · Ctrl +/-: font · F1: help\n\n"
             "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Keyboard for direct input. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Pop out opens a larger live screen. One peer is displayed at a time.\n\n"
             "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to load exact bytes into the composer.\n\n"
-            "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Sequences can repeat with Loop enabled.\n\n"
+            "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
+            "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
+            "TEST SEQUENCES\nAdd, edit, reorder or duplicate up to 1000 steps in Test lab. Each step has payload bytes, a delay after send/reply in milliseconds, repetition count, optional expected reply bytes and a timeout. Cycles 0 runs until stopped. Stop cancels pending waits and future sends. Import/export preserves timing. Timing is best effort, not hard real-time.\n\n"
             "VENDOR FEATURES\nHW-group proprietary UDP discovery, device IP configuration and TEA/I/O extensions are not implemented without verified protocol/SDK information. STM32 programming is intentionally outside this application's scope. See FEATURE_MATRIX.md.\n")
 
     def demo(self):
@@ -1171,6 +1134,10 @@ def main():
             try:
                 for mode in MODES:
                     app.choose_mode(mode)
+                    app.update_idletasks()
+                app.test_lab()
+                for tab in (0, 1):
+                    app.testlab_notebook.select(tab)
                     app.update_idletasks()
                 if app.terminal.error: raise RuntimeError(app.terminal.error)
             except Exception:

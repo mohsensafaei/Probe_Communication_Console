@@ -1,4 +1,4 @@
-# Probe for Linux 1.0.0
+# Probe for Linux 1.1.0
 
 TCP, UDP and USB/serial communications console with an ANSI terminal, binary
 inspector, capture/replay, serial proxy and Serial-to-TCP bridge.
@@ -66,3 +66,31 @@ They check direct serial, PTY proxy, injection, byte-exact captures, Serial-to-T
 and the actual GUI using only the read-only `AT` attention command. Normal test
 runs skip these tests. USB serial proxying does not intercept a phone's separate
 MTP file-transfer interface.
+
+## Hardware test lab
+
+Open **Test lab** at the bottom of the control panel.
+
+* **Device simulator:** record TX/RX with the real device using Record, then load
+  that JSONL/CSV capture (or use retained traffic history). Choose one peer and
+  expose the model as a TCP socket or a Linux virtual serial PTY. Connect the
+  other application to the displayed endpoint. The original hardware is not
+  opened. Exact requests produce their recorded replies and timing. Save a model
+  to reuse it later; rules and reply bytes can also be edited manually.
+* **Test sequences:** add a composer payload or create steps in Text/Hex/Escaped/
+  Decimal/Hercules format. Set a separate delay after each step in milliseconds,
+  per-step repeats, optional expected reply bytes and a timeout. Choose a finite
+  cycle count or 0 to run until stopped. Reorder, duplicate, import and export
+  complete sequences. Connect a transport in the main window before running.
+
+The simulator preserves conversation order by default, including different replies
+for repeated identical requests. Match requests mode supports independent rules
+in any order and rejects ambiguous rules. Unknown request bytes are ignored and
+reported. Leading RX chatter is excluded when building from a capture; dynamic
+transaction IDs, cryptographic handshakes and device-specific state need explicit
+models. Timings are best effort on the host OS, not hard real-time.
+
+Try `source/examples/device-model.json` with `source/examples/test-sequence.json`
+using two Probe instances: one simulates a TCP device, the other runs the sequence
+as a TCP Client. These are synthetic PING/BUY examples; replace their payloads with
+the actual protocol bytes for your own hardware.

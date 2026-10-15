@@ -111,6 +111,25 @@ class SerialHardwareTests(unittest.TestCase):
                 self.assertEqual(engine.tx, len(COMMAND))
 
 
+    def test_recorded_phone_emulation_after_device_session_closes(self) -> None:
+        from probe.diagnostics import session
+        from probe.simulation import compile_capture
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/"phone.jsonl"
+            with hardware_session("USB / Serial", self.hardware) as (engine, events, _):
+                engine.record(path)
+                engine.send(COMMAND)
+                wait_for(lambda: ACK in received(events), events)
+                engine.record()
+                reply = received(events)
+            model = compile_capture(load_capture(path))
+            with session("Device Simulator", simulator_model=model, simulator_transport="Virtual serial (PTY)") as (engine, events, ready):
+                with serial.Serial(ready["app_path"], 115200, timeout=3) as app:
+                    app.write(COMMAND)
+                    self.assertEqual(app.read(len(reply)), reply)
+                    self.assertEqual(engine.serials, [])
+
+
 @unittest.skipUnless(PORT and os.environ.get("PROBE_TEST_GUI") == "1" and os.name == "posix",
                      "Set PROBE_TEST_SERIAL_PORT and PROBE_TEST_GUI=1 with an X display")
 class SerialHardwareGUITests(unittest.TestCase):

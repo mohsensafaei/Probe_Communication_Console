@@ -1,5 +1,15 @@
 # Changes
 
+## 1.1.0 (Linux)
+
+* Hardware Test lab with a recorded device simulator on TCP or an independent Linux virtual serial PTY.
+* Capture-to-model conversion, peer selection, ordered stateful conversations, independent request rules, editable response bytes/timing and model JSON import/export.
+* Up to 1000 editable test steps with per-step millisecond delays, repeats, optional reply checks/timeouts, finite or continuous cycles, progress and cancellation.
+* Sequence import/export, retained TX conversion, composer snapshots, duplicate/reorder and legacy shelf migration.
+* Appearance button replaced by Test lab.
+* Close accepted connections before server cancellation so Stop remains responsive with clients still connected.
+* Regression coverage for emulation after original device closure, stream splits/coalescing, independent clients, timing, reply failures, long loops and GUI workflows.
+
 ## 1.0.0 (Linux)
 
 * Linux launcher creates an isolated environment, installs pinned dependencies and selects Python with working Tkinter.

@@ -2,8 +2,9 @@
 
 This is a workflow comparison, not a claim of byte-for-byte compatibility with all releases of either application. The requested SSCOM version was not specified. Hercules describes Serial, TCP Client/Server, UDP and HW-group configuration; SSCOM releases vary and some include terminal emulation, waveform display or STM32 ISP tools.
 
-| Feature | Probe 1.0.0 Linux | Notes |
+| Feature | Probe 1.1.0 Linux | Notes |
 | --- | --- | --- |
+| Recorded device simulator | Implemented | TCP / Linux PTY; exact request matching, stateful ordered replies, response timing, reset and model import/export. |
 | TCP client | Implemented | Binary/text, DNS and encoding options. |
 | TCP server | Implemented | Up to 16 clients, per-peer send or broadcast. |
 | UDP send/receive | Implemented | IPv4 bind, broadcast and sender identity. |
@@ -17,11 +18,11 @@ This is a workflow comparison, not a claim of byte-for-byte compatibility with a
 | Save received data / readable logs | Implemented | Raw RX, streaming JSONL, CSV/text export. |
 | File transmit | Implemented | Binary, chunked, cancellable. |
 | Timed transmit | Implemented | Minimum interval 50 ms. |
-| Multiple predefined sends | Implemented | 99 commands; JSON import/export; sequence runner. |
+| Multiple predefined sends | Implemented | 1000 steps; independent millisecond timing, repeats, reply checks, JSON import/export. |
 | Header + data + checksum + trailer | Implemented | Explicit checksum coverage; seven checksum choices including None. |
 | Escape sequences | Implemented | Escaped text and Hercules-style #decimal/$hex/named controls. |
 | Reconnect on disconnect/unplug | Implemented | Optional TCP Client / direct Serial reconnect. Device must return at same configured path. |
-| Configurable appearance | Implemented | Midnight/Light and data font scaling. |
+| Data font sizing | Implemented | Ctrl +/- shortcuts; Appearance button removed in favor of Test lab. |
 | Numeric waveform display | Implemented | Up to four ASCII numeric/CSV channels. No analog acquisition. |
 | Serial-over-network RFC2217 client | Implemented | Enter `rfc2217://host:port` in USB / Serial port field. Via pySerial. |
 | TCP proxy | Implemented | Separate upstream per client, exact bytes, TCP half-close, injection. |

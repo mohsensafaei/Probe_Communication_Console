@@ -124,3 +124,18 @@ def self_test():
     if model.screen.display[0].strip() != "OK" or model.screen.buffer[0][0].fg != "red":
         raise RuntimeError("ANSI terminal self-test failed")
     print("PASS ANSI terminal")
+    from .simulation import DeviceModel, Exchange, Reply
+    from .scenario import Step
+    model = DeviceModel((Exchange(b"PING\r\n", (Reply(b"PONG\r\n", 2),)),))
+    with session("Device Simulator", simulator_model=model) as (_, events, ready):
+        with session("TCP Client", port=ready["address"][1]) as (engine, events, _):
+            engine.start_scenario((Step("Ping", b"PING\r\n", 1, expect=b"PONG\r\n"),), cycles=3)
+            done = wait_for(lambda: next((e for e in events if e.get("state") == "complete"), None), events)
+            if done["checked"] != 3:
+                raise RuntimeError("Scenario reply validation failed")
+    if os.name == "posix":
+        with session("Device Simulator", simulator_model=model, simulator_transport="Virtual serial (PTY)") as (_, events, ready):
+            with serial.Serial(ready["app_path"], 115200, timeout=3) as app:
+                app.write(b"PING\r\n")
+                expect_equal(app.read(6), b"PONG\r\n")
+    print("PASS device simulator (TCP / PTY) and timed reply-checked sequences")

@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 MODES = ("TCP Client", "TCP Server", "TCP Proxy", "UDP", "USB / Serial",
-         "Serial Proxy", "Serial ↔ TCP")
+         "Serial Proxy", "Serial ↔ TCP", "Device Simulator")
 
 class Engine:
     def __init__(self, emit):
@@ -26,6 +26,7 @@ class Engine:
         self.tasks = set()
         self.serials = []
         self.serial_locks = {}
+        self.serial_pending_rx = {}
         self.udp = None
         self.server = None
         self.pty_fds = []
@@ -41,6 +42,10 @@ class Engine:
         self.accepting = 0
         self.pending_bytes=0
         self.pending_lock=threading.Lock()
+        self.observers = set()
+        self.scenario_task = None
+        self.scenario_generation = 0
+        self.simulator_reset = None
 
     def event(self, kind, **fields):
         event = {"kind": kind, "time": time.time(), **fields}
@@ -48,6 +53,7 @@ class Engine:
             data = fields["data"]
             if fields["direction"] == "TX": self.tx += len(data)
             else: self.rx += len(data)
+            for observer in tuple(self.observers): observer(event)
         with self.capture_lock:
             try:
                 if self.capture:
@@ -95,14 +101,20 @@ class Engine:
                 self.ready = False
                 self.stopping.set()
                 if self.server:
-                    self.server.close(); await self.server.wait_closed()
+                    self.server.close()
                 for task in list(self.tasks): task.cancel()
                 if self.tasks: await asyncio.gather(*list(self.tasks), return_exceptions=True)
                 for writer in list(self.writers): writer.close()
                 for writer in list(self.writers):
                     with contextlib.suppress(Exception, asyncio.CancelledError):
                         await asyncio.wait_for(writer.wait_closed(), 1)
+                if self.server:
+                    with contextlib.suppress(Exception, asyncio.CancelledError):
+                        await asyncio.wait_for(self.server.wait_closed(), 1)
                 for port in self.serials:
+                    pending = self.serial_pending_rx.pop(id(port), b"")
+                    if pending:
+                        self.event("data", direction="RX", peer=port.port, data=bytes(pending))
                     with contextlib.suppress(Exception): port.close()
                 for fd in self.pty_fds:
                     with contextlib.suppress(OSError): os.close(fd)
@@ -118,7 +130,13 @@ class Engine:
         self.stopping.set()
         loop = self.loop
         if loop and not loop.is_closed():
-            with contextlib.suppress(RuntimeError): loop.call_soon_threadsafe(self.root_task.cancel)
+            def cancel_session():
+                # Server.serve_forever waits for accepted transports when cancelled.
+                # Close them first so a connected application cannot hold Stop open.
+                for task in list(self.tasks): task.cancel()
+                for writer in list(self.writers): writer.close()
+                if self.root_task: self.root_task.cancel()
+            with contextlib.suppress(RuntimeError): loop.call_soon_threadsafe(cancel_session)
 
     def join(self, timeout=5):
         if self.thread: self.thread.join(timeout)
@@ -161,7 +179,10 @@ class Engine:
     async def _send(self, data, target, side):
         try:
             mode = self.cfg["mode"]
-            if mode == "UDP":
+            if mode == "Device Simulator":
+                await self.simulator_send(data, target)
+                self.event("data", direction="RX", peer=target, data=data)
+            elif mode == "UDP":
                 await self.loop.sock_sendto(self.udp, data, self.udp_target)
                 self.event("data", direction="TX", peer=str(self.udp_target), data=data)
             elif mode in ("USB / Serial", "Serial Proxy", "Serial ↔ TCP") and side == "Device / upstream":
@@ -176,15 +197,15 @@ class Engine:
                 if not peers: raise RuntimeError("No connected client matches the send target.")
                 for peer, links in peers:
                     writer = links[1] if mode == "TCP Proxy" and side == "Device / upstream" else links[0]
-                    await self._write(writer, data)
-                    self.event("data", direction="TX" if side == "Device / upstream" else "RX", peer=peer, data=data)
+                    await self._write(writer, data, direction="TX" if side == "Device / upstream" else "RX", peer=peer)
             return True
         except Exception as exc:
             if not self.stopping.is_set(): self.event("error", message=f"Send failed: {exc}")
             return False
 
-    async def _write(self, writer, data):
+    async def _write(self, writer, data, *, direction=None, peer=None):
         writer.write(data)
+        if direction: self.event("data", direction=direction, peer=peer, data=data)
         await asyncio.wait_for(writer.drain(), 10)
 
     async def _serial_write(self, port, data):
@@ -192,6 +213,20 @@ class Engine:
         async with self.serial_locks[id(port)]:
             n = await asyncio.to_thread(port.write, data)
             if n != len(data): raise IOError(f"Partial serial write: {n}/{len(data)} bytes")
+
+    def _serial_read(self, port):
+        data = port.read(min(max(port.in_waiting, 1), 65536))
+        pending = self.serial_pending_rx.setdefault(id(port), bytearray())
+        # Keep draining the driver during a write (full duplex), but publish a
+        # fast reply after the corresponding TX has been recorded on this loop.
+        if self.serial_locks[id(port)].locked() or pending:
+            pending.extend(data)
+            if len(pending) > 8 * 1024 * 1024:
+                raise RuntimeError("Pending serial reply exceeds 8 MiB while a write is in progress.")
+            if self.serial_locks[id(port)].locked(): return b""
+            data = bytes(pending)
+            pending.clear()
+        return data
 
     def _port(self, name):
         try: import serial
@@ -228,7 +263,10 @@ class Engine:
 
     async def _run(self):
         cfg = self.cfg; mode = cfg["mode"]
-        if mode == "TCP Client":
+        if mode == "Device Simulator":
+            from .simulator import serve_simulator
+            await serve_simulator(self)
+        elif mode == "TCP Client":
             reader, writer = await asyncio.wait_for(asyncio.open_connection(cfg["host"], int(cfg["port"])), 5)
             self.writers.add(writer)
             peer = f'{cfg["host"]}:{cfg["port"]}'
@@ -280,10 +318,10 @@ class Engine:
             else: self._connected(f'Opened {cfg["serial_port"]}')
             next_lines = 0
             while True:
-                data = physical.read(min(max(physical.in_waiting, 1), 65536))
+                data = self._serial_read(physical)
                 if data:
-                    if mode == "Serial Proxy": await self._app_write(data)
                     self.event("data", direction="RX", peer=cfg["serial_port"], data=data)
+                    if mode == "Serial Proxy": await self._app_write(data)
                     if mode != "Serial Proxy":
                         response = data if self.echo else self.auto_reply
                         if response is not None:
@@ -295,10 +333,10 @@ class Engine:
                         except BlockingIOError: sent = b""
                     else:
                         port = self.serials[1]
-                        sent = port.read(min(max(port.in_waiting, 1), 65536))
+                        sent = self._serial_read(port)
                     if sent:
                         await self._serial_write(physical, sent)
-                        self.event("data", direction="TX", peer="App → device", data=sent)
+                        self.event("data", direction="TX", peer=cfg["serial_port"], data=sent)
                 if time.monotonic() > next_lines:
                     self._lines(physical); next_lines = time.monotonic() + .5
                 await asyncio.sleep(.01)
@@ -328,6 +366,45 @@ class Engine:
             except Exception as exc: self.event("error", message=f"Control line: {exc}")
         self.schedule(change())
 
+    def start_scenario(self, steps, cycles=1, target="All clients", side="Device / upstream"):
+        from .scenario import integer, run_scenario
+        if not self.ready: raise RuntimeError("Connect before running a test sequence.")
+        if self.cfg["mode"] == "Device Simulator":
+            raise ValueError("Run sequences from an application transport; the simulator replies to its clients.")
+        cycles = integer(cycles, "Cycles", 0, 1000000)
+        if not steps: raise ValueError("Add a sequence step first.")
+        if target == "All clients" and len(self.clients) > 1 and any(step.expect for step in steps):
+            raise ValueError("Select one client when checking expected replies.")
+        if (target == "All clients" and len(self.clients) == 1 and any(step.expect for step in steps)
+                and (self.cfg["mode"] in ("TCP Client", "TCP Server", "TCP Proxy") or side == "App / downstream")):
+            target = next(iter(self.clients))
+        self.scenario_generation += 1
+        generation = self.scenario_generation
+        async def start():
+            if generation != self.scenario_generation: return
+            if self.scenario_task and not self.scenario_task.done():
+                self.scenario_task.cancel()
+                await asyncio.gather(self.scenario_task, return_exceptions=True)
+            if generation != self.scenario_generation: return
+            task = asyncio.create_task(run_scenario(self, steps, cycles, target, side))
+            self.scenario_task = task
+            self.tasks.add(task)
+            task.add_done_callback(self.tasks.discard)
+        if not self.schedule(start()): raise RuntimeError("Connection closed before the sequence started.")
+
+    def stop_scenario(self):
+        self.scenario_generation += 1
+        generation = self.scenario_generation
+        if self.loop and not self.loop.is_closed():
+            def cancel():
+                if generation == self.scenario_generation and self.scenario_task: self.scenario_task.cancel()
+            with contextlib.suppress(RuntimeError): self.loop.call_soon_threadsafe(cancel)
+
+    def reset_simulator(self):
+        async def reset():
+            if self.simulator_reset: self.simulator_reset()
+        self.schedule(reset())
+
     async def _reader(self, reader, writer, peer):
         while True:
             data = await reader.read(65536)
@@ -335,8 +412,7 @@ class Engine:
             self.event("data", direction="RX", peer=peer, data=data)
             response = data if self.echo else self.auto_reply
             if response is not None:
-                await self._write(writer, response)
-                self.event("data", direction="TX", peer=peer, data=response)
+                await self._write(writer, response, direction="TX", peer=peer)
 
     async def _accept(self, reader, writer):
         current = asyncio.current_task()
@@ -367,8 +443,8 @@ class Engine:
                         if not data:
                             if dst.can_write_eof(): dst.write_eof(); await dst.drain()
                             return
-                        await self._write(dst, data)
                         self.event("data", direction=direction, peer=peer, data=data)
+                        await self._write(dst, data)
                 # Preserve half-close: a client may finish writing, then wait for its reply.
                 pumps = [asyncio.create_task(pump(reader, remote_writer, "TX")),
                          asyncio.create_task(pump(remote_reader, writer, "RX"))]
@@ -381,7 +457,7 @@ class Engine:
                     data = await reader.read(65536)
                     if not data: break
                     await self._serial_write(self.serials[0], data)
-                    self.event("data", direction="TX", peer=peer, data=data)
+                    self.event("data", direction="TX", peer=self.cfg["serial_port"], client_peer=peer, data=data)
             else: await self._reader(reader, writer, peer)
         except asyncio.CancelledError: raise
         except Exception as exc:
@@ -403,12 +479,12 @@ class Engine:
         try:
             while True:
                 port = self.serials[0]
-                data = port.read(min(max(port.in_waiting, 1), 65536))
+                data = self._serial_read(port)
                 if data:
-                    for peer, links in list(self.clients.items()): await self._write(links[0], data)
                     self.event("data", direction="RX", peer=self.cfg["serial_port"], data=data)
+                    for peer, links in list(self.clients.items()): await self._write(links[0], data)
                 await asyncio.sleep(.01)
         except asyncio.CancelledError: raise
         except Exception as exc:
             self.event("error", message=f"Serial bridge stopped: {exc}")
-            self.root_task.cancel()
+            self.stop()
