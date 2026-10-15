@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.1.0** (Linux release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.1.0** (Windows release).
 
 The instrument-panel UI takes visual inspiration from ASUS PC Probe II: an angular silver chassis, blue panels, recessed green readouts and geometric headings. Michroma, Rajdhani and Share Tech Mono are bundled under the SIL Open Font License and loaded privately on Windows/Linux, without installing system fonts. They are open fonts, not ASUS's proprietary typography. The Appearance button has been replaced by Test lab; data fonts can be resized with Ctrl +/-. The layout compresses on short displays; drag the divider to give the traffic table or byte inspector more room. Selecting Terminal opens up the work area and uses the terminal's direct keyboard controls; returning to another inspector tab restores the composer.
 
@@ -15,6 +15,10 @@ python -m pip install -r requirements.txt
 python run_probe.py
 ```
 
+Windows: run `start_windows.bat`. It creates `.windows-venv`, installs pinned
+dependencies on first use and accepts `--self-test`. Set `PROBE_PYTHON` to an
+installed Python executable path when needed.
+
 Linux: run `./start_linux.sh`. It chooses an installed Python with Tkinter, creates `.venv` and installs the pinned runtime dependencies on first launch. Set `PROBE_PYTHON` to select an interpreter. If Tkinter is missing on Debian/Ubuntu, install `python3-tk`; creating an environment may also need `python3-venv`.
 
 Network modes still work without pySerial. If pyte is missing, the terminal tab displays an installation hint; raw communications modes remain usable. The source launcher requires Python; a frozen portable build includes Python and the runtime dependencies.
@@ -23,13 +27,14 @@ Network modes still work without pySerial. If pyte is missing, the terminal tab 
 
 **Build separately on each target OS.** PyInstaller does not cross-compile Windows EXEs on Linux.
 
+* Windows: run `build_windows.bat`. Extract `dist/Probe-windows-x64.zip` and open `Probe/Probe.exe`. No Python install is needed on the target PC. Use `build_windows.bat --onefile` for the optional single executable.
 * Linux: `chmod +x build_linux.sh && ./build_linux.sh`. Result: `dist/Probe-linux-x86_64.zip` on x86_64. Extract and run `./start-probe.sh`. No Python install is needed on the target PC.
 * Add `--onefile` to either build script for a single executable. The default directory bundle starts faster and avoids extracting the runtime on every launch.
 
 The spec includes fonts, font licenses, Tkinter and serial URL handlers. All paths
 are relative to the spec. The builder runs `--self-test` against the actual frozen
-executable from outside the source tree before creating the ZIP. The Linux branch
-does not distribute Windows launchers or binaries.
+executable from outside the source tree before creating the ZIP. The Windows branch includes `start_windows.bat` and `build_windows.bat`;
+see the repository README for native Windows commands and COM-pair setup.
 
 Keep the whole portable folder together. Settings, profiles and commands are stored beside the app in `probe-data`; if the folder is read-only, Probe falls back to a per-user directory. No registry settings or background service are installed.
 
@@ -46,6 +51,7 @@ Linux binaries depend on compatible system libraries. Build on the oldest Linux 
 | USB / Serial | Open COM/tty devices with baud, parity, stop/data bits, flow control, DTR/RTS and break. |
 | Serial Proxy | Bridge an app's virtual serial port to a physical COM/tty port and capture both directions. |
 | Serial ↔ TCP | Let one TCP application communicate with a serial device through a raw byte bridge. |
+| Device Simulator | Replay recorded device replies on TCP or a virtual serial endpoint without the original device. |
 
 Only one transport session is active per window. Run multiple Probe instances for multiple simultaneous device workspaces. The local listen address defaults to `127.0.0.1`; enter `0.0.0.0` if other computers should connect. Windows may show its normal firewall prompt for a listening application.
 
@@ -82,7 +88,7 @@ The path lives only while the session runs and may change on reconnect. Your use
 Windows needs an **already installed virtual COM-pair driver**. Probe cannot create kernel COM ports with portable Python alone. Install a signed virtual serial pair driver compatible with your Windows version, and create, for example, `COM20 ↔ COM21`.
 
 1. Probe opens physical `COM3` and its side of the pair, `COM20`.
-2. Your other app opens the partner, `COM21`.
+2. Set Application-side partner port to `COM21`; your other app opens that port.
 3. Probe forwards the bytes in both directions.
 
 This part is not completely installation-free: creating the virtual COM pair may need administrator rights. Probe itself remains portable. A physical port already owned by another app cannot normally be opened simultaneously; the app must be routed to the virtual port instead.
@@ -165,15 +171,19 @@ Choose **Hercules** input mode to use `$FF`, `#000`–`#255`, `<STX>`, `<CR>`, `
 
 ## Device simulator and test sequences (1.1)
 
-**Device Simulator** is a separate transport mode. It opens no physical port.
+**Device Simulator** is a separate transport mode. It does not open the original
+physical device; Windows COM simulation opens only its virtual-pair endpoint.
 Use **Test lab → Device simulator** to load a two-direction capture or a saved
 model. Choose a peer (and RX request direction for recordings where the application
 was the receiving server). Consecutive request chunks are joined until the first
 reply; reply chunks retain their timing relative to the last request and each
 other. The preview shows expected requests, response bytes and chunk delays.
 
-Expose a **TCP socket** or **Virtual serial (PTY)**, then Start simulator. Point
-another application at the displayed address or `/dev/pts/N` path. Requests are
+Expose a **TCP socket**, **Virtual COM pair** on Windows, or **Virtual serial
+(PTY)** on Linux, then Start simulator. For Windows, install a virtual pair first,
+enter Probe-side COM20 and its application-side partner COM21; the other
+application opens COM21. For TCP use the displayed address, or on Linux the
+generated `/dev/pts/N` path. Requests are
 matched across split/coalesced stream reads. Each TCP client gets its own model
 state. Conversation order preserves repeated requests with stateful replies;
 Repeat conversation wraps after the final exchange. Match requests accepts

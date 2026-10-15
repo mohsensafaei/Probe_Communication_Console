@@ -1,10 +1,11 @@
-"""Expose a recorded device model on TCP or an unbacked Linux virtual serial port."""
+"""Expose a recorded device on TCP, a POSIX PTY or an installed COM pair."""
 import asyncio
 import contextlib
 import os
 from typing import TYPE_CHECKING
 
 from .simulation import DeviceModel, RequestMatcher, MAX_DELAY_MS
+from .serial_endpoints import VirtualPair
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -83,6 +84,24 @@ async def serve_simulator(engine: "Engine") -> None:
             if data:
                 await process(data, peer, engine._app_write)
             await asyncio.sleep(.001)
+    elif transport == "Virtual COM pair":
+        pair = VirtualPair(engine.cfg.get("simulator_port", ""), engine.cfg.get("simulator_peer_port", ""))
+        pair.validate()
+        port = engine._port(pair.probe)
+        engine.app_path = pair.application
+        peer = pair.application
+        matchers[peer] = RequestMatcher(model, ordered, repeat)
+
+        async def write(payload: bytes) -> None:
+            await engine._serial_write(port, payload)
+
+        engine.simulator_send = lambda data, target: write(data)
+        engine._connected(f"Simulated device: app opens {peer}; Probe owns {pair.probe}", app_path=peer)
+        while True:
+            data = engine._serial_read(port)
+            if data:
+                await process(data, peer, write)
+            await asyncio.sleep(.001)
     elif transport == "TCP socket":
         async def connection(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             task = asyncio.current_task()
@@ -131,4 +150,4 @@ async def serve_simulator(engine: "Engine") -> None:
         engine._connected(f"Simulated device listening on {address[0]}:{address[1]}", address=address)
         await engine.server.serve_forever()
     else:
-        raise ValueError("Choose TCP socket or Virtual serial (PTY).")
+        raise ValueError("Choose TCP socket, Virtual serial (PTY) or Virtual COM pair.")

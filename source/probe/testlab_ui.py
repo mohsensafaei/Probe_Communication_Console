@@ -7,6 +7,7 @@ from tkinter import ttk, filedialog, messagebox
 from .capture import load_capture
 from .codec import parse_hex
 from .scenario import compile_steps, integer, sequence_from_dict
+from .serial_endpoints import simulator_transports
 from .simulation import (DeviceModel, Exchange, Reply, capture_peers, compile_capture,
                          model_from_dict, model_to_dict)
 
@@ -113,11 +114,18 @@ class SimulatorPane(Pane):
         settings = ttk.Frame(self)
         settings.pack(fill="x")
         self.field(settings, "Application connects to", app.vars["simulator_transport"], 0,
-                   ["TCP socket", "Virtual serial (PTY)"], 22)
+                   simulator_transports(), 22)
         self.field(settings, "Listen address", app.vars["bind"], 1, width=15)
         self.field(settings, "TCP port (0 = auto)", app.vars["listen_port"], 2, width=16)
         self.field(settings, "Matching", app.vars["simulator_matching"], 3,
                    ["Conversation order", "Match requests"], 22)
+        if "Virtual COM pair" in simulator_transports():
+            pair = ttk.Frame(self)
+            pair.pack(fill="x", pady=4)
+            self.field(pair, "Probe-side virtual COM", app.vars["simulator_port"], 0, width=16)
+            self.field(pair, "App-side partner COM", app.vars["simulator_peer_port"], 1, width=16)
+            ttk.Label(pair, text="Install a COM pair first.\nApp opens its partner.").grid(row=0, column=2, padx=8, sticky="s")
+            ttk.Button(pair, text="COM settings…", command=lambda: self.action(self.com_settings)).grid(row=0, column=3, sticky="s")
         row = ttk.Frame(self)
         row.pack(fill="x", pady=8)
         ttk.Label(row, text="Reply timing × (0 = immediate)").pack(side="left")
@@ -130,6 +138,19 @@ class SimulatorPane(Pane):
         ttk.Label(self, textvariable=self.feedback, wraplength=950).pack(anchor="w", pady=2)
         ttk.Label(self, text="Exact recorded bytes are matched across stream reads. Unmatched bytes are ignored and reported. Startup RX is excluded.", wraplength=950).pack(anchor="w")
         self.refresh()
+
+    def com_settings(self):
+        if self.app.active:
+            raise ValueError("Disconnect before changing COM line settings.")
+        win = self.app.dialog("Virtual COM line settings", "460x440")
+        for label, key, values in (("Baud rate", "baud", None), ("Data bits", "bits", ["5", "6", "7", "8"]),
+                                   ("Parity", "parity", ["N", "E", "O", "M", "S"]),
+                                   ("Stop bits", "stopbits", ["1", "1.5", "2"]),
+                                   ("Flow control", "flow", ["None", "RTS/CTS", "XON/XOFF", "DSR/DTR"])):
+            row = ttk.Frame(win)
+            row.pack(fill="x", padx=16, pady=6)
+            self.field(row, label, self.app.vars[key], 0, values, 26)
+        ttk.Label(win, text="Shared with the main window's serial settings.\nMatch the application's settings for the virtual COM pair.").pack(padx=16, pady=8)
 
     def ensure_editable(self):
         if self.app.active and self.app.vars["mode"].get() == "Device Simulator":

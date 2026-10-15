@@ -228,4 +228,34 @@ class UISmoke(unittest.TestCase):
         self.assertEqual(self.app.engine.tx,16)
         self.assertIn("8 replies checked",self.app.sequence_info.get())
 
+    def test_lab_com_pair_configuration_and_application_endpoint(self):
+        import socket
+        now = time.time()
+        self.app.add_event(dict(kind="data", time=now, direction="TX", peer="device", data=b"QUERY"))
+        self.app.add_event(dict(kind="data", time=now+.001, direction="RX", peer="device", data=b"ANSWER"))
+        # Present the Windows panel even on a POSIX test host; I/O uses real pySerial.
+        with patch("probe.testlab_ui.simulator_transports", return_value=("TCP socket", "Virtual COM pair")), \
+             patch("probe.app.simulator_transports", return_value=("TCP socket", "Virtual COM pair")), \
+             socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0)); listener.listen(); listener.settimeout(3)
+            win = self.app.test_lab(); win.geometry("980x680")
+            pane = self.app.simulator_panel
+            pane.use_history()
+            self.app.vars["simulator_transport"].set("Virtual COM pair")
+            self.app.vars["simulator_port"].set("socket://127.0.0.1:%d" % listener.getsockname()[1])
+            self.app.vars["simulator_peer_port"].set("COM21")
+            pane.start(); self.spin(lambda: self.app.engine.ready)
+            self.spin(lambda: "App-side port: COM21" in self.app.status.cget("text"))
+            with listener.accept()[0] as connection:
+                connection.settimeout(3)
+                connection.sendall(b"QUERY")
+                actual = bytearray()
+                while len(actual) < 6:
+                    chunk = connection.recv(6-len(actual))
+                    self.assertTrue(chunk); actual.extend(chunk)
+                self.assertEqual(bytes(actual), b"ANSWER")
+                self.spin(lambda: "COM21" in self.app.simulator_info.get() and "requests matched" in self.app.simulator_info.get())
+                self.assertEqual(self.app.clipboard_get(), "COM21")
+                pane.stop(); self.spin(lambda: not self.app.active)
+
 if __name__=="__main__":unittest.main()

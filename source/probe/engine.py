@@ -238,7 +238,7 @@ class Engine:
                       rtscts=cfg.get("flow") == "RTS/CTS", dsrdtr=cfg.get("flow") == "DSR/DTR")
         if os.name != "nt" and "://" not in name: kwargs["exclusive"] = True
         if not hasattr(serial, "serial_for_url"):
-            raise RuntimeError("Wrong 'serial' package installed. Use the Linux launcher to install pyserial.")
+            raise RuntimeError("Wrong 'serial' package installed. Use the source launcher to install pyserial.")
         port = serial.serial_for_url(name, do_not_open=True, **kwargs)
         try:
             port.dtr = bool(cfg.get("dtr",False)); port.rts = bool(cfg.get("rts",False))
@@ -312,8 +312,10 @@ class Engine:
                     tty.setraw(slave); os.set_blocking(master, False)
                     self.app_path = os.ttyname(slave)
                 else:
-                    if app_port == cfg["serial_port"]: raise ValueError("Physical and app-side ports must be different.")
-                    self._port(app_port); self.app_path = app_port
+                    from .serial_endpoints import VirtualPair
+                    pair = VirtualPair(app_port, cfg.get("app_peer_port", ""))
+                    pair.validate(cfg["serial_port"])
+                    self._port(pair.probe); self.app_path = pair.application
                 self._connected(f"Serial proxy ready. App connects to {self.app_path}", app_path=self.app_path)
             else: self._connected(f'Opened {cfg["serial_port"]}')
             next_lines = 0

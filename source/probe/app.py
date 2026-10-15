@@ -18,6 +18,7 @@ from .codec import encode, hexdump, visible, CONTROLS, Framer
 from .engine import Engine, MODES
 from .terminal_ui import TerminalPane
 from .capture import load_capture, replay_plan
+from .serial_endpoints import VirtualPair, simulator_transports
 from .typography import load_fonts, font_roles
 from .skin import Chassis, MeterStrip, Rail
 
@@ -48,7 +49,7 @@ class Probe(tk.Tk):
     def __init__(self, demo=False):
         load_fonts()
         super().__init__()
-        self.title("Probe · Communications workbench")
+        self.title(f"Probe {__version__} · Communications workbench")
         icon_base=Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parent.parent))
         try:
             self.icon_image=tk.PhotoImage(file=str(icon_base/"assets"/"probe.png"))
@@ -91,6 +92,7 @@ class Probe(tk.Tk):
         defaults = dict(mode="TCP Client", host="127.0.0.1", port="9000", bind="127.0.0.1",
                         listen_port="9001", serial_port="", baud="115200", bits="8", parity="N",
                         stopbits="1", flow="None", app_port="Auto PTY" if os.name != "nt" else "COM20",
+                        app_peer_port="COM21", simulator_port="COM20", simulator_peer_port="COM21",
                         send_mode="Text", encoding="utf-8", ending="None", checksum="None",
                         prefix="", suffix="", interval="1000", framing="Chunks", delimiter="0A",
                         frame_size="16", gap="50", view="Text + Hex", search="", direction="All",
@@ -105,6 +107,10 @@ class Probe(tk.Tk):
         self.vars["sequence_loop"] = tk.BooleanVar(value=False)
         self.vars["simulator_repeat"] = tk.BooleanVar(value=True)
         self._load_settings()
+        if self.vars["simulator_transport"].get() not in simulator_transports():
+            self.vars["simulator_transport"].set("TCP socket")
+        if os.name == "nt" and self.vars["app_port"].get() == "Auto PTY":
+            self.vars["app_port"].set("COM20")
         if self.vars["theme"].get() == "Midnight": self.vars["theme"].set("Probe II")
         if self.vars["theme"].get() == "Light": self.colors = dict(LIGHT)
         self._style()
@@ -347,7 +353,10 @@ class Probe(tk.Tk):
         if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP","Device Simulator"):
             field("Listen address","bind"); field("Listen port (0 = automatic)","listen_port")
         if mode == "Device Simulator":
-            field("Expose device as", "simulator_transport", ["TCP socket", "Virtual serial (PTY)"], True)
+            field("Expose device as", "simulator_transport", simulator_transports(), True)
+            if os.name == "nt":
+                field("Probe-side virtual COM", "simulator_port")
+                field("Application-side partner COM", "simulator_peer_port")
             count = len(self.simulator_model.exchanges) if self.simulator_model else 0
             self.label(self.config_frame, f"{count} recorded exchanges loaded.\nNo physical device is needed.", 9,
                        color=c["muted"], wraplength=200, justify="left").pack(anchor="w", pady=8)
@@ -370,6 +379,7 @@ class Probe(tk.Tk):
             self.refresh_ports()
         if mode=="Serial Proxy":
             field("Probe-side virtual port","app_port",["Auto PTY"] if os.name!="nt" else [],False)
+            field("Application-side partner port", "app_peer_port")
             hint="Linux: Auto PTY creates a port for the other app." if os.name!="nt" else "COM pair: app → COM21; Probe → COM20. Install the pair first."
             self.label(self.config_frame,hint,9,color=c["muted"],wraplength=220,justify="left").pack(anchor="w",pady=7)
         if mode=="TCP Proxy":
@@ -424,7 +434,7 @@ class Probe(tk.Tk):
             if not cfg["host"].strip(): raise ValueError("Enter a remote host.")
             p=int(cfg["port"])
             if not 1<=p<=65535: raise ValueError("Remote port must be 1–65535.")
-        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP","Device Simulator"):
+        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP") or (mode == "Device Simulator" and cfg["simulator_transport"] == "TCP socket"):
             p=int(cfg["listen_port"])
             if not 0<=p<=65535: raise ValueError("Listen port must be 0–65535.")
         if mode == "Device Simulator":
@@ -433,6 +443,12 @@ class Probe(tk.Tk):
             RequestMatcher(self.simulator_model, cfg["simulator_matching"] == "Conversation order", cfg["simulator_repeat"])
             scale=float(cfg["simulator_timing"])
             if not math.isfinite(scale) or not 0 <= scale <= 10: raise ValueError("Reply timing multiplier must be 0–10.")
+            if cfg["simulator_transport"] not in simulator_transports():
+                raise ValueError("Choose a supported simulator transport for this operating system.")
+            if cfg["simulator_transport"] == "Virtual COM pair":
+                VirtualPair(cfg["simulator_port"], cfg["simulator_peer_port"]).validate()
+        if mode == "Serial Proxy" and cfg["app_port"] != "Auto PTY":
+            VirtualPair(cfg["app_port"], cfg["app_peer_port"]).validate(cfg["serial_port"])
         if "Serial" in mode:
             if not cfg["serial_port"]: raise ValueError("Choose or enter a physical serial port.")
             if int(cfg["baud"])<1: raise ValueError("Baud must be positive.")
@@ -1082,7 +1098,7 @@ class Probe(tk.Tk):
             "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Keyboard for direct input. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Pop out opens a larger live screen. One peer is displayed at a time.\n\n"
             "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to load exact bytes into the composer.\n\n"
             "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
-            "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
+            "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket, Windows virtual COM pair or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
             "TEST SEQUENCES\nAdd, edit, reorder or duplicate up to 1000 steps in Test lab. Each step has payload bytes, a delay after send/reply in milliseconds, repetition count, optional expected reply bytes and a timeout. Cycles 0 runs until stopped. Stop cancels pending waits and future sends. Import/export preserves timing. Timing is best effort, not hard real-time.\n\n"
             "VENDOR FEATURES\nHW-group proprietary UDP discovery, device IP configuration and TEA/I/O extensions are not implemented without verified protocol/SDK information. STM32 programming is intentionally outside this application's scope. See FEATURE_MATRIX.md.\n")
 
@@ -1117,17 +1133,35 @@ def main():
     parser.add_argument("--version",action="version",version=__version__)
     parser.add_argument("--self-test",action="store_true",help="Test bundled serial, PTY, network and terminal support without a display")
     parser.add_argument("--smoke-test",action="store_true",help="Open the GUI briefly and verify all transport panels")
+    parser.add_argument("--diagnostic-report",type=Path,help="Write self-test/smoke-test results as JSON (also works in windowed Windows builds)")
     args=parser.parse_args()
+    def report(success, error=""):
+        if args.diagnostic_report:
+            args.diagnostic_report.write_text(json.dumps(dict(success=success, version=__version__,
+                platform=sys.platform, check="self-test" if args.self_test else "smoke-test", error=error)), encoding="utf-8")
     if args.self_test:
         from .diagnostics import self_test
-        self_test()
+        try:
+            self_test()
+        except Exception as exc:
+            report(False, str(exc))
+            print(f"Self-test failed: {exc}", file=sys.stderr)
+            raise SystemExit(1)
+        report(True)
         return
+    if args.diagnostic_report and not args.smoke_test:
+        parser.error("--diagnostic-report requires --self-test or --smoke-test")
     if sys.platform=="win32":
         try:
             import ctypes
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except Exception:pass
-    app=Probe(demo=args.demo)
+    try:
+        app=Probe(demo=args.demo)
+    except Exception as exc:
+        if not args.smoke_test: raise
+        report(False, str(exc))
+        raise SystemExit(1)
     if args.smoke_test:
         app.save_settings=lambda: None
         def check():
@@ -1140,9 +1174,11 @@ def main():
                     app.testlab_notebook.select(tab)
                     app.update_idletasks()
                 if app.terminal.error: raise RuntimeError(app.terminal.error)
-            except Exception:
+            except Exception as exc:
+                report(False, str(exc))
                 app.close()
-                raise
+                raise SystemExit(1)
+            report(True)
             app.close()
         app.after(300,check)
         app.report_callback_exception=lambda *error: sys.exit(1)

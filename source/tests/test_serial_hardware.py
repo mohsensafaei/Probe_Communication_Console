@@ -28,6 +28,9 @@ Event = dict[str, Any]
 COMMAND = b"AT\r"
 ACK = b"\r\nOK\r\n"
 PORT = os.environ.get("PROBE_TEST_SERIAL_PORT", "")
+PAIR_PORT = os.environ.get("PROBE_TEST_APP_PORT", "")
+PARTNER_PORT = os.environ.get("PROBE_TEST_PEER_PORT", "")
+HAS_PAIR = os.name == "posix" or bool(PAIR_PORT and PARTNER_PORT)
 
 
 @dataclass(frozen=True)
@@ -41,11 +44,12 @@ def hardware_session(
     mode: str, hardware: SerialHardware
 ) -> Iterator[tuple[Engine, list[Event], Event]]:
     with session(mode, serial_port=hardware.port, baud=hardware.baud,
-                 app_port="Auto PTY") as connected:
+                 app_port="Auto PTY" if os.name == "posix" else PAIR_PORT,
+                 app_peer_port=PARTNER_PORT) as connected:
         yield connected
 
 
-@unittest.skipUnless(PORT and os.name == "posix", "Set PROBE_TEST_SERIAL_PORT for an attached AT-capable device")
+@unittest.skipUnless(PORT, "Set PROBE_TEST_SERIAL_PORT for an attached AT-capable device")
 class SerialHardwareTests(unittest.TestCase):
     def setUp(self) -> None:
         self.hardware = SerialHardware(PORT)
@@ -64,6 +68,7 @@ class SerialHardwareTests(unittest.TestCase):
                 self.assertEqual(b"".join(e["data"] for e in rows if e["direction"] == "RX"), received(events))
                 self.assertIn(ACK, received(events))
 
+    @unittest.skipUnless(HAS_PAIR, "Set PROBE_TEST_APP_PORT and PROBE_TEST_PEER_PORT for an installed COM pair")
     def test_usb_proxy_duplex_capture_and_injection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             capture = Path(directory) / "capture.jsonl"
@@ -123,14 +128,26 @@ class SerialHardwareTests(unittest.TestCase):
                 engine.record()
                 reply = received(events)
             model = compile_capture(load_capture(path))
-            with session("Device Simulator", simulator_model=model, simulator_transport="Virtual serial (PTY)") as (engine, events, ready):
-                with serial.Serial(ready["app_path"], 115200, timeout=3) as app:
-                    app.write(COMMAND)
-                    self.assertEqual(app.read(len(reply)), reply)
-                    self.assertEqual(engine.serials, [])
+            transport = "Virtual serial (PTY)" if os.name == "posix" else "Virtual COM pair" if HAS_PAIR else "TCP socket"
+            with session("Device Simulator", simulator_model=model, simulator_transport=transport,
+                         simulator_port=PAIR_PORT, simulator_peer_port=PARTNER_PORT) as (engine, events, ready):
+                if transport == "TCP socket":
+                    with socket.create_connection(ready["address"][:2], timeout=3) as app:
+                        app.sendall(COMMAND)
+                        actual = bytearray()
+                        while len(actual) < len(reply):
+                            chunk = app.recv(len(reply)-len(actual))
+                            self.assertTrue(chunk)
+                            actual.extend(chunk)
+                        self.assertEqual(bytes(actual), reply)
+                else:
+                    with serial.Serial(ready["app_path"], 115200, timeout=3) as app:
+                        app.write(COMMAND)
+                        self.assertEqual(app.read(len(reply)), reply)
+                self.assertNotIn(PORT, [port.port for port in engine.serials])
 
 
-@unittest.skipUnless(PORT and os.environ.get("PROBE_TEST_GUI") == "1" and os.name == "posix",
+@unittest.skipUnless(PORT and os.environ.get("PROBE_TEST_GUI") == "1",
                      "Set PROBE_TEST_SERIAL_PORT and PROBE_TEST_GUI=1 with an X display")
 class SerialHardwareGUITests(unittest.TestCase):
     def setUp(self) -> None:
@@ -159,6 +176,9 @@ class SerialHardwareGUITests(unittest.TestCase):
     def connect(self, mode: str) -> None:
         self.app.choose_mode(mode)
         self.app.vars["serial_port"].set(PORT)
+        if os.name == "nt" and mode == "Serial Proxy":
+            self.app.vars["app_port"].set(PAIR_PORT)
+            self.app.vars["app_peer_port"].set(PARTNER_PORT)
         self.app.toggle()
         self.spin(lambda: self.app.engine.ready)
 
@@ -172,6 +192,7 @@ class SerialHardwareGUITests(unittest.TestCase):
         self.assertEqual(self.app.engine.tx, len(COMMAND))
         self.assertIn("OK", "".join(self.app.terminal.model.screen.display))
 
+    @unittest.skipUnless(HAS_PAIR, "Set PROBE_TEST_APP_PORT and PROBE_TEST_PEER_PORT for an installed COM pair")
     def test_gui_usb_proxy_forwarding(self) -> None:
         self.connect("Serial Proxy")
         self.spin(lambda: "App-side port:" in self.app.status.cget("text"))

@@ -138,4 +138,4 @@ def self_test():
             with serial.Serial(ready["app_path"], 115200, timeout=3) as app:
                 app.write(b"PING\r\n")
                 expect_equal(app.read(6), b"PONG\r\n")
-    print("PASS device simulator (TCP / PTY) and timed reply-checked sequences")
+    print("PASS device simulator (TCP; PTY on POSIX) and timed reply-checked sequences")
