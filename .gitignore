@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+.build-venv/
+build/
+dist/
+work/
+probe-data/
+.pytest_cache/
+.coverage
+*.log
+.env
+.env.*
+*.pem
+*.key
+# Windows launchers/assets are kept locally, outside the Linux release.
+source/*windows.bat
+source/assets/probe.ico
+# Rebuild the portable bundle from source; never commit local runtime state.
+linux-portable/

@@ -1,0 +1,5 @@
+[
+  {"name":"Status", "text":"STATUS?", "send_mode":"Text", "encoding":"utf-8", "ending":"CRLF", "checksum":"None", "prefix":"", "suffix":""},
+  {"name":"ACK", "text":"06", "send_mode":"Hex", "encoding":"utf-8", "ending":"None", "checksum":"None", "prefix":"", "suffix":""},
+  {"name":"Binary test", "text":"00 02 03 1C 7F 80 A4 FF", "send_mode":"Hex", "encoding":"utf-8", "ending":"None", "checksum":"None", "prefix":"", "suffix":""}
+]
