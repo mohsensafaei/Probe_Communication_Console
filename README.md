@@ -52,3 +52,17 @@ tests are tracked on this branch. Local settings, environments, build output,
 portable binaries and Windows launchers are excluded.
 
 See [the full guide](source/README.md) and [validation results](source/VALIDATION.md).
+
+Opt-in tests for an attached AT-capable USB serial device (including supported
+phone CDC ACM interfaces) are available under `source/tests/test_serial_hardware.py`.
+From `source`, select the device explicitly:
+
+```sh
+PROBE_TEST_SERIAL_PORT=/dev/ttyACM0 PROBE_TEST_GUI=1 xvfb-run -a \
+  .venv/bin/python -m unittest discover -s tests -p test_serial_hardware.py -v
+```
+
+They check direct serial, PTY proxy, injection, byte-exact captures, Serial-to-TCP
+and the actual GUI using only the read-only `AT` attention command. Normal test
+runs skip these tests. USB serial proxying does not intercept a phone's separate
+MTP file-transfer interface.
