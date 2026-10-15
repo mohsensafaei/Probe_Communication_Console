@@ -6,6 +6,7 @@ import time
 from typing import Any, TYPE_CHECKING
 
 from .codec import encode, parse_hex
+from .timing import sleep_at_least, wait_for
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -65,7 +66,7 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
     overflow = False
     expecting = False
     sent = checked = cycle = 0
-    started = time.monotonic()
+    started = time.perf_counter()
     direction = "TX" if side == "App / downstream" else "RX"
 
     def observe(event: dict[str, Any]) -> None:
@@ -94,16 +95,16 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
                         raise RuntimeError(f"Step {index}: transport rejected the payload.")
                     sent += 1
                     if step.expect:
-                        deadline = time.monotonic() + step.timeout_ms / 1000
+                        deadline = time.perf_counter() + step.timeout_ms / 1000
                         response = bytearray()
                         while step.expect not in response:
                             if overflow:
                                 raise RuntimeError(f"Step {index}: reply capture overflow. Reduce incoming traffic.")
-                            remaining = deadline - time.monotonic()
+                            remaining = deadline - time.perf_counter()
                             if remaining <= 0:
                                 raise RuntimeError(f"Step {index}: expected reply not received within {step.timeout_ms} ms.")
                             try:
-                                response.extend(await asyncio.wait_for(queue.get(), remaining))
+                                response.extend(await wait_for(queue.get(), remaining))
                             except TimeoutError:
                                 raise RuntimeError(f"Step {index}: expected reply not received within {step.timeout_ms} ms.") from None
                             if step.expect in response:
@@ -112,9 +113,9 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
                                 del response[:-65536]
                         checked += 1
                     expecting = False
-                    await asyncio.sleep(step.delay_ms / 1000)
+                    await sleep_at_least(step.delay_ms / 1000)
         engine.event("scenario", state="complete", cycle=cycle, sent=sent, checked=checked,
-                     message=f"Sequence complete · {cycle} cycles · {sent} sends · {checked} replies checked · {time.monotonic()-started:.2f} s")
+                     message=f"Sequence complete · {cycle} cycles · {sent} sends · {checked} replies checked · {time.perf_counter()-started:.2f} s")
     except asyncio.CancelledError:
         engine.event("scenario", state="stopped", cycle=cycle, sent=sent, checked=checked,
                      message=f"Sequence stopped · {sent} sends · {checked} replies checked.")

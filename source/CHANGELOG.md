@@ -7,6 +7,7 @@
 * Correct Serial Proxy endpoint reporting: display/copy the application-side partner, never the COM opened by Probe. Reject aliased COM names.
 * Isolated Windows source/build launchers install pinned dependencies, select Python explicitly and preserve failure exit codes without pausing CI.
 * Native Windows x64 CI tests source, GUI and both extracted portable ZIPs before artifact upload. Windowed diagnostics can write JSON reports.
+* Correct early 5–10 ms sequence/reply delays on coarse Windows asyncio clocks; use high-resolution duration checks and cancellable bounded worker sleeps.
 * Version visible in the window title. Windows hardware tests accept explicit physical and virtual-pair COM ports.
 
 ## 1.1.0 (Linux)

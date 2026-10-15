@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .simulation import DeviceModel, RequestMatcher, MAX_DELAY_MS
 from .serial_endpoints import VirtualPair
+from .timing import sleep_at_least, wait_for
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -52,7 +53,7 @@ async def serve_simulator(engine: "Engine") -> None:
             for reply in exchange.replies:
                 delay = reply.delay_ms * scale / 1000
                 if delay:
-                    try: await asyncio.wait_for(signal.wait(), delay)
+                    try: await wait_for(signal.wait(), delay)
                     except TimeoutError: pass
                 else: await asyncio.sleep(0)
                 if signal.is_set(): return
@@ -83,7 +84,7 @@ async def serve_simulator(engine: "Engine") -> None:
                 data = b""
             if data:
                 await process(data, peer, engine._app_write)
-            await asyncio.sleep(.001)
+            await sleep_at_least(.001)
     elif transport == "Virtual COM pair":
         pair = VirtualPair(engine.cfg.get("simulator_port", ""), engine.cfg.get("simulator_peer_port", ""))
         pair.validate()
@@ -101,7 +102,7 @@ async def serve_simulator(engine: "Engine") -> None:
             data = engine._serial_read(port)
             if data:
                 await process(data, peer, write)
-            await asyncio.sleep(.001)
+            await sleep_at_least(.001)
     elif transport == "TCP socket":
         async def connection(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             task = asyncio.current_task()

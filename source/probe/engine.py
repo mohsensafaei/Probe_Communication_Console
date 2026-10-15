@@ -10,6 +10,8 @@ import threading
 import time
 from pathlib import Path
 
+from .timing import sleep_at_least
+
 MODES = ("TCP Client", "TCP Server", "TCP Proxy", "UDP", "USB / Serial",
          "Serial Proxy", "Serial ↔ TCP", "Device Simulator")
 
@@ -341,7 +343,7 @@ class Engine:
                         self.event("data", direction="TX", peer=cfg["serial_port"], data=sent)
                 if time.monotonic() > next_lines:
                     self._lines(physical); next_lines = time.monotonic() + .5
-                await asyncio.sleep(.01)
+                await sleep_at_least(.01)
 
     async def _app_write(self, data):
         if self.pty_fds:
@@ -351,7 +353,7 @@ class Engine:
                 try: view = view[os.write(self.pty_fds[0], view):]
                 except BlockingIOError:
                     if time.monotonic() > deadline: raise TimeoutError("App is not reading its PTY.")
-                    await asyncio.sleep(.01)
+                    await sleep_at_least(.01)
         else: await self._serial_write(self.serials[1], data)
 
     def _lines(self, port):
@@ -485,7 +487,7 @@ class Engine:
                 if data:
                     self.event("data", direction="RX", peer=self.cfg["serial_port"], data=data)
                     for peer, links in list(self.clients.items()): await self._write(links[0], data)
-                await asyncio.sleep(.01)
+                await sleep_at_least(.01)
         except asyncio.CancelledError: raise
         except Exception as exc:
             self.event("error", message=f"Serial bridge stopped: {exc}")

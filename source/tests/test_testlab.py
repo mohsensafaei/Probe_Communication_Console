@@ -150,12 +150,12 @@ class TestLabTransportTests(unittest.TestCase):
     def test_sequence_timing_repeats_and_expected_replies(self):
         steps = (Step("A", b"A", 10, expect=b"A"), Step("B", b"B", 5, repeat=2, expect=b"B"))
         with session("USB / Serial", serial_port="loop://") as (engine, events, _):
-            started = time.monotonic()
+            started = time.perf_counter()
             engine.start_scenario(steps, cycles=2)
             done = wait_for(lambda: next((e for e in events if e.get("state") == "complete"), None), events)
             self.assertEqual(received(events), b"ABBABB")
             self.assertEqual((done["sent"], done["checked"], done["cycle"]), (6, 6, 2))
-            self.assertGreaterEqual(time.monotonic()-started, .04)
+            self.assertGreaterEqual(time.perf_counter()-started, .04)
             self.assertFalse(engine.observers)
 
     def test_sequence_failure_and_infinite_loop_cancel(self):

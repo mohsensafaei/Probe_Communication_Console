@@ -24,7 +24,7 @@ Physical hardware tests are opt-in.
 
 ## Local cross-platform checks
 
-On the Linux development host, 60 hardware-free backend tests passed (66 total,
+On the Linux development host, 62 hardware-free backend tests passed (68 total,
 6 attached-device tests skipped). COM-pair tests use actual pySerial `socket://`
 endpoints: all 256 byte values, duplex proxying, both injection sides, exact
 captures, ordered stateful replies, reset, endpoint ownership and disconnect
@@ -52,3 +52,17 @@ A COM pair is a driver prerequisite. Probe opens one end and the other applicati
 opens its partner. Drivers are not installed automatically. Physical RTS/CTS,
 vendor protocols, hard real-time timing and a real RFC2217 server still require
 device-specific validation.
+
+## Windows timing correction
+
+The first native run reproduced a real timing defect: CPython 3.12's coarse
+Windows monotonic clock let short asyncio sleeps finish before their requested
+5–10 ms delays. The sequence now measures durations with `perf_counter` and uses
+bounded worker sleeps on coarse clocks, preserving minimum delays without blocking
+the event loop. Cancellation leaves at most a 50 ms sleep to finish. Reply timeouts
+and delayed simulated responses share this timer. Tests use the performance clock
+for duration measurements and verify minimum waits, early-reply interruption and
+cancelling a one-hour delay. OS scheduling may still make a delay longer.
+
+Python documents the clock-resolution behavior in its
+[event loop reference](https://docs.python.org/3.12/library/asyncio-eventloop.html#asyncio.loop.call_later).
