@@ -175,6 +175,7 @@ class UISmoke(unittest.TestCase):
             for button in buttons:
                 self.assertLessEqual(button.winfo_rooty()+button.winfo_height(),win.winfo_rooty()+win.winfo_height())
         pane=self.app.sequence_panel
+        pane.open_editor()
         pane.payload.insert("1.0","GG")
         pane.action(pane.add)
         self.assertIn("Hex",pane.feedback.get())
@@ -203,12 +204,15 @@ class UISmoke(unittest.TestCase):
     def test_lab_sequence_edit_export_import_and_run(self):
         self.app.macro_dialog()
         pane=self.app.sequence_panel
+        pane.individual.set(True)
+        pane.open_editor()
         pane.fields["name"].set("Binary check")
         pane.fields["delay_ms"].set("3")
         pane.fields["repeat"].set("2")
         pane.fields["expect"].set("00 FF")
         pane.payload.insert("1.0","00 FF")
         pane.add()
+        pane.editor.destroy()
         pane.table.selection_set("0");pane.duplicate()
         pane.table.selection_set("1");pane.move(-1)
         with tempfile.TemporaryDirectory() as directory:
@@ -227,6 +231,108 @@ class UISmoke(unittest.TestCase):
         self.spin(lambda:"Sequence complete" in self.app.sequence_info.get())
         self.assertEqual(self.app.engine.tx,16)
         self.assertIn("8 replies checked",self.app.sequence_info.get())
+
+    def test_sequence_capture_rx_tx_subset_order_and_destination(self):
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        self.app.vars["serial_port"].set("COM34")
+        self.app.choose_mode("Serial ↔ TCP")
+        self.app.vars["side"].set("Device / upstream")
+        for n,(direction,data) in enumerate((("RX",b"FIRST\0"),("TX",b"COMMAND"),("RX",b"SECOND"),("RX",b"LAST\xff"))):
+            self.app.add_event(dict(kind="data",time=10+n,direction=direction,peer="COM34",data=data))
+        picker=pane.use_capture();self.app.update()
+        self.assertEqual(pane.capture_direction.get(),"RX")
+        self.assertEqual(len(picker.table.get_children()),3)
+        picker.table.selection_set(("2","0"));picker.add_selected()
+        from probe.scenario import compile_steps
+        self.assertEqual([s.payload for s in compile_steps(pane.effective_rows())],[b"FIRST\0",b"LAST\xff"])
+        self.assertEqual([s.delay_ms for s in compile_steps(pane.effective_rows())],[100,100])
+        picker=pane.use_capture();pane.capture_direction.set("TX");picker.refresh();picker.add_selected()
+        self.assertEqual(compile_steps(pane.effective_rows())[-1].payload,b"COMMAND")
+        self.assertEqual(self.app.vars["side"].get(),"Device / upstream")
+        self.assertIn("COM34",pane.destination_text())
+        self.app.vars["side"].set("App / downstream")
+        self.assertIn("application / downstream",pane.destination_text())
+        self.assertNotIn("COM34",pane.destination_text())
+
+    def test_sequence_shared_interval_is_visible_exported_and_used_on_wire(self):
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        self.app.macros=[dict(name="First",text="00 02 FF",send_mode="Hex",delay_ms=900),
+                         dict(name="Second",text="00 7A",send_mode="Hex",delay_ms=900)]
+        pane.adopt_timing();pane.refresh()
+        pane.interval.set("100");self.app.update()
+        self.assertEqual([pane.table.set(str(i),"delay") for i in range(2)],["100","100"])
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"sequence.json"
+            with patch("probe.sequence_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
+            self.assertEqual([r["delay_ms"] for r in json.loads(path.read_text())["steps"]],[100,100])
+        self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        self.app.vars["interval"].set("not the sequence interval")
+        pane.run();self.spin(lambda:"Sequence complete" in self.app.sequence_info.get())
+        sent=[e for e in self.app.events.values() if e["direction"]=="TX"]
+        self.assertEqual([e["data"] for e in sent],[b"\x00\x02\xff",b"\x00z"])
+        self.assertGreaterEqual(sent[1]["time"]-sent[0]["time"],.085)
+        self.assertLess(sent[1]["time"]-sent[0]["time"],.8)
+
+    def test_sequence_import_keeps_advanced_timing_and_legacy_defaults(self):
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        pane.repeat_mode.set(pane.REPEATS[1])
+        self.app.vars["sequence_cycles"].set("1")
+        self.assertEqual(pane.repeat_mode.get(),pane.REPEATS[1])
+        self.app.vars["sequence_cycles"].set("0")
+        with self.assertRaises(ValueError):pane.run_cycles()
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"advanced.json"
+            original=[dict(name="A",text="41",send_mode="Hex",delay_ms=7,repeat=3,expect="42",timeout_ms=90),
+                      dict(name="B",text="43",send_mode="Hex",delay_ms=80)]
+            path.write_text(json.dumps(dict(format="probe-sequence",version=1,cycles=0,steps=original)))
+            with patch("probe.sequence_ui.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
+            self.assertTrue(pane.individual.get())
+            self.assertEqual(pane.repeat_mode.get(),pane.REPEATS[2])
+            self.assertEqual(pane.effective_rows(),original)
+            pane.individual.set(False);pane.interval.set("100")
+            self.assertEqual([(r["delay_ms"],r.get("expect")) for r in pane.effective_rows()],[(100,"42"),(100,None)])
+            pane.individual.set(True)
+            self.assertEqual(pane.effective_rows(),original)
+            path.write_text(json.dumps([dict(name="Legacy",text="00 FF",send_mode="Hex")]))
+            with patch("probe.sequence_ui.filedialog.askopenfilename",return_value=str(path)),patch("probe.sequence_ui.messagebox.askyesno",return_value=True):pane.load_file()
+            self.assertFalse(pane.individual.get())
+            self.assertEqual(pane.interval.get(),"100")
+            self.assertEqual(pane.effective_rows()[0]["delay_ms"],100)
+
+    def test_sequence_editor_cancel_validation_and_exact_transformed_bytes(self):
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        self.app.vars["send_mode"].set("Hex");self.app.vars["prefix"].set("02")
+        self.app.vars["ending"].set("CRLF")
+        self.app.payload.delete("1.0","end");self.app.payload.insert("1.0","00 FF")
+        pane.add_composer();pane.open_editor(0);self.app.update()
+        self.assertEqual(pane.payload.get("1.0","end-1c"),"02 00 FF 0D 0A")
+        pane.payload.delete("1.0","end");pane.payload.insert("1.0","GG")
+        pane.action(pane.save_editor)
+        self.assertIn("Hex",pane.editor_feedback.get())
+        self.assertTrue(pane.editor.winfo_exists())
+        pane.editor.destroy()
+        from probe.scenario import compile_steps
+        self.assertEqual(compile_steps(pane.effective_rows())[0].payload,b"\x02\x00\xff\r\n")
+        pane.open_editor(0);pane.fields["name"].set("Renamed")
+        pane.save_editor()
+        self.assertEqual(compile_steps(pane.effective_rows())[0].payload,b"\x02\x00\xff\r\n")
+        self.assertEqual(self.app.macros[0]["name"],"Renamed")
+
+    def test_sequence_continuous_stop_and_editing_lock(self):
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        self.app.macros=[dict(name="A",text="41",send_mode="Hex")];pane.refresh()
+        pane.repeat_mode.set(pane.REPEATS[2])
+        self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        pane.run();self.spin(lambda:self.app.engine.tx>=2)
+        self.assertTrue(pane.run_button.instate(["disabled"]))
+        with self.assertRaisesRegex(ValueError,"Stop"):pane.add_composer()
+        pane.stop();self.spin(lambda:self.app.engine.scenario_task is None)
+        count=self.app.engine.tx
+        self.spin(lambda:not pane.run_button.instate(["disabled"]))
+        self.assertEqual(self.app.engine.tx,count)
+        self.assertTrue(pane.stop_button.instate(["disabled"]))
 
     def test_lab_com_pair_configuration_and_application_endpoint(self):
         import socket

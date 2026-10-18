@@ -97,7 +97,7 @@ class Probe(tk.Tk):
                         prefix="", suffix="", interval="1000", framing="Chunks", delimiter="0A",
                         frame_size="16", gap="50", view="Text + Hex", search="", direction="All",
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
-                        theme="Probe II", sequence_cycles="1", simulator_transport="TCP socket",
+                        theme="Probe II", sequence_cycles="1", sequence_interval="100", sequence_timing="auto", simulator_transport="TCP socket",
                         simulator_matching="Conversation order", simulator_timing="1")
         for k,v in defaults.items(): self.vars[k] = tk.StringVar(value=v)
         self.vars["dtr"] = tk.BooleanVar(value=False); self.vars["rts"] = tk.BooleanVar(value=False)
@@ -958,14 +958,15 @@ class Probe(tk.Tk):
     def macro_dialog(self):
         return self.test_lab(1)
 
-    def run_sequence(self):
+    def run_sequence(self, rows=None, cycles=None):
         from .scenario import compile_steps, integer
         self.stop_sequence(); self.stop_repeat(); self.stop_replay()
         try:
             if not self.engine or not self.engine.ready:
                 raise ValueError("Connect before running a test sequence.")
-            steps = compile_steps(self.macros, int(self.vars["interval"].get()))
-            cycles = 0 if self.vars["sequence_loop"].get() else integer(self.vars["sequence_cycles"].get(), "Cycles", 0, 1000000)
+            steps = compile_steps(self.macros, int(self.vars["interval"].get())) if rows is None else compile_steps(rows, 100)
+            if cycles is None:
+                cycles = 0 if self.vars["sequence_loop"].get() else integer(self.vars["sequence_cycles"].get(), "Cycles", 0, 1000000)
             self.engine.start_scenario(steps, cycles, self.vars["target"].get(), self.vars["side"].get())
             self.sequence_info.set("Starting test sequence…")
             return True

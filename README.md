@@ -1,4 +1,4 @@
-# Probe for Windows 1.1.0
+# Probe for Windows 1.1.1
 
 Portable TCP, UDP and USB/COM workbench with traffic recording/replay, a live
 ANSI terminal, serial proxies, recorded device simulation and timed test sequences.
@@ -29,7 +29,7 @@ COM port and serial parameters. Close other software that already owns that COM.
 ## Hardware test lab
 
 **Test lab** is at the bottom of the control panel; **Appearance** is removed.
-The title shows version 1.1.0, and the sidebar has eight modes including
+The title shows version 1.1.1, and the sidebar has eight modes including
 **Device Simulator**.
 
 * **Device simulator:** record TX/RX with the real device, then load the capture
@@ -38,10 +38,25 @@ The title shows version 1.1.0, and the sidebar has eight modes including
   application receives recorded replies to exact matching requests, including
   response timing and stateful conversations. The original physical device can
   be disconnected. Edit requests, replies and delays, or reset matching.
-* **Test sequences:** create/reorder/duplicate steps with separate payloads,
-  millisecond delays, repeats, optional reply bytes and timeouts. Set finite
-  cycles or 0 for continuous running. Import/export complete sequences. Connect
-  the desired port/socket in the main window, select target/side, then Run.
+* **Test sequences:** choose messages, set one shared interval, then Run.
+  **Choose captured messages…** opens an RX/TX picker (RX initially selected)
+  with source/peer filters, previews and explicit message selection. Add the
+  composer or write a new message instead. The destination is always displayed.
+  Select **Run once**, **Repeat a set number** or **Repeat until stopped**.
+  Edit a message for advanced repeats/reply checks; enable individual delays
+  only when needed. Sequence files with custom timing keep their timing/checks.
+
+For a 100 ms test: connect the port/socket in the main window, open **Sequences**,
+choose the captured RX or TX records you want, set **Interval between messages**
+to **100**, leave **Run once**, then click **Run sequence**. Changing the shared
+interval updates the table and the next Run/Save immediately; no per-row Update
+is needed. Loading a capture in the picker does not disconnect or replace the
+main traffic view. **Keep recorded intervals** is an explicit advanced option.
+
+RX and TX describe the original recording relative to Probe; either source can
+be sent again. For commands to a physical device, the recorded TX is usually
+appropriate; recorded RX can reproduce a device's replies toward an application.
+Check **Send to** before running: choosing RX does not change the destination.
 
 Try `source/examples/device-model.json` and `source/examples/test-sequence.json`
 with two Probe windows: one **Device Simulator / TCP socket**, one **TCP Client**.

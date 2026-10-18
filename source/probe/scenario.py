@@ -1,5 +1,6 @@
 """Validated test steps and a cancellable runner on the transport event loop."""
 import asyncio
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import time
@@ -58,6 +59,37 @@ def compile_steps(rows: Sequence[Mapping[str, Any]], default_delay: int = 1000) 
                            integer(row.get("repeat", 1), "Step repeat", 1, 1000000), expected,
                            integer(row.get("timeout_ms", 2000), "Reply timeout (ms)", 1, MAX_DELAY)))
     return tuple(result)
+
+
+def steps_from_capture(rows: Sequence[Mapping[str, Any]], delay_ms: int = 100,
+                       recorded_timing: bool = False) -> list[dict[str, Any]]:
+    """Copy explicitly selected RX or TX records into outgoing, byte-exact steps.
+
+    Direction is provenance, not a routing instruction. The caller chooses the
+    destination independently. Uniform timing is the default for quick tests.
+    """
+    delay_ms = integer(delay_ms, "Interval (ms)", 0, MAX_DELAY)
+    if not rows or len(rows) > MAX_STEPS:
+        raise ValueError(f"Select 1–{MAX_STEPS} captured messages.")
+    result = []
+    for index, row in enumerate(rows):
+        direction = row.get("direction")
+        data = row.get("data")
+        if direction not in ("RX", "TX") or not isinstance(data, bytes):
+            raise ValueError("Select RX or TX data records from a Probe capture.")
+        delay = delay_ms
+        if recorded_timing and index + 1 < len(rows):
+            try:
+                gap = (float(rows[index+1]["time"]) - float(row["time"])) * 1000
+                if not math.isfinite(gap):raise ValueError
+                delay = integer(round(max(0, gap)), "Recorded delay (ms)", 0, MAX_DELAY)
+            except (KeyError, TypeError, ValueError, OverflowError):
+                raise ValueError("Recorded intervals must be finite and at most one hour.") from None
+        result.append(dict(name=f"Captured {direction} {index+1}", text=data.hex(" ").upper(),
+                           send_mode="Hex", delay_ms=delay,
+                           source_direction=direction, source_peer=str(row.get("peer", ""))))
+    compile_steps(result)
+    return result
 
 
 async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,

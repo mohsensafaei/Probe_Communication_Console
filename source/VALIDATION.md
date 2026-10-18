@@ -1,4 +1,4 @@
-# Probe 1.1.0 Windows validation
+# Probe 1.1.1 Windows validation
 
 ## Native Windows gate
 
@@ -24,15 +24,24 @@ Physical hardware tests are opt-in.
 
 ## Local cross-platform checks
 
-On the Linux development host, 62 hardware-free backend tests passed (68 total,
-6 attached-device tests skipped). COM-pair tests use actual pySerial `socket://`
+On the Linux development host, 64 backend tests passed (71 total,
+6 attached-device tests and one unprivileged-permission check skipped). COM-pair tests use actual pySerial `socket://`
 endpoints: all 256 byte values, duplex proxying, both injection sides, exact
 captures, ordered stateful replies, reset, endpoint ownership and disconnect
 cleanup. These verify the shared serial path, not a Windows kernel COM driver.
 
-All 11 local GUI tests passed with an isolated X display and temporary preferences. The COM
+All 16 local GUI tests passed with an isolated X display and temporary preferences. The COM
 configuration test presents the Windows panel and exchanges real serial socket
 bytes. Native CI provides the evidence for Windows UI and executable packaging.
+
+Sequence-specific checks cover default RX and optional TX selection, subset
+order, unchanged destination, exact binary bytes, shared 100 ms timing on the
+wire, Run/Save/table consistency, independent composer timing, preserved mixed
+imported delays and reply checks, legacy defaults, editor validation/cancel,
+continuous Stop and editing locks. Minimum layouts were visually checked at
+980×680 (sequence page), 800×500 (capture picker), 700×480 (simple editor) and
+760×560 (advanced editor), including visible action buttons and status. This is
+Linux Tk evidence; the Windows workflow must pass separately for native builds.
 
 ## Physical USB and COM-pair drivers
 

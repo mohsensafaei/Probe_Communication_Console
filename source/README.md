@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.1.0** (Windows release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.1.1** (Windows release).
 
 The instrument-panel UI takes visual inspiration from ASUS PC Probe II: an angular silver chassis, blue panels, recessed green readouts and geometric headings. Michroma, Rajdhani and Share Tech Mono are bundled under the SIL Open Font License and loaded privately on Windows/Linux, without installing system fonts. They are open fonts, not ASUS's proprietary typography. The Appearance button has been replaced by Test lab; data fonts can be resized with Ctrl +/-. The layout compresses on short displays; drag the divider to give the traffic table or byte inspector more room. Selecting Terminal opens up the work area and uses the terminal's direct keyboard controls; returning to another inspector tab restores the composer.
 
@@ -197,19 +197,45 @@ machine. Startup RX chatter is excluded and reported. Linux PTYs represent seria
 bytes, not a USB device identity or modem-line emulation. Model size is bounded to
 8 MiB and requests to 64 KiB. Save model / Load model makes emulation reusable.
 
-**Test lab → Test sequences** uses the main window's connection, target and
-injection side. Add composer preserves its exact encoded bytes. Add/Edit steps
-sets format, payload, line ending, delay after send/reply (0–3600000 ms), repeats,
-expected reply substring (hex, optional) and reply timeout. Positive Cycles counts
-finish; 0 continues until Stop. A missing reply stops the test and names the step.
+**Sequences** opens a three-part page: **Choose messages → Set timing → Send
+messages**. Connect in the main window first. **Choose captured messages…**
+opens a selectable RX/TX list, with RX initially selected. Pick traffic history,
+an imported capture or **Load capture…**, optionally filter one peer, and add
+the selected records. Their bytes and order are preserved. Loading a capture
+here does not replace the main traffic view or disconnect an active session.
+RX means received by Probe and TX means sent by Probe in the original recording;
+both can be sent again. Selecting a direction never changes the destination.
+The visible **Send to** line identifies the physical port, TCP endpoint or
+downstream application selected in the main window. For proxying, choose the
+correct target/injection side there before running.
+
+For a quick test, set **Interval between messages** to **100 ms** and choose
+**Run once**. The shared interval immediately applies to every table row, the
+next Run and Save, without Update selected. **Repeat a set number** shows a run
+count; **Repeat until stopped** provides continuous operation without a magic
+number. **Add composer** preserves its complete encoded bytes including prefix,
+checksum and line ending. **New message…** and **Edit message…** use a separate
+Save/Cancel editor; the payload editor is absent from the main sequence page.
+
+Advanced message options include format/encoding, line ending, repeats,
+expected reply substring (hex, optional) and reply timeout. **Advanced: use
+individual message delays** enables per-message timing (0–3600000 ms). Delays
+start after sending, or after the expected reply when a reply check is enabled;
+they are not start-to-start periods when waiting for replies. A missing reply
+stops the test and names the step. Blank expected reply means no reply wait.
 Progress reports cycle, step, sends and checked replies. Expected replies use the
 selected client; select one client when several are connected. Run/Repeat/Replay
 stop one another. Disconnect cancels the sequence. Already written bytes cannot
 be recalled. Small millisecond delays are best effort and do not promise hard
 real-time scheduling or prove that a device cannot fail under other workloads.
 
-Import/Export stores steps and cycles in JSON. Use captured TX appends retained
-TX messages with their original inter-send timing. Save local settings retains
-steps, including timing and expected replies. Original command-shelf JSON files
-can still be imported. Synthetic runnable examples are `examples/device-model.json`
+Load/Save stores steps and cycles in the existing JSON format. Files with mixed
+individual delays automatically keep individual timing, along with reply checks
+and repetitions. The capture picker uses the shared interval by default;
+**Keep recorded intervals (advanced)** explicitly preserves gaps between the
+selected records and enables individual timing. Original command-shelf JSON files
+can still be loaded; files without delays use the 100 ms quick-test default.
+Settings retain timing/repeat choices separately from the composer's Repeat
+interval. Editing is locked during a run; Stop cancels future sends and waits.
+Synthetic runnable examples are `examples/device-model.json`
 and `examples/test-sequence.json`; they do not claim a vendor-specific POS protocol.

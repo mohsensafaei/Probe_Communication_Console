@@ -1,5 +1,15 @@
 # Changes
 
+## 1.1.1 (Windows)
+
+* Simplify Sequences to choose messages, set timing and send; show the actual destination and separate message editing into a Save/Cancel dialog.
+* Replace TX-only capture conversion with an RX/TX picker, initially RX, with source/peer filters, previews, selection and loading a capture without replacing the main traffic view.
+* One shared interval immediately controls the table, Run and Save; individual recorded/file timing is explicit and preserved, alongside repeats and expected replies.
+* Replace numeric infinite-cycle configuration with Run once, Repeat a set number and Repeat until stopped. Keep advanced per-message options in the editor.
+* Preserve original capture bytes/order and composer transforms; keep source direction independent of the outgoing destination.
+* Lock sequence editing while running, keep Stop visible on short windows and decouple timing from the composer's Repeat interval.
+* Add RX/TX binary capture, bounds, GUI selection, timing-on-wire, legacy import, exact edit/cancel and continuous-stop regressions.
+
 ## 1.1.0 (Windows)
 
 * Bring all recording/replay, Test lab device models, timed/reply-checked sequences and Appearance removal to Windows.

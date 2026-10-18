@@ -2,7 +2,7 @@
 
 This is a workflow comparison, not a claim of byte-for-byte compatibility with all releases of either application. The requested SSCOM version was not specified. Hercules describes Serial, TCP Client/Server, UDP and HW-group configuration; SSCOM releases vary and some include terminal emulation, waveform display or STM32 ISP tools.
 
-| Feature | Probe 1.1.0 Windows | Notes |
+| Feature | Probe 1.1.1 Windows | Notes |
 | --- | --- | --- |
 | Recorded device simulator | Implemented | TCP / installed Windows virtual COM pair (POSIX PTY on Linux); exact request matching, stateful ordered replies, response timing, reset and model import/export. |
 | TCP client | Implemented | Binary/text, DNS and encoding options. |
@@ -18,7 +18,7 @@ This is a workflow comparison, not a claim of byte-for-byte compatibility with a
 | Save received data / readable logs | Implemented | Raw RX, streaming JSONL, CSV/text export. |
 | File transmit | Implemented | Binary, chunked, cancellable. |
 | Timed transmit | Implemented | Minimum interval 50 ms. |
-| Multiple predefined sends | Implemented | 1000 steps; independent millisecond timing, repeats, reply checks, JSON import/export. |
+| Multiple predefined sends | Implemented | 1000 messages; shared or individual intervals, readable finite/continuous repetition, advanced reply checks, RX/TX selection and JSON import/export. |
 | Header + data + checksum + trailer | Implemented | Explicit checksum coverage; seven checksum choices including None. |
 | Escape sequences | Implemented | Escaped text and Hercules-style #decimal/$hex/named controls. |
 | Reconnect on disconnect/unplug | Implemented | Optional TCP Client / direct Serial reconnect. Device must return at same configured path. |
