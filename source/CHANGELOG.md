@@ -1,5 +1,13 @@
 # Changes
 
+## 1.1.2 (Windows / Linux)
+
+* Add a clear After interval / After a reply sequence control. Reply mode sends immediately after incoming data, with no interval delay, a shared timeout and visible waiting status. Stop cancels pending waits.
+* Preserve optional expected-byte matching across receive chunks, repeats, cycles and legacy timing/checks. Export/import reply mode and restore prior timing when switching modes.
+* Route reply checks to the selected client and injection side; ignore outgoing sends, other clients, empty data and traffic preceding the send.
+* Fix disabled button text contrast, including Stop and hovered disabled buttons. Remove Clam's dotted button focus element while preserving keyboard traversal and a solid focus border.
+* Add real TCP/serial gating, timeout/Stop, immediate/split reply, mode-switch, JSON round-trip and button-contrast regressions. No new runtime dependencies.
+
 ## 1.1.1 (Windows)
 
 * Simplify Sequences to choose messages, set timing and send; show the actual destination and separate message editing into a Save/Cancel dialog.

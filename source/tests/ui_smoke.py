@@ -334,6 +334,83 @@ class UISmoke(unittest.TestCase):
         self.assertEqual(self.app.engine.tx,count)
         self.assertTrue(pane.stop_button.instate(["disabled"]))
 
+    def test_sequence_reply_mode_export_import_and_timing_switch(self):
+        from probe.scenario import compile_steps
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        self.app.macros=[dict(name="A",text="41",send_mode="Hex",delay_ms=7),
+                         dict(name="B",text="42",send_mode="Hex",delay_ms=80,expect="06")]
+        pane.adopt_timing();pane.refresh()
+        pane.advance.set("After a reply");pane.reply_timeout.set("500");self.app.update()
+        self.assertTrue(pane.timeout_entry.winfo_ismapped())
+        self.assertFalse(pane.interval_entry.winfo_ismapped())
+        self.assertFalse(pane.individual_check.winfo_ismapped())
+        pane.interval.set("unused")
+        self.assertEqual([(s.delay_ms,s.wait_for_reply,s.timeout_ms) for s in compile_steps(pane.effective_rows())],[(0,True,500)]*2)
+        self.assertEqual(pane.table.set("0","options"),"Any reply")
+        self.assertEqual(pane.table.set("1","options"),"Match reply")
+        pane.open_editor(0);pane.fields["name"].set("Renamed");pane.save_editor()
+        pane.table.selection_set("1");pane.duplicate()
+        pane.advance.set("After interval")
+        self.assertEqual([(s.delay_ms,s.wait_for_reply) for s in compile_steps(pane.effective_rows())],[(7,False),(80,False),(80,False)])
+        pane.advance.set("After a reply");pane.reply_timeout.set("0")
+        with self.assertRaisesRegex(ValueError,"Reply timeout"):pane.effective_rows()
+        pane.reply_timeout.set("500")
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"reply-sequence.json"
+            expected=pane.effective_rows()
+            with patch("probe.sequence_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
+            self.assertEqual(json.loads(path.read_text())["version"],2)
+            self.app.macros=[]
+            pane.advance.set("After interval")
+            with patch("probe.sequence_ui.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
+            self.assertEqual(pane.advance.get(),"After a reply")
+            self.assertEqual(pane.reply_timeout.get(),"500")
+            self.assertEqual(pane.effective_rows(),expected)
+
+    def test_sequence_reply_mode_on_wire_and_stop_while_waiting(self):
+        import socket
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        self.app.macros=[dict(name="First",text="A"),dict(name="Second",text="B")]
+        pane.advance.set("After a reply");pane.reply_timeout.set("2000");pane.refresh()
+        self.app.choose_mode("TCP Server");self.app.vars["listen_port"].set("0")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        with socket.create_connection(self.app.engine.server.sockets[0].getsockname()[:2],timeout=2) as device:
+            self.spin(lambda:len(self.app.engine.clients)==1)
+            pane.run();self.assertEqual(device.recv(1),b"A")
+            self.spin(lambda:"waiting for reply" in pane.status.get())
+            self.assertFalse(pane.stop_button.instate(["disabled"]))
+            self.assertTrue(pane.advance_combo.instate(["disabled"]))
+            self.assertEqual(self.app.engine.tx,1)
+            device.sendall(b"ACK");self.assertEqual(device.recv(1),b"B")
+            device.sendall(b"DONE");self.spin(lambda:"Sequence complete" in pane.status.get())
+            self.assertIn("2 replies checked",pane.status.get())
+            pane.reply_timeout.set("3600000")
+            pane.run();self.assertEqual(device.recv(1),b"A")
+            self.spin(lambda:"waiting for reply" in pane.status.get())
+            pane.stop_button.focus_force();self.app.update()
+            self.assertEqual(self.app.focus_get(),pane.stop_button)
+            pane.stop_button.invoke()
+            self.spin(lambda:"Sequence stopped" in pane.status.get())
+            self.assertEqual(self.app.engine.tx,3)
+
+    def test_buttons_have_readable_disabled_text_and_solid_focus(self):
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        def luminance(color):
+            channels=[v/65535 for v in self.app.winfo_rgb(color)]
+            channels=[v/12.92 if v<=.04045 else ((v+.055)/1.055)**2.4 for v in channels]
+            return sum(v*w for v,w in zip(channels,(.2126,.7152,.0722)))
+        from probe.app import DARK, LIGHT
+        for theme,colors in (("Probe II",DARK),("Light",LIGHT)):
+            self.app.vars["theme"].set(theme);self.app.colors=dict(colors);self.app._style()
+            for style in ("TButton","Accent.TButton"):
+                self.assertNotIn("Button.focus",str(self.app.style.layout(style)))
+                for state in (("disabled",),("disabled","active"),("!disabled","focus")):
+                    light,dark=sorted((luminance(self.app.style.lookup(style,"foreground",state)),
+                                       luminance(self.app.style.lookup(style,"background",state))),reverse=True)
+                    self.assertGreaterEqual((light+.05)/(dark+.05),4.5)
+        # The dotted element is removed, but keyboard focus is still supported.
+        self.assertTrue(pane.stop_button.cget("takefocus"))
+
     def test_lab_com_pair_configuration_and_application_endpoint(self):
         import socket
         now = time.time()

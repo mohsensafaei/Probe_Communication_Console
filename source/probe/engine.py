@@ -377,9 +377,9 @@ class Engine:
             raise ValueError("Run sequences from an application transport; the simulator replies to its clients.")
         cycles = integer(cycles, "Cycles", 0, 1000000)
         if not steps: raise ValueError("Add a sequence step first.")
-        if target == "All clients" and len(self.clients) > 1 and any(step.expect for step in steps):
+        if target == "All clients" and len(self.clients) > 1 and any(step.expect or step.wait_for_reply for step in steps):
             raise ValueError("Select one client when checking expected replies.")
-        if (target == "All clients" and len(self.clients) == 1 and any(step.expect for step in steps)
+        if (target == "All clients" and len(self.clients) == 1 and any(step.expect or step.wait_for_reply for step in steps)
                 and (self.cfg["mode"] in ("TCP Client", "TCP Server", "TCP Proxy") or side == "App / downstream")):
             target = next(iter(self.clients))
         self.scenario_generation += 1

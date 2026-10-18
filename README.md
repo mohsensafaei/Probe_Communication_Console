@@ -1,4 +1,4 @@
-# Probe for Windows 1.1.1
+# Probe for Windows 1.1.2
 
 Portable TCP, UDP and USB/COM workbench with traffic recording/replay, a live
 ANSI terminal, serial proxies, recorded device simulation and timed test sequences.
@@ -29,7 +29,7 @@ COM port and serial parameters. Close other software that already owns that COM.
 ## Hardware test lab
 
 **Test lab** is at the bottom of the control panel; **Appearance** is removed.
-The title shows version 1.1.1, and the sidebar has eight modes including
+The title shows version 1.1.2, and the sidebar has eight modes including
 **Device Simulator**.
 
 * **Device simulator:** record TX/RX with the real device, then load the capture
@@ -38,7 +38,7 @@ The title shows version 1.1.1, and the sidebar has eight modes including
   application receives recorded replies to exact matching requests, including
   response timing and stateful conversations. The original physical device can
   be disconnected. Edit requests, replies and delays, or reset matching.
-* **Test sequences:** choose messages, set one shared interval, then Run.
+* **Test sequences:** choose messages, select **After interval** or **After a reply**, then Run.
   **Choose captured messages…** opens an RX/TX picker (RX initially selected)
   with source/peer filters, previews and explicit message selection. Add the
   composer or write a new message instead. The destination is always displayed.
@@ -52,6 +52,16 @@ to **100**, leave **Run once**, then click **Run sequence**. Changing the shared
 interval updates the table and the next Run/Save immediately; no per-row Update
 is needed. Loading a capture in the picker does not disconnect or replace the
 main traffic view. **Keep recorded intervals** is an explicit advanced option.
+
+For reply-driven sending: **Sequences → Set timing → Send next message → After
+a reply**. Set **Reply timeout**, then **Run sequence**. The first message sends
+immediately; each next message waits for incoming data from the destination,
+with no interval delay. The final reply completes the run. Timeout stops the
+run, and **Stop** cancels the wait. Optional **Edit message… → Advanced →
+Expected reply** hex bytes require a specific response across receive chunks.
+Otherwise any nonempty receive chunk, including unsolicited data, counts.
+**After interval** restores the previous timing. Stop and other buttons now have
+readable disabled labels and a solid focus border instead of dotted outlines.
 
 RX and TX describe the original recording relative to Probe; either source can
 be sent again. For commands to a physical device, the recorded TX is usually

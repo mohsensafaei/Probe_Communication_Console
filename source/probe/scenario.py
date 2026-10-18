@@ -35,6 +35,7 @@ class Step:
     repeat: int = 1
     expect: bytes = b""
     timeout_ms: int = 2000
+    wait_for_reply: bool = False
 
 
 def compile_steps(rows: Sequence[Mapping[str, Any]], default_delay: int = 1000) -> tuple[Step, ...]:
@@ -54,10 +55,13 @@ def compile_steps(rows: Sequence[Mapping[str, Any]], default_delay: int = 1000) 
         expected = parse_hex(str(row.get("expect", "")))
         if len(expected) > 65536:
             raise ValueError("Expected reply is limited to 64 KiB.")
+        wait_for_reply = row.get("wait_for_reply", False)
+        if not isinstance(wait_for_reply, bool):
+            raise ValueError("Wait for reply must be true or false.")
         result.append(Step(str(row.get("name", f"Step {index}")), payload,
                            integer(row.get("delay_ms", default_delay), "Delay (ms)", 0, MAX_DELAY),
                            integer(row.get("repeat", 1), "Step repeat", 1, 1000000), expected,
-                           integer(row.get("timeout_ms", 2000), "Reply timeout (ms)", 1, MAX_DELAY)))
+                           integer(row.get("timeout_ms", 2000), "Reply timeout (ms)", 1, MAX_DELAY), wait_for_reply))
     return tuple(result)
 
 
@@ -104,7 +108,7 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
     def observe(event: dict[str, Any]) -> None:
         nonlocal overflow
         physical_reply = side == "Device / upstream" and engine.cfg["mode"] in ("USB / Serial", "Serial Proxy", "Serial ↔ TCP")
-        if expecting and event["direction"] == direction and (physical_reply or target == "All clients" or event["peer"] == target or event.get("client_peer") == target):
+        if expecting and event.get("data") and event["direction"] == direction and (physical_reply or target == "All clients" or event["peer"] == target or event.get("client_peer") == target):
             try:
                 queue.put_nowait(event["data"])
             except asyncio.QueueFull:
@@ -120,16 +124,18 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
                     while not queue.empty():
                         queue.get_nowait()
                     overflow = False
-                    expecting = bool(step.expect)
+                    expecting = step.wait_for_reply or bool(step.expect)
                     engine.event("scenario", state="running", cycle=cycle, step=index, sent=sent, checked=checked,
                                  message=f"Cycle {cycle} · step {index}/{len(steps)} · {step.name} · repeat {repetition+1}/{step.repeat}")
                     if not await engine._send(step.payload, target, side):
                         raise RuntimeError(f"Step {index}: transport rejected the payload.")
                     sent += 1
-                    if step.expect:
+                    if expecting:
+                        engine.event("scenario", state="running", cycle=cycle, step=index, sent=sent, checked=checked,
+                                     message=f"Step {index}/{len(steps)} · {step.name} · waiting for {'matching reply' if step.expect else 'reply'} (timeout {step.timeout_ms} ms)…")
                         deadline = time.perf_counter() + step.timeout_ms / 1000
                         response = bytearray()
-                        while step.expect not in response:
+                        while not response or (step.expect and step.expect not in response):
                             if overflow:
                                 raise RuntimeError(f"Step {index}: reply capture overflow. Reduce incoming traffic.")
                             remaining = deadline - time.perf_counter()
@@ -139,7 +145,7 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
                                 response.extend(await wait_for(queue.get(), remaining))
                             except TimeoutError:
                                 raise RuntimeError(f"Step {index}: expected reply not received within {step.timeout_ms} ms.") from None
-                            if step.expect in response:
+                            if response and (not step.expect or step.expect in response):
                                 break
                             if len(response) > 131072:
                                 del response[:-65536]
@@ -162,7 +168,7 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
 def sequence_from_dict(value: Any) -> tuple[list[dict[str, Any]], int]:
     if isinstance(value, list):  # Original command shelf files remain usable.
         rows, cycles = value, 1
-    elif isinstance(value, dict) and value.get("format") == "probe-sequence" and value.get("version") == 1:
+    elif isinstance(value, dict) and value.get("format") == "probe-sequence" and value.get("version") in (1, 2):
         rows = value.get("steps")
         cycles = integer(value.get("cycles", 1), "Cycles", 0, 1000000)
     else:

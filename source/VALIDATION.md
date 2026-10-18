@@ -1,4 +1,4 @@
-# Probe 1.1.1 Windows validation
+# Probe 1.1.2 Windows validation
 
 ## Native Windows gate
 
@@ -24,13 +24,13 @@ Physical hardware tests are opt-in.
 
 ## Local cross-platform checks
 
-On the Linux development host, 64 backend tests passed (71 total,
+On the Linux development host, 71 backend tests passed (78 total,
 6 attached-device tests and one unprivileged-permission check skipped). COM-pair tests use actual pySerial `socket://`
 endpoints: all 256 byte values, duplex proxying, both injection sides, exact
 captures, ordered stateful replies, reset, endpoint ownership and disconnect
 cleanup. These verify the shared serial path, not a Windows kernel COM driver.
 
-All 16 local GUI tests passed with an isolated X display and temporary preferences. The COM
+All 19 local GUI tests passed with an isolated X display and temporary preferences. The COM
 configuration test presents the Windows panel and exchanges real serial socket
 bytes. Native CI provides the evidence for Windows UI and executable packaging.
 
@@ -42,6 +42,15 @@ continuous Stop and editing locks. Minimum layouts were visually checked at
 980×680 (sequence page), 800×500 (capture picker), 700×480 (simple editor) and
 760×560 (advanced editor), including visible action buttons and status. This is
 Linux Tk evidence; the Windows workflow must pass separately for native builds.
+
+Reply-mode regressions cover withheld replies blocking the following send,
+selected-peer isolation, ignored startup/outgoing/empty data, immediate and split
+matching replies, physical-serial and downstream bridge replies, repeat/cycle
+counts, timeout halting the run and cancellation of a one-hour reply wait.
+GUI checks verify on-wire gating, waiting status, Stop, disabled timing controls,
+mode switching without baking reply flags into messages, JSON round trips and
+button text contrast of at least 4.5:1, including disabled hover states. Buttons
+retain keyboard focus with a solid border and no dotted label overlay.
 
 ## Physical USB and COM-pair drivers
 

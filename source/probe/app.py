@@ -97,7 +97,8 @@ class Probe(tk.Tk):
                         prefix="", suffix="", interval="1000", framing="Chunks", delimiter="0A",
                         frame_size="16", gap="50", view="Text + Hex", search="", direction="All",
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
-                        theme="Probe II", sequence_cycles="1", sequence_interval="100", sequence_timing="auto", simulator_transport="TCP socket",
+                        theme="Probe II", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
+                        sequence_advance="After interval", sequence_reply_timeout="2000", simulator_transport="TCP socket",
                         simulator_matching="Conversation order", simulator_timing="1")
         for k,v in defaults.items(): self.vars[k] = tk.StringVar(value=v)
         self.vars["dtr"] = tk.BooleanVar(value=False); self.vars["rts"] = tk.BooleanVar(value=False)
@@ -138,9 +139,17 @@ class Probe(tk.Tk):
         s.configure("Muted.TLabel", foreground=c["muted"])
         s.configure("TButton", background=c["metal"], foreground=c["ink"], padding=(9,3), borderwidth=1,
                     relief="raised", font=(self.ui_font,11,"bold"))
-        s.map("TButton", background=[("active",c["shine"])], foreground=[("disabled",c["muted"])])
+        # Clam's Button.focus element draws a dotted rectangle over the label.
+        # Keep normal keyboard traversal and indicate focus with a solid border.
+        s.layout("TButton", [("Button.border", {"sticky":"nswe", "border":1, "children":[
+            ("Button.padding", {"sticky":"nswe", "children":[("Button.label", {"sticky":"nswe"})]})]})])
+        s.map("TButton", background=[("disabled",c["panel"]),("active",c["shine"])],
+              foreground=[("disabled",c["muted"])],
+              bordercolor=[("!disabled","focus",c["blue"])],
+              lightcolor=[("!disabled","focus",c["blue"])], darkcolor=[("!disabled","focus",c["blue"])],
+              relief=[("disabled","flat"),("pressed","sunken")])
         s.configure("Accent.TButton", background=c["accent"], foreground="#ffffff" if self.vars["theme"].get()=="Light" else "#1e3312", font=(self.ui_font,12,"bold"))
-        s.map("Accent.TButton", background=[("active",c["accent"]),("disabled",c["border"])])
+        s.map("Accent.TButton", background=[("disabled",c["panel"]),("active",c["accent"])])
         s.configure("TEntry", fieldbackground=c["input"], foreground=c["text"], padding=3, insertcolor=c["accent"])
         s.configure("TCombobox", fieldbackground=c["input"], background=c["input"], foreground=c["text"],
                     arrowcolor=c["muted"], padding=3, selectbackground=c["select"], selectforeground=c["text"])
@@ -1100,7 +1109,7 @@ class Probe(tk.Tk):
             "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to load exact bytes into the composer.\n\n"
             "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
             "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket, Windows virtual COM pair or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
-            "TEST SEQUENCES\nAdd, edit, reorder or duplicate up to 1000 steps in Test lab. Each step has payload bytes, a delay after send/reply in milliseconds, repetition count, optional expected reply bytes and a timeout. Cycles 0 runs until stopped. Stop cancels pending waits and future sends. Import/export preserves timing. Timing is best effort, not hard real-time.\n\n"
+            "TEST SEQUENCES\nChoose messages, then Send next message: After interval or After a reply. Reply mode sends the first immediately and waits after every send, including the last, with no interval delay. Set Reply timeout; missing replies stop the run. Any nonempty incoming chunk from the destination counts, including unsolicited data. Edit message > Advanced > Expected reply can require specific hex bytes across chunks. Interval mode retains shared/individual delays and optional reply checks. Run once, Repeat a set number or Repeat until stopped. Stop cancels waits and pending sends. Save/Load preserves the effective behavior. Timing is best effort, not hard real-time.\n\n"
             "VENDOR FEATURES\nHW-group proprietary UDP discovery, device IP configuration and TEA/I/O extensions are not implemented without verified protocol/SDK information. STM32 programming is intentionally outside this application's scope. See FEATURE_MATRIX.md.\n")
 
     def demo(self):

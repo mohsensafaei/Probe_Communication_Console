@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.1.1** (Windows release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.1.2** (Windows release).
 
 The instrument-panel UI takes visual inspiration from ASUS PC Probe II: an angular silver chassis, blue panels, recessed green readouts and geometric headings. Michroma, Rajdhani and Share Tech Mono are bundled under the SIL Open Font License and loaded privately on Windows/Linux, without installing system fonts. They are open fonts, not ASUS's proprietary typography. The Appearance button has been replaced by Test lab; data fonts can be resized with Ctrl +/-. The layout compresses on short displays; drag the divider to give the traffic table or byte inspector more room. Selecting Terminal opens up the work area and uses the terminal's direct keyboard controls; returning to another inspector tab restores the composer.
 
@@ -217,12 +217,32 @@ number. **Add composer** preserves its complete encoded bytes including prefix,
 checksum and line ending. **New message…** and **Edit message…** use a separate
 Save/Cancel editor; the payload editor is absent from the main sequence page.
 
+To advance only when the destination replies, choose **Set timing → Send next
+message → After a reply**. Set **Reply timeout** (default 2000 ms), then Run.
+The first message sends immediately. Each following message waits for incoming
+data after the previous send, without an interval delay. The last message also
+waits for its reply before the run completes. A timeout stops the sequence;
+**Stop** cancels the wait immediately. Switching back to **After interval**
+restores shared/individual timing. Run and Save use the mode shown here.
+
+By default, the first nonempty receive chunk from the selected destination
+counts as a reply. TCP/serial chunks can be partial protocol messages, and
+unsolicited data from that same destination also counts. To require a particular
+response, open **Edit message… → Advanced → Expected reply** and enter its hex
+bytes; matching spans receive chunks. Display framing does not control reply
+matching. In proxy mode the selected injection side determines which direction
+contains the destination's reply. Example: `examples/reply-sequence.json`.
+Reply-gated exports use sequence format version 2 so older Probe versions reject
+them instead of ignoring the wait. Legacy shelves and version 1 files still load.
+
 Advanced message options include format/encoding, line ending, repeats,
 expected reply substring (hex, optional) and reply timeout. **Advanced: use
 individual message delays** enables per-message timing (0–3600000 ms). Delays
 start after sending, or after the expected reply when a reply check is enabled;
 they are not start-to-start periods when waiting for replies. A missing reply
-stops the test and names the step. Blank expected reply means no reply wait.
+stops the test and names the step. In interval mode, blank expected reply means
+no reply wait unless **Wait for any reply for this message** is enabled. Reply
+mode always waits, using the shared timeout; expected bytes narrow that check.
 Progress reports cycle, step, sends and checked replies. Expected replies use the
 selected client; select one client when several are connected. Run/Repeat/Replay
 stop one another. Disconnect cancels the sequence. Already written bytes cannot

@@ -11,6 +11,7 @@ from .scenario import MAX_DELAY, compile_steps, integer, sequence_from_dict, ste
 
 class SequencePane(ttk.Frame):
     REPEATS = ("Run once", "Repeat a set number", "Repeat until stopped")
+    ADVANCE = ("After interval", "After a reply")
 
     def __init__(self, parent, app):
         super().__init__(parent, padding=12)
@@ -20,6 +21,10 @@ class SequencePane(ttk.Frame):
         self.status = tk.StringVar()
         self.interval = app.vars["sequence_interval"]
         self.individual = tk.BooleanVar(value=app.vars["sequence_timing"].get() == "individual")
+        self.advance = app.vars["sequence_advance"]
+        if self.advance.get() not in self.ADVANCE:self.advance.set(self.ADVANCE[0])
+        self.reply_timeout = app.vars["sequence_reply_timeout"]
+        self.editor_wait = tk.BooleanVar(value=False)
         self.repeat_mode = tk.StringVar(value=self.REPEATS[0])
         self.capture_direction = tk.StringVar(value="RX")
         self.fields = {name: tk.StringVar(value=value) for name, value in dict(
@@ -76,17 +81,30 @@ class SequencePane(ttk.Frame):
         ttk.Label(below, text="2. Set timing", font=(app.ui_font, 16, "bold")).pack(anchor="w", pady=(4, 2))
         timing = ttk.Frame(below)
         timing.pack(fill="x")
-        ttk.Label(timing, text="Interval between messages").grid(row=0, column=0, sticky="w")
-        self.interval_entry = ttk.Entry(timing, textvariable=self.interval, width=8)
-        self.interval_entry.grid(row=0, column=1, padx=6)
+        ttk.Label(timing, text="Send next message").grid(row=0, column=0, sticky="w")
+        self.advance_combo = ttk.Combobox(timing, textvariable=self.advance, values=self.ADVANCE, state="readonly", width=19)
+        self.advance_combo.grid(row=0, column=1, padx=(6, 18), sticky="w")
+        self.controls.append(self.advance_combo)
+        self.interval_box = ttk.Frame(timing)
+        self.interval_box.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(self.interval_box, text="Interval between messages").pack(side="left")
+        self.interval_entry = ttk.Entry(self.interval_box, textvariable=self.interval, width=8)
+        self.interval_entry.pack(side="left", padx=6)
         self.controls.append(self.interval_entry)
-        ttk.Label(timing, text="ms").grid(row=0, column=2, sticky="w", padx=(0, 18))
+        ttk.Label(self.interval_box, text="ms").pack(side="left")
+        self.reply_box = ttk.Frame(timing)
+        self.reply_box.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(self.reply_box, text="Reply timeout").pack(side="left")
+        self.timeout_entry = ttk.Entry(self.reply_box, textvariable=self.reply_timeout, width=8)
+        self.timeout_entry.pack(side="left", padx=6)
+        ttk.Label(self.reply_box, text="ms · stop if no reply").pack(side="left")
+        self.controls.append(self.timeout_entry)
         self.repeat_combo = ttk.Combobox(timing, textvariable=self.repeat_mode, values=self.REPEATS,
                                          state="readonly", width=23)
-        self.repeat_combo.grid(row=0, column=3, sticky="w")
+        self.repeat_combo.grid(row=0, column=2, sticky="w")
         self.controls.append(self.repeat_combo)
         self.count_box = ttk.Frame(timing)
-        self.count_box.grid(row=0, column=4, padx=6)
+        self.count_box.grid(row=0, column=3, padx=6)
         self.count_entry = ttk.Entry(self.count_box, textvariable=app.vars["sequence_cycles"], width=6)
         self.count_entry.pack(side="left")
         ttk.Label(self.count_box, text="runs").pack(side="left", padx=4)
@@ -95,6 +113,9 @@ class SequencePane(ttk.Frame):
                                                 variable=self.individual)
         self.individual_check.pack(anchor="w", pady=(4, 6))
         self.controls.append(self.individual_check)
+        self.timing_hint = tk.StringVar()
+        self.hint_label = ttk.Label(below, textvariable=self.timing_hint, wraplength=900)
+        self.hint_label.pack(anchor="w", pady=(4, 2))
 
         send = ttk.Frame(below)
         send.pack(fill="x", pady=(6, 4))
@@ -108,11 +129,13 @@ class SequencePane(ttk.Frame):
         ttk.Label(below, textvariable=self.feedback, wraplength=900).pack(anchor="w")
 
         for variable, callback in ((self.interval, self.timing_changed), (self.individual, self.timing_changed),
+                                   (self.advance, self.timing_changed), (self.reply_timeout, self.timing_changed),
                                    (self.repeat_mode, self.repeat_changed),
                                    (app.vars["sequence_cycles"], self.cycles_changed)):
             token = variable.trace_add("write", callback)
             self._traces.append((variable, token))
         self.bind("<Destroy>", self.destroyed, add="+")
+        self.update_timing_controls()
         self.refresh()
         self.monitor()
 
@@ -163,7 +186,7 @@ class SequencePane(ttk.Frame):
         for control in self.controls:
             if isinstance(control, ttk.Combobox):control.configure(state="disabled" if busy else "readonly")
             else:control.configure(state="disabled" if busy else "normal")
-        if self.individual.get():self.interval_entry.configure(state="disabled")
+        if self.individual.get() or self.reply_mode():self.interval_entry.configure(state="disabled")
         self.run_button.configure(state="normal" if ready and self.app.macros and not busy and self.app.vars["mode"].get() != "Device Simulator" else "disabled")
         self.stop_button.configure(state="normal" if busy else "disabled")
         self.destination.set(self._run_destination if busy else self.destination_text())
@@ -179,36 +202,69 @@ class SequencePane(ttk.Frame):
         for variable, token in self._traces:variable.trace_remove("write", token)
         self._traces.clear()
 
-    def effective_rows(self):
-        delay = None if self.individual.get() else integer(self.interval.get(), "Interval (ms)", 0, MAX_DELAY)
+    def reply_mode(self):
+        return self.advance.get() == self.ADVANCE[1]
+
+    def editable_rows(self):
+        # Shared reply mode is an execution override. Editing/reordering must not
+        # bake it into messages, so switching back restores their interval mode.
+        delay = None if self.individual.get() or self.reply_mode() else integer(self.interval.get(), "Interval (ms)", 0, MAX_DELAY)
         rows = [dict(row, **({"delay_ms": delay} if delay is not None else {})) for row in self.app.macros]
         compile_steps(rows, 100)
         return rows
+
+    def effective_rows(self):
+        rows = self.editable_rows()
+        if self.reply_mode():
+            timeout = integer(self.reply_timeout.get(), "Reply timeout (ms)", 1, MAX_DELAY)
+            rows = [dict(row, delay_ms=0, wait_for_reply=True, timeout_ms=timeout) for row in rows]
+        compile_steps(rows, 100)
+        return rows
+
+    def update_timing_controls(self):
+        if self.reply_mode():
+            self.interval_box.grid_remove();self.reply_box.grid()
+            self.individual_check.pack_forget()
+            hint = "First message sends immediately. First incoming data from the destination releases the next; no interval delay."
+        else:
+            self.reply_box.grid_remove();self.interval_box.grid()
+            self.individual_check.pack(anchor="w", before=self.hint_label, pady=(4, 6))
+            hint = "Messages use the interval shown, or their individual delays."
+        self.timing_hint.set(hint)
+        self.interval_entry.configure(state="disabled" if self.individual.get() or self.reply_mode() else "normal")
 
     def adopt_timing(self, default=100):
         self._syncing = True
         try:
             steps = compile_steps(self.app.macros, default) if self.app.macros else ()
             self.app.macros = [dict(row, delay_ms=step.delay_ms) for row, step in zip(self.app.macros, steps)]
+            reply_mode = bool(steps) and all(step.wait_for_reply and step.delay_ms == 0 for step in steps) and len({step.timeout_ms for step in steps}) == 1
+            self.advance.set(self.ADVANCE[1] if reply_mode else self.ADVANCE[0])
+            if reply_mode:
+                self.reply_timeout.set(str(steps[0].timeout_ms))
+                # The shared control owns this flag; retain per-message checks.
+                for row in self.app.macros:row.pop("wait_for_reply", None)
             delays = {step.delay_ms for step in steps}
             self.individual.set(len(delays) > 1)
-            if len(delays) == 1:self.interval.set(str(next(iter(delays))))
+            if len(delays) == 1 and not reply_mode:self.interval.set(str(next(iter(delays))))
             self.app.vars["sequence_timing"].set("individual" if self.individual.get() else "uniform")
         finally:self._syncing = False
 
     def timing_changed(self, *_):
         if self._syncing:return
         self.app.vars["sequence_timing"].set("individual" if self.individual.get() else "uniform")
+        self.update_timing_controls()
         self.refresh()
         try:
             if self.app.macros:self.effective_rows()
+            elif self.reply_mode():integer(self.reply_timeout.get(), "Reply timeout (ms)", 1, MAX_DELAY)
             else:integer(self.interval.get(), "Interval (ms)", 0, MAX_DELAY)
         except ValueError as exc:
             self.feedback.set(str(exc));return
         self.app.save_settings()
-        self.feedback.set("Individual delays are shown in the table. Edit a message to change its delay." if self.individual.get()
+        self.feedback.set("Waits for received data from the destination after each send, including the last. Set expected bytes in Edit message for a specific reply." if self.reply_mode()
+                          else "Individual delays are shown in the table. Edit a message to change its delay." if self.individual.get()
                           else f"Every message uses {self.interval.get()} ms. This applies immediately to the table, Run and Save.")
-        self.interval_entry.configure(state="disabled" if self.individual.get() else "normal")
 
     def sync_repeat(self):
         cycles = self.app.vars["sequence_cycles"].get()
@@ -256,7 +312,7 @@ class SequencePane(ttk.Frame):
             if index < len(steps):
                 step = steps[index]
                 options = ", ".join(x for x in (f"×{step.repeat}" if step.repeat > 1 else "",
-                                                "Wait for reply" if step.expect else "") if x) or "—"
+                                                "Match reply" if step.expect else "Any reply" if step.wait_for_reply else "") if x) or "—"
                 values = (step.name, len(step.payload), step.delay_ms, options, visible(step.payload[:64]))
             else:values = (row.get("name", "Invalid message"), "?", "?", "Check settings", "")
             self.table.insert("", "end", iid=str(index), values=values)
@@ -278,7 +334,7 @@ class SequencePane(ttk.Frame):
 
     def append_rows(self, rows, recorded=False):
         self.ensure_idle()
-        current = self.effective_rows() if self.app.macros else []
+        current = self.editable_rows() if self.app.macros else []
         compile_steps(current + rows, 100)
         self.app.macros = current + rows
         if recorded:
@@ -287,7 +343,7 @@ class SequencePane(ttk.Frame):
 
     def add_composer(self):
         data = self.app.payload_bytes()
-        delay = integer(self.interval.get(), "Interval (ms)", 0, MAX_DELAY)
+        delay = 100 if self.reply_mode() else integer(self.interval.get(), "Interval (ms)", 0, MAX_DELAY)
         self.append_rows([dict(name=f"Message {len(self.app.macros)+1}", text=data.hex(" ").upper(), send_mode="Hex", delay_ms=delay)])
 
     def use_capture(self):
@@ -305,12 +361,14 @@ class SequencePane(ttk.Frame):
         self.ensure_idle()
         if self.editor is not None and self.editor.winfo_exists():self.editor.lift();return self.editor
         self.edit_index = index
-        delay = integer(self.interval.get(), "Interval (ms)", 0, MAX_DELAY)
-        row = self.effective_rows()[index] if index is not None else dict(name="New message", text="", send_mode="Hex", delay_ms=delay)
+        delay = 100 if self.reply_mode() else integer(self.interval.get(), "Interval (ms)", 0, MAX_DELAY)
+        row = self.editable_rows()[index] if index is not None else dict(name="New message", text="", send_mode="Hex", delay_ms=delay)
         step = compile_steps([row], 100)[0] if index is not None else None
+        self.editor_wait.set(bool(step and step.wait_for_reply))
+        self._editor_timeout = str(step.timeout_ms if step else 2000)
         defaults = dict(name=step.name if step else row["name"], send_mode="Hex", encoding="utf-8", ending="None",
                         delay_ms=str(step.delay_ms if step else delay), repeat=str(step.repeat if step else 1),
-                        expect=step.expect.hex(" ").upper() if step else "", timeout_ms=str(step.timeout_ms if step else 2000))
+                        expect=step.expect.hex(" ").upper() if step else "", timeout_ms=self.reply_timeout.get() if self.reply_mode() else self._editor_timeout)
         for key, value in defaults.items():self.fields[key].set(value)
         win = tk.Toplevel(self)
         self.editor = win
@@ -326,7 +384,7 @@ class SequencePane(ttk.Frame):
         self.payload = self.app.text_widget(body, height=3, wrap="word");self.payload.pack(fill="both", expand=True, pady=6)
         if step:self.payload.insert("1.0", step.payload.hex(" ").upper())
         advanced = ttk.Frame(body)
-        expanded = tk.BooleanVar(value=bool(step and (step.expect or step.repeat > 1)) or self.individual.get())
+        expanded = tk.BooleanVar(value=bool(step and (step.expect or step.wait_for_reply or step.repeat > 1)) or (self.individual.get() and not self.reply_mode()))
         def toggle():
             if expanded.get():advanced.pack(fill="x", after=toggle_button, pady=4)
             else:advanced.pack_forget()
@@ -336,14 +394,19 @@ class SequencePane(ttk.Frame):
         self.field(first, "Encoding", self.fields["encoding"], 0, ["utf-8", "ascii", "latin-1", "cp1256", "gbk", "utf-16-le"], 12)
         self.field(first, "Line ending", self.fields["ending"], 1, ["None", "CR", "LF", "CRLF"], 10)
         delay_widget = self.field(first, "Delay after (ms)", self.fields["delay_ms"], 2, width=12)
-        if not self.individual.get():delay_widget.configure(state="disabled")
+        if not self.individual.get() or self.reply_mode():delay_widget.configure(state="disabled")
         self.field(first, "Send this message", self.fields["repeat"], 3, width=10)
         second = ttk.Frame(advanced);second.pack(fill="x", pady=3);second.columnconfigure(0, weight=1)
-        self.field(second, "Wait for reply containing (hex; blank = do not wait)", self.fields["expect"], 0, width=46)
-        self.field(second, "Reply timeout (ms)", self.fields["timeout_ms"], 1, width=16)
-        ttk.Label(advanced, text="Delay starts after sending, or after the expected reply when a reply check is set.").pack(anchor="w")
+        self.field(second, "Expected reply (hex; blank = any in reply mode)", self.fields["expect"], 0, width=46)
+        timeout_widget = self.field(second, "Reply timeout (ms)", self.fields["timeout_ms"], 1, width=16)
+        wait_check = ttk.Checkbutton(advanced, text="Wait for any reply for this message in interval mode", variable=self.editor_wait)
+        wait_check.pack(anchor="w", pady=3)
+        if self.reply_mode():
+            timeout_widget.configure(state="disabled");wait_check.configure(state="disabled")
+        ttk.Label(advanced, text="Reply mode uses the sequence timeout and no delay. In interval mode, reply checks run before the delay.", wraplength=690).pack(anchor="w")
         toggle()
-        self.editor_feedback = tk.StringVar(value="Uses the shared interval. Enable individual delays on the sequence page to customize timing." if not self.individual.get() else "")
+        self.editor_feedback = tk.StringVar(value="Waits for a reply using the sequence timeout. Expected bytes above can require a specific response." if self.reply_mode()
+                                            else "Uses the shared interval. Enable individual delays on the sequence page to customize timing." if not self.individual.get() else "")
         ttk.Label(body, textvariable=self.editor_feedback, wraplength=700).pack(anchor="w", pady=6)
         footer = ttk.Frame(body);footer.pack(fill="x", pady=(4, 0))
         ttk.Button(footer, text="Cancel", command=win.destroy).pack(side="right", padx=6)
@@ -362,7 +425,9 @@ class SequencePane(ttk.Frame):
 
     def edited(self):
         row = {key: var.get() for key, var in self.fields.items()}
-        if not self.individual.get():row["delay_ms"] = self.interval.get()
+        if not self.individual.get() and not self.reply_mode():row["delay_ms"] = self.interval.get()
+        if self.reply_mode():row["timeout_ms"] = self._editor_timeout
+        if self.editor_wait.get():row["wait_for_reply"] = True
         row.update(text=self.payload.get("1.0", "end-1c"), checksum="None", prefix="", suffix="")
         compile_steps([row], 100)
         return row
@@ -378,12 +443,12 @@ class SequencePane(ttk.Frame):
     def update_selected(self, index=None):
         self.ensure_idle()
         index = self.selected_index() if index is None else index
-        rows = self.effective_rows();rows[index] = self.edited();compile_steps(rows, 100)
+        rows = self.editable_rows();rows[index] = self.edited();compile_steps(rows, 100)
         self.app.macros = rows;self.changed(index)
 
     def duplicate(self):
         self.ensure_idle()
-        index = self.selected_index();rows = self.effective_rows()
+        index = self.selected_index();rows = self.editable_rows()
         rows.insert(index+1, dict(rows[index]));compile_steps(rows, 100)
         self.app.macros = rows;self.changed(index+1)
 
@@ -406,6 +471,7 @@ class SequencePane(ttk.Frame):
         rows, cycles = sequence_from_dict(json.loads(Path(path).read_text(encoding="utf-8-sig")))
         if self.app.macros and not messagebox.askyesno("Replace sequence", "Replace the current sequence with this file?", parent=self):return
         self.app.macros = rows;self.adopt_timing()
+        self.update_timing_controls()
         self._syncing = True
         try:
             self.app.vars["sequence_cycles"].set(str(cycles));self.sync_repeat()
@@ -418,7 +484,10 @@ class SequencePane(ttk.Frame):
         rows = self.effective_rows();cycles = self.run_cycles()
         path = filedialog.asksaveasfilename(parent=self, defaultextension=".json", filetypes=[("Probe sequence", "*.json")])
         if path:
-            Path(path).write_text(json.dumps(dict(format="probe-sequence", version=1, cycles=cycles, steps=rows), indent=2), encoding="utf-8")
+            # Older releases ignore unknown per-step flags. Version 2 makes
+            # them reject a reply-gated file instead of sending without waits.
+            version = 2 if any(row.get("wait_for_reply") for row in rows) else 1
+            Path(path).write_text(json.dumps(dict(format="probe-sequence", version=version, cycles=cycles, steps=rows), indent=2), encoding="utf-8")
             self.feedback.set("Saved the sequence with the timing, repetitions and reply checks that Run will use.")
 
     def run(self):
@@ -517,7 +586,7 @@ class CapturePicker(tk.Toplevel):
     def add_selected(self):
         selected = set(self.table.selection())
         rows = [row for index, row in enumerate(self.rows) if str(index) in selected]
-        delay = integer(self.pane.interval.get(), "Interval (ms)", 0, MAX_DELAY)
+        delay = 100 if self.pane.reply_mode() else integer(self.pane.interval.get(), "Interval (ms)", 0, MAX_DELAY)
         steps = steps_from_capture(rows, delay, self.recorded.get())
         self.pane.append_rows(steps, self.recorded.get())
         self.destroy()
