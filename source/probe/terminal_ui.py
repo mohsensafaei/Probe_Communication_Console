@@ -24,16 +24,22 @@ class TerminalPane(ttk.Frame):
             try:self.model=TerminalModel(100,24,app.vars["encoding"].get())
             except RuntimeError as exc:self.error=str(exc)
         self.columnconfigure(0,weight=1);self.rowconfigure(1,weight=1)
-        bar=ttk.Frame(self);bar.grid(row=0,column=0,sticky="ew",pady=4)
-        ttk.Checkbutton(bar,text="Keyboard",variable=self.keyboard).pack(side="left")
+        controls=ttk.Frame(self);controls.grid(row=0,column=0,columnspan=2,sticky="ew",pady=4)
+        bar=ttk.Frame(controls);bar.pack(fill="x")
+        actions=ttk.Frame(controls);actions.pack(fill="x",pady=(3,0))
+        self.keyboard_check=ttk.Checkbutton(bar,text="Send keyboard",variable=self.keyboard,command=self.keyboard_changed)
+        self.keyboard_check.pack(side="left")
         ttk.Checkbutton(bar,text="Local echo",variable=self.local_echo).pack(side="left",padx=4)
+        ttk.Label(bar,text="Enter").pack(side="left",padx=(4,0))
         ttk.Combobox(bar,textvariable=self.enter,values=["CR","LF","CRLF"],state="readonly",width=5).pack(side="left",padx=4)
+        ttk.Label(bar,text="Backspace").pack(side="left",padx=(4,3))
         ttk.Combobox(bar,textvariable=self.backspace,values=["DEL","BS"],state="readonly",width=4).pack(side="left")
-        if not shared:ttk.Button(bar,text="Pop out",width=7,command=self.pop_out).pack(side="right",padx=4)
-        ttk.Button(bar,text="Paste",width=5,command=self.paste).pack(side="right",padx=4)
-        ttk.Button(bar,text="Reset",width=5,command=self.reset).pack(side="right",padx=4)
-        ttk.Button(bar,text="↓",width=2,command=lambda:self.history(1)).pack(side="right")
-        ttk.Button(bar,text="↑",width=2,command=lambda:self.history(-1)).pack(side="right",padx=4)
+        if not shared:ttk.Button(actions,text="Pop out",width=7,command=self.pop_out).pack(side="right",padx=4)
+        ttk.Button(actions,text="Paste",width=5,command=self.paste).pack(side="right",padx=4)
+        ttk.Button(actions,text="Reset",width=5,command=self.reset).pack(side="right",padx=4)
+        ttk.Label(actions,text="Scrollback").pack(side="left",padx=(0,6))
+        ttk.Button(actions,text="↑ Older",width=8,command=lambda:self.history(-1)).pack(side="left")
+        ttk.Button(actions,text="↓ Newer",width=8,command=lambda:self.history(1)).pack(side="left",padx=4)
         self.text=app.text_widget(self,height=3,wrap="none",takefocus=True)
         self.text.configure(undo=False,bg="#0b101a",fg="#e7edf7")
         self.text.grid(row=1,column=0,sticky="nsew")
@@ -43,8 +49,11 @@ class TerminalPane(ttk.Frame):
         self.text.bind("<Button-1>",lambda e:self.text.focus_set(),add="+")
         scroll=ttk.Scrollbar(self,orient="horizontal",command=self.text.xview)
         scroll.grid(row=2,column=0,sticky="ew");self.text.configure(xscrollcommand=scroll.set)
-        self.hint=ttk.Label(self,text="Live RX · enable Keyboard to type · Ctrl+Shift+C/V copy/paste")
-        self.hint.grid(row=3,column=0,sticky="ew",pady=3)
+        vertical=ttk.Scrollbar(self,command=self.text.yview);vertical.grid(row=1,column=1,sticky="ns")
+        self.text.configure(yscrollcommand=vertical.set)
+        self.hint=ttk.Label(self,wraplength=680,justify="left")
+        self.hint.grid(row=3,column=0,columnspan=2,sticky="ew",pady=3)
+        self.update_hint()
         self.render(force=True)
 
     @property
@@ -64,17 +73,40 @@ class TerminalPane(ttk.Frame):
     def reset(self):
         if self.model:self.model.reset(self.app.vars["encoding"].get())
         self.peer=None;self.dirty=True;self.render(force=True)
+        self.update_hint()
+
+    def keyboard_changed(self):
+        if self.keyboard.get():self.text.focus_set()
+        self.update_hint()
+
+    def update_hint(self):
+        connected=self.app.engine is not None and self.app.engine.ready
+        if self.error:message=self.error
+        elif not connected:message="Disconnected · choose a connection and Connect. Received text stays visible; opening Terminal sends nothing."
+        elif self.app.vars["mode"].get() in ("TCP Server","TCP Proxy") and not self.app.engine.clients:
+            message="Listening · waiting for a TCP client. Previous received text stays visible."
+        else:
+            source=self.peer or "waiting for RX"
+            message=f"RX · {source} · "+("Send keyboard ON · click the screen to type. " if self.keyboard.get() else "View only · enable Send keyboard to type. ")
+            message+="Enter/Backspace are configurable · Ctrl+Shift+C/V copy/paste."
+            if self.app.paused:message="Display paused · click Resume on Traffic. "+message
+        if self.hint.cget("text")!=message:self.hint.configure(text=message)
 
     def feed(self,event):
         if not self.model or event["direction"]!="RX":return
         target=self.app.vars["target"].get()
-        if target!="All clients" and event["peer"]!=target:return
+        physical=self.app.vars["mode"].get() in ("USB / Serial","Serial Proxy","Serial ↔ TCP")
+        if not physical and target!="All clients" and event["peer"]!=target and event.get("client_peer")!=target:return
         if self.peer is None:self.peer=event["peer"]
-        if self.peer!=event["peer"]:return
+        if self.peer!=event["peer"]:
+            clients=getattr(self.app.engine,"clients",{}) if self.app.engine else {}
+            if not physical and target=="All clients" and self.peer not in clients:
+                self.reset();self.peer=event["peer"]
+            else:return
         replies=self.model.feed(event["data"]);self.dirty=True
         if self.keyboard.get():
             for data in replies:self.send(data)
-        self.hint.configure(text=f"RX · {self.peer} · {self.model.screen.columns}×{self.model.screen.lines} · Keyboard {'on' if self.keyboard.get() else 'off'}")
+        self.update_hint()
 
     def send(self,data):
         if not data:return

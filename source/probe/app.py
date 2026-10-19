@@ -14,9 +14,10 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
 
 from . import __version__
-from .codec import encode, hexdump, visible, CONTROLS, Framer
+from .codec import encode, hexdump, visible, Framer
 from .engine import Engine, MODES
 from .terminal_ui import TerminalPane
+from .plot_ui import LivePlotPane
 from .capture import load_capture, replay_plan
 from .serial_endpoints import VirtualPair, simulator_transports
 from .typography import load_fonts, font_roles
@@ -82,11 +83,9 @@ class Probe(tk.Tk):
         self.file_cancel = threading.Event()
         self.started = 0; self.rx_total = self.tx_total = 0
         self.framers = {}; self.frame_meta = {}
-        self.numeric_tail = ""; self.samples = []
         self.record_path = None; self.raw_path = None
         self.search_job = None
         self.last_error = ""
-        self.inspector_offset=0
         self.manual_disconnect=False
         self.closing=False
         self.vars = {}
@@ -261,9 +260,8 @@ class Probe(tk.Tk):
                                             bg=c["lcd"],fg=color,font=(self.mono,17),anchor="w")
             self.stat_labels[name].pack(fill="x",padx=10,pady=(4,4))
             strip=MeterStrip(lcd,self,bg=c["lcd"]);strip.pack(fill="x",padx=10,pady=(0,3))
-        self.split=ttk.Panedwindow(self.content,orient="vertical"); self.split.grid(row=3,column=0,sticky="nsew")
-        self.split.bind("<Configure>",lambda event:self.after_idle(self._fit_panes,event.height))
-        traffic=self.bezel(self.split); self.split.add(traffic,weight=3)
+        self.notebook=ttk.Notebook(self.content);self.notebook.grid(row=3,column=0,sticky="nsew")
+        traffic=self.bezel(self.notebook);self.traffic_tab=traffic;self.notebook.add(traffic,text="Traffic")
         traffic.columnconfigure(0,weight=1);traffic.rowconfigure(1,weight=1)
         toolbar=self.frame(traffic); toolbar.grid(row=0,column=0,sticky="ew",padx=10,pady=6)
         self.traffic_toolbar=toolbar
@@ -283,46 +281,22 @@ class Probe(tk.Tk):
         self.table.pack(side="left",fill="both",expand=True)
         scroll=ttk.Scrollbar(tableframe,command=self.table.yview); scroll.pack(side="right",fill="y"); self.table.configure(yscrollcommand=scroll.set)
         self.table.tag_configure("RX",foreground=c["accent"]); self.table.tag_configure("TX",foreground=c["blue"])
-        self.table.bind("<<TreeviewSelect>>",lambda e:self.select_event())
+        self.table.bind("<ButtonRelease-1>",self.traffic_clicked)
+        self.table.bind("<Return>",lambda e:(self.analyze(),"break")[1])
         self.table.bind("<Button-3>",self.traffic_menu)
-        self.table.bind("<Double-1>",lambda e:self.load_selected_payload())
         options=self.frame(traffic); options.grid(row=2,column=0,sticky="ew",padx=12,pady=(3,5))
         self.traffic_options=options
         self.history_label=self.label(options,"0 events",9,color=c["muted"],width=18,anchor="w"); self.history_label.pack(side="left")
         self.combo(options,"view",["Text + Hex","Text","Hex","Decimal"],width=11,callback=self.refresh).pack(side="left",padx=8)
-        self.analyze_button=ttk.Button(options,text="Analyze…",command=self.analyze)
-        self.analyze_button.pack(side="left")
+        ttk.Label(options,text="Click a row to analyze").pack(side="left",padx=4)
         ttk.Button(options,text="Framing",command=self.framing_dialog).pack(side="right",padx=4)
         ttk.Button(options,text="Raw RX file",command=self.raw_record).pack(side="right",padx=4)
         ttk.Checkbutton(options,text="Follow",variable=self.vars["autoscroll"]).pack(side="right")
-        detail=self.bezel(self.split); self.split.add(detail,weight=2)
-        detailbar=self.frame(detail); detailbar.pack(fill="x",padx=12,pady=(6,4))
-        self.detailbar=detailbar
-        self.selection_label=self.label(detailbar,"BYTE INSPECTOR",12,True,color=c["blue"]); self.selection_label.pack(side="left")
-        ttk.Button(detailbar,text="Save bytes",width=9,command=self.save_bytes).pack(side="right",padx=(5,0))
-        ttk.Button(detailbar,text="Copy hex",width=8,command=self.copy_hex).pack(side="right")
-        self.page_next=ttk.Button(detailbar,text="→",width=3,command=lambda:self.change_page(1));self.page_next.pack(side="right",padx=4)
-        self.page_prev=ttk.Button(detailbar,text="←",width=3,command=lambda:self.change_page(-1));self.page_prev.pack(side="right")
-        self.notebook=ttk.Notebook(detail); self.notebook.pack(fill="both",expand=True,padx=12,pady=(0,10))
-        decoded=ttk.Frame(self.notebook); raw=ttk.Frame(self.notebook); values=ttk.Frame(self.notebook); plot=ttk.Frame(self.notebook)
-        self.notebook.add(decoded,text="Decoded text"); self.notebook.add(raw,text="Hex + ASCII")
-        self.notebook.add(values,text="Every byte"); self.notebook.add(plot,text="Live plot")
-        self.terminal=TerminalPane(self.notebook,self)
-        self.notebook.add(self.terminal,text="Terminal")
-        self.decoded=self.text_widget(decoded,height=4,wrap="word"); self.decoded.pack(fill="both",expand=True)
-        self.hextext=self.text_widget(raw,height=4,wrap="none"); self.hextext.pack(fill="both",expand=True)
-        self.byte_table=ttk.Treeview(values,columns=("offset","hex","dec","binary","char"),show="headings",style="Bytes.Treeview",height=5)
-        for key,title,width in [("offset","OFFSET",90),("hex","HEX",75),("dec","DECIMAL",80),("binary","BINARY",125),("char","ASCII / CONTROL",140)]:
-            self.byte_table.heading(key,text=title); self.byte_table.column(key,width=width,anchor="center")
-        self.byte_table.pack(side="left",fill="both",expand=True)
-        bscroll=ttk.Scrollbar(values,command=self.byte_table.yview); bscroll.pack(side="right",fill="y"); self.byte_table.configure(yscrollcommand=bscroll.set)
-        self.byte_table.bind("<<TreeviewSelect>>",lambda e:self.byte_selected())
-        self.plot_canvas=tk.Canvas(plot,bg=c["input"],highlightthickness=0,height=130); self.plot_canvas.pack(fill="both",expand=True)
-        self.plot_canvas.bind("<Configure>",lambda e:self.draw_plot())
+        self.plot=LivePlotPane(self.notebook,self);self.notebook.add(self.plot,text="Live plot")
+        self.terminal=TerminalPane(self.notebook,self);self.notebook.add(self.terminal,text="Terminal")
         self.notebook.bind("<<NotebookTabChanged>>",self._tab_changed)
-        self.vars["target"].trace_add("write",lambda *_:self.terminal.reset())
-        self.put_text(self.decoded,"Choose a traffic row. Control bytes are shown as ⟨STX⟩, ⟨CR⟩ and ⟨LF⟩.\nOriginal bytes are always preserved.")
-        self.put_text(self.hextext,"Offset    Hex bytes                                       ASCII\n\nSelect a row to see a byte-exact dump.")
+        self._terminal_target=self.vars["target"].get()
+        self.vars["target"].trace_add("write",self.terminal_target_changed)
         composer=self.bezel(self.content); composer.grid(row=4,column=0,sticky="ew",pady=(10,0));self.composer=composer
         composebar=self.frame(composer); composebar.pack(fill="x",padx=12,pady=(6,6))
         self.composebar=composebar
@@ -406,21 +380,23 @@ class Probe(tk.Tk):
         self.side_combo.configure(state="readonly" if mode in ("TCP Proxy","Serial Proxy","Serial ↔ TCP") else "disabled")
         self.vars["side"].set("Device / upstream")
 
-    def _fit_panes(self, height):
-        # The terminal's preferred screen size must not squeeze traffic away.
-        # This runs when the overall pane area changes, not while dragging a sash.
-        if not self.closing and len(self.split.panes()) == 2:
-            if self.notebook.select()==str(self.terminal):
-                self.split.sashpos(0,round(height*.40))
-            else:self.split.sashpos(0,min(height-155,max(185,round(height*.55))))
-
     def _tab_changed(self,event=None):
-        if not hasattr(self,"composer"):return
-        # The live terminal already has its own direct keyboard input.
-        if self.notebook.select()==str(self.terminal):self.composer.grid_remove()
-        else:self.composer.grid()
-        self.draw_plot();self.terminal.render(force=True)
-        self.after_idle(self._fit_panes,self.split.winfo_height())
+        if not hasattr(self,"composer") or event is not None and event.widget is not self.notebook:return
+        # Keep target and injection-side selectors reachable on every page.
+        self.plot.render(force=True);self.terminal.render(force=True)
+        self.terminal.update_hint()
+        if self.notebook.select()==str(self.terminal) and self.terminal.keyboard.get():self.terminal.text.focus_set()
+
+    def traffic_clicked(self,event):
+        row=self.table.identify_row(event.y)
+        if row and self.table.identify_region(event.x,event.y) in ("cell","tree"):
+            self.table.selection_set(row);self.table.focus(row);self.analyze()
+            return "break"
+
+    def terminal_target_changed(self,*_):
+        target=self.vars["target"].get()
+        if target!=self._terminal_target and self.active:self.terminal.reset()
+        self._terminal_target=target
 
     def choose_mode(self,mode):
         if self.active:
@@ -531,7 +507,7 @@ class Probe(tk.Tk):
                 direction=event["direction"]
                 if direction=="TX": self.tx_total+=len(event["data"])
                 else:
-                    self.rx_total+=len(event["data"]); self.add_samples(event["data"])
+                    self.rx_total+=len(event["data"]); self.plot.feed(event)
                 key=(direction,event["peer"])
                 if key not in self.framers: self.framers[key]=self.new_framer()
                 for data in self.framers[key].tick(event["time"]):
@@ -564,8 +540,8 @@ class Probe(tk.Tk):
                         self.after(1500,retry)
             elif kind=="peers":
                 peers=["All clients"]+event["peers"];self.target_combo.configure(values=peers)
-                if self.vars["mode"].get() in ("TCP Client","TCP Server","TCP Proxy") and self.terminal.peer and self.terminal.peer not in event["peers"]:self.terminal.reset()
-                if self.vars["target"].get() not in peers: self.vars["target"].set("All clients")
+                if self.vars["target"].get() not in peers:
+                    self._terminal_target="All clients";self.vars["target"].set("All clients")
             elif kind=="lines" and hasattr(self,"line_label"):
                 self.line_label.configure(text="   ".join(f"{k} {'●' if event[k] else '○'}" for k in ("CTS","DSR","DCD","RI")))
             elif kind in ("error","info"):
@@ -592,8 +568,10 @@ class Probe(tk.Tk):
         if changed and self.vars["autoscroll"].get() and not self.paused:
             items=self.table.get_children()
             if items: self.table.see(items[-1])
-        if self.notebook.index(self.notebook.select())==4:self.terminal.render()
-        if self.terminal_popup and self.terminal_popup.winfo_exists():self.terminal_popout_pane.render()
+        if self.notebook.select()==str(self.plot):self.plot.render()
+        self.terminal.update_hint()
+        if self.notebook.select()==str(self.terminal):self.terminal.render()
+        if self.terminal_popup and self.terminal_popup.winfo_exists():self.terminal_popout_pane.update_hint();self.terminal_popout_pane.render()
         self.after(40,self.poll)
 
     @staticmethod
@@ -652,15 +630,14 @@ class Probe(tk.Tk):
     def pause(self):
         self.paused=not self.paused;self.pause_button.configure(text="Resume" if self.paused else "Pause")
         if not self.paused:self.refresh()
-        if not self.paused:self.terminal.render(force=True)
+        if not self.paused:self.terminal.render(force=True);self.plot.render(force=True)
         self.set_status("Display paused. Transport and recording continue." if self.paused else "Live display resumed.")
 
     def clear(self):
         self.events.clear();self.order.clear();self.retained_bytes=0;self.evicted=0;self.dropped=0
-        self.framers.clear();self.frame_meta.clear();self.samples.clear();self.numeric_tail=""
-        self.table.delete(*self.table.get_children());self.byte_table.delete(*self.byte_table.get_children())
-        self.selection_label.configure(text="Byte inspector");self.put_text(self.decoded,"");self.put_text(self.hextext,"")
-        self.draw_plot();self.set_status("Display cleared. Recorded files and session byte counters continue.")
+        self.framers.clear();self.frame_meta.clear();self.plot.clear()
+        self.table.delete(*self.table.get_children())
+        self.set_status("Display cleared. Recorded files and session byte counters continue.")
 
     def selected(self):
         ids=self.table.selection();return self.events.get(ids[0]) if ids else None
@@ -668,35 +645,6 @@ class Probe(tk.Tk):
     @staticmethod
     def put_text(widget,text):
         widget.configure(state="normal");widget.delete("1.0","end");widget.insert("1.0",text);widget.configure(state="disabled")
-
-    def select_event(self):
-        self.inspector_offset=0;self.inspect()
-
-    def change_page(self,delta):
-        event=self.selected()
-        if not event:return
-        last=max(0,(len(event["data"])-1)//4096*4096)
-        self.inspector_offset=max(0,min(last,self.inspector_offset+delta*4096));self.inspect()
-
-    def inspect(self):
-        event=self.selected()
-        if not event:return
-        data=event["data"];start=self.inspector_offset;shown=data[start:start+4096]
-        self.selection_label.configure(text=f"{event['direction']} · {len(data):,} bytes"+(f" · page {start//4096+1}" if len(data)>4096 else ""))
-        self.page_prev.configure(state="normal" if start else "disabled")
-        self.page_next.configure(state="normal" if start+len(shown)<len(data) else "disabled")
-        notice=f"\n\n[Bytes {start:,}–{start+len(shown)-1:,} of {len(data):,}. Use ← / → for other pages.]" if len(data)>len(shown) else ""
-        self.put_text(self.decoded,visible(shown,self.vars["encoding"].get())+notice)
-        self.put_text(self.hextext,hexdump(shown,start)+notice)
-        self.byte_table.delete(*self.byte_table.get_children())
-        for i,b in enumerate(shown,start):
-            self.byte_table.insert("","end",iid=f"b{i}",values=(f"{i:04X} ({i})",f"{b:02X}",b,f"{b:08b}",CONTROLS.get(b,chr(b) if 32<=b<127 else "—")))
-
-    def byte_selected(self):
-        event=self.selected();ids=self.byte_table.selection()
-        if not event or not ids:return
-        i=int(ids[0][1:]);b=event["data"][i]
-        self.set_status(f"Byte at offset {i}: hex 0x{b:02X} · decimal {b} · binary {b:08b} · {CONTROLS.get(b,repr(chr(b)) if 32<=b<127 else 'non-ASCII')}")
 
     def copy_hex(self):
         event=self.selected()
@@ -714,6 +662,7 @@ class Probe(tk.Tk):
         if not self.engine or not self.engine.ready:raise RuntimeError("Connect before sending terminal keys.")
         target=self.vars["target"].get()
         if self.vars["mode"].get() in ("TCP Server","TCP Proxy") and target=="All clients":
+            if peer not in self.engine.clients and len(self.engine.clients)==1:peer=next(iter(self.engine.clients))
             if peer not in self.engine.clients:raise ValueError("Select a connected peer for the terminal.")
             target=peer
         self.engine.send(data,target,self.vars["side"].get())
@@ -722,7 +671,8 @@ class Probe(tk.Tk):
         row=self.table.identify_row(event.y)
         if row:self.table.selection_set(row)
         menu=tk.Menu(self,tearoff=False,bg=self.colors["panel"],fg=self.colors["text"])
-        menu.add_command(label="Protocol Inspector…",command=self.analyze)
+        menu.add_command(label="Analyze message…",command=self.analyze)
+        menu.add_command(label="Protocol Inspector…",command=lambda:self.analyze("Protocol"))
         menu.add_command(label="Compare with previous / other traffic…",command=lambda:self.analyze("Compare"))
         menu.add_separator()
         menu.add_command(label="Load payload into composer",command=self.load_selected_payload)
@@ -736,17 +686,20 @@ class Probe(tk.Tk):
         try:menu.tk_popup(event.x_root,event.y_root)
         finally:menu.grab_release()
 
-    def analyze(self,tab="Protocol"):
+    def analyze(self,tab=None):
         from .analysis_ui import open_analysis
         return open_analysis(self,tab)
 
     def load_selected_payload(self):
         event=self.selected()
         if not event:return
+        self.load_payload_bytes(event["data"])
+
+    def load_payload_bytes(self,data):
         self.vars["send_mode"].set("Hex");self.vars["ending"].set("None")
         for key in ("prefix","suffix"):self.vars[key].set("")
         self.vars["checksum"].set("None")
-        self.payload.delete("1.0","end");self.payload.insert("1.0",event["data"].hex(" ").upper());self.preview()
+        self.payload.delete("1.0","end");self.payload.insert("1.0",data.hex(" ").upper());self.preview()
         self.set_status("Exact captured payload loaded; press Send to transmit it.")
 
     def import_capture(self,path=None):
@@ -759,7 +712,7 @@ class Probe(tk.Tk):
             self.tx_total=sum(len(e["data"]) for e in rows if e["direction"]=="TX")
             self.rx_total=sum(len(e["data"]) for e in rows if e["direction"]=="RX")
             self.paused=False;self.pause_button.configure(text="Pause")
-            for event in rows:self.add_event(event);self.terminal.feed(event)
+            for event in rows:self.add_event(event);self.terminal.feed(event);self.plot.feed(event)
             self.terminal.render(force=True);self.set_status(f"Imported {len(rows)} events. No bytes were sent.")
         except Exception as exc:self.set_status(f"Import failed: {exc}",True)
 
@@ -819,7 +772,7 @@ class Probe(tk.Tk):
             self.preview_label.configure(text=f"{len(data):,} bytes · {data[:12].hex(' ').upper()}{' …' if len(data)>12 else ''}",fg=self.colors["muted"])
         except Exception as exc:self.preview_label.configure(text=str(exc),fg=self.colors["red"])
 
-    def encoding_changed(self):self.preview();self.refresh();self.inspect();self.terminal.reset()
+    def encoding_changed(self):self.preview();self.refresh();self.terminal.reset()
 
     def send(self,text=None):
         try:
@@ -1011,34 +964,6 @@ class Probe(tk.Tk):
         self.test_lab(1)
         self.sequence_panel.action(self.sequence_panel.save_file)
 
-    def add_samples(self,data):
-        self.numeric_tail+=data.decode("ascii",errors="replace")
-        lines=self.numeric_tail.split("\n");self.numeric_tail=lines.pop()[-1024:]
-        for line in lines:
-            try:
-                values=[float(x) for x in re.split(r"[,;\s]+",line.strip()) if x]
-                if values and all(math.isfinite(x) for x in values):self.samples.append(values[:4])
-            except ValueError:pass
-        self.samples=self.samples[-300:]
-        if self.notebook.index(self.notebook.select())==3:self.draw_plot()
-
-    def draw_plot(self):
-        cv=self.plot_canvas;c=self.colors;cv.delete("all")
-        w=max(100,cv.winfo_width());h=max(80,cv.winfo_height())
-        if not self.samples:
-            cv.create_text(20,25,text="Live numeric plot",anchor="w",fill=c["text"],font=(self.ui_font,11,"bold"))
-            cv.create_text(20,52,text="Receive newline-separated numbers or CSV (up to four channels).",anchor="w",fill=c["muted"],font=(self.ui_font,9));return
-        lo=min(min(x) for x in self.samples);hi=max(max(x) for x in self.samples)
-        if hi==lo:hi=lo+1
-        for j in range(4):
-            y=15+(h-35)*j/3;cv.create_line(50,y,w-15,y,fill=c["border"])
-            cv.create_text(6,y,text=f"{hi-(hi-lo)*j/3:.3g}",anchor="w",fill=c["muted"],font=(self.mono,8))
-        for channel,color in enumerate([c["accent"],c["blue"],c["red"],"#c7a0fa"]):
-            coords=[]
-            for i,sample in enumerate(self.samples):
-                if channel<len(sample):coords.extend([50+(w-65)*i/max(1,len(self.samples)-1),15+(h-35)*(hi-sample[channel])/(hi-lo)])
-            if len(coords)>=4:cv.create_line(*coords,fill=color,width=2)
-
     def _load_settings(self):
         try:
             config=json.loads(self.settings_path.read_text(encoding="utf-8"))
@@ -1071,7 +996,10 @@ class Probe(tk.Tk):
 
     def zoom(self,delta):
         self.font_size=max(8,min(16,self.font_size+delta));self._style()
-        for w in (self.payload,self.hextext,self.decoded):w.configure(font=(self.mono,self.font_size))
+        self.payload.configure(font=(self.mono,self.font_size))
+        analysis=getattr(self,"analysis_window",None)
+        if analysis is not None and analysis.winfo_exists():
+            for widget in (analysis.payload.decoded,analysis.payload.hextext,analysis.protocol.hex,analysis.comparison.detail):widget.configure(font=(self.mono,self.font_size))
         panes=[self.terminal]
         if self.terminal_popup and self.terminal_popup.winfo_exists():panes.append(self.terminal_popout_pane)
         for pane in panes:
@@ -1094,7 +1022,6 @@ class Probe(tk.Tk):
         self.hero.configure(font=(self.display_font,10 if compact else 12))
         self.chassis.configure(height=46 if compact else 66)
         self.traffic_toolbar.grid_configure(pady=4 if compact else 6)
-        self.detailbar.pack_configure(pady=(4,3) if compact else (6,4))
         self.composebar.pack_configure(pady=(4,4) if compact else (6,6))
         self.payload.configure(height=2)
         for label in self.stat_labels.values():
@@ -1110,7 +1037,7 @@ class Probe(tk.Tk):
         win=self.dialog("Probe · Quick guide","780x620")
         text=self.text_widget(win,height=25,wrap="word");text.pack(fill="both",expand=True,padx=16,pady=16)
         self.put_text(text,f"PROBE {__version__}\n\n"
-            "GET STARTED\nChoose a mode, enter its endpoint, then Connect. Type a payload and press Ctrl+Enter. Select any traffic row for text, hex, decimal and binary inspection.\n\n"
+            "GET STARTED\nChoose a mode, enter its endpoint, then Connect. Type a payload and press Ctrl+Enter. Click a traffic row (or select it and press Enter) to open Analyze for decoded text, hex/ASCII, every byte, protocol fields and comparison. One reusable window keeps all message views together.\n\n"
             "TCP CLIENT / SERVER\nClient connects to a device. Server accepts up to 16 clients. Choose a client or All clients before sending. Bind to 0.0.0.0 to accept LAN connections.\n\n"
             "TCP PROXY\nSet Listen to 127.0.0.1:9001 and Upstream to the real server. Point the other app to 127.0.0.1:9001. TX = app to upstream; RX = upstream to app. Each client has its own upstream connection. Binary bytes and half-close are preserved. TLS traffic remains encrypted.\n\n"
             "USB / SERIAL\nSupports COM / tty serial devices, including USB CDC and USB-to-UART adapters. Refresh lists ports. Set baud, bits, parity, stop and flow. DTR/RTS start OFF. Use loop:// for a hardware-free check; rfc2217://host:port for remote serial. Raw USB HID / bulk protocols are device-specific and not supported.\n\n"
@@ -1120,9 +1047,10 @@ class Probe(tk.Tk):
             "CAPTURE\nRecord streams lossless JSONL (hex+metadata) before filtering and framing. Raw RX file concatenates received bytes. Export saves the retained rolling window, including filtered rows. Display is bounded to 2000 rows / 8 MiB; the inspector pages through every byte in 4 KiB pages. Under overload, UI drops are reported; record for full capture.\n\n"
             "FRAMING / AUTOMATIC REPLIES\nTCP and serial are streams, not messages. Display by read chunk, delimiter, fixed length or idle gap. Framing never changes forwarding. Echo / composer reply runs once per receive chunk, not per protocol message. Do not enable echo at both ends.\n\n"
             "SHORTCUTS\nCtrl+Enter: send · Ctrl+L: clear · Ctrl+S: export · Ctrl +/-: font · F1: help\n\n"
-            "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Keyboard for direct input. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Pop out opens a larger live screen. One peer is displayed at a time.\n\n"
-            "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to load exact bytes into the composer.\n\n"
-            "ANALYZE TRAFFIC\nSelect a row, then Analyze. Protocol Inspector shows JSON, explicit TLV/BER-TLV or custom binary fields; selecting a field highlights its bytes. Copy field path supplies a sequence selector. Custom fields can validate lengths/checksums and save profiles. Capture Diff compares messages or combined same-peer/direction capture chunks, highlights changed/added/removed ranges and can ignore JSON values or byte ranges. Save comparison retains all original bytes. These tools send nothing.\n\n"
+            "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Send keyboard for direct input. Traffic, Live plot and Terminal are main workspace pages; the composer target and injection side stay visible. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Pop out opens a larger live screen. One peer is displayed at a time.\n\n"
+            "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Click a row to inspect it. Use Load into composer in Analyze to explicitly load exact bytes, then Send to transmit.\n\n"
+            "ANALYZE TRAFFIC\nClick a traffic row to open Analyze. Decoded text, Hex + ASCII and Every byte are included there. Protocol Inspector shows JSON, explicit TLV/BER-TLV or custom binary fields; selecting a field highlights its bytes. Copy field path supplies a sequence selector. Custom fields can validate lengths/checksums and save profiles. Capture Diff compares messages or combined same-peer/direction capture chunks, highlights changed/added/removed ranges and can ignore JSON values or byte ranges. Save comparison retains all original bytes. These tools send nothing.\n\n"
+            "LIVE PLOT\nOpen the Live plot workspace page. Receive LF/CRLF-terminated RX numbers or CSV, up to four channels: 1,2 followed by LF, then 3,4 followed by LF. Choose the RX peer or automatic selection. JSON, binary and TX-only data do not produce numeric samples. Separate peer buffers and the last 300 samples keep plotting bounded.\n\n"
             "DYNAMIC SEQUENCES\nEdit message > Response & next step: Save reply values picks JSON/TLV/byte fields and names variables; Choose next step adds conditions and next/goto/finish/fail/timeout actions. Save rules, then Save message. Insert variable adds ${name}, ${name:json} (a JSON value without surrounding quotes) or ${name:hex}. Variables defines initial values and shows latest reply values. Outgoing frame can rebuild length/checksum after substitution. Missing values stop before sending. Version 3 exports retain rules; legacy files still load.\n\n"
             "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
             "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket, Windows virtual COM pair or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
@@ -1140,7 +1068,7 @@ class Probe(tk.Tk):
         self.tx_total=sum(len(d) for dr,d in messages if dr=="TX");self.rx_total=sum(len(d) for dr,d in messages if dr=="RX")
         self.stat_labels["tx"].configure(text=self.format_bytes(self.tx_total));self.stat_labels["rx"].configure(text=self.format_bytes(self.rx_total))
         self.history_label.configure(text=f"{len(self.order)} events · demo")
-        self.table.selection_set("3");self.inspect();self.notebook.select(1)
+        self.table.selection_set("3")
         self.vars["send_mode"].set("Hex");self.payload.delete("1.0","end");self.payload.insert("1.0","02 A4 04 50 43 30 31 B0 06 00 00 00 01 25 00 03")
         self.set_status("DEMO PREVIEW · synthetic sample traffic; no network or hardware connection is open.")
 
@@ -1200,6 +1128,14 @@ def main():
                 for tab in (0, 1):
                     app.testlab_notebook.select(tab)
                     app.update_idletasks()
+                for page in (app.traffic_tab,app.plot,app.terminal):
+                    app.notebook.select(page);app.update_idletasks()
+                    if app.notebook.select()!=str(page):raise RuntimeError("Main workspace tab is not selectable.")
+                app.plot.feed(dict(direction="RX",peer="smoke",data=b"1,2\n3,4\n"));app.plot.render(force=True)
+                if not app.plot.canvas.find_withtag("curve"):raise RuntimeError("Live plot failed in bundle.")
+                app.terminal.feed(dict(direction="RX",peer="smoke",data=b"READY\r\n"));app.terminal.render(force=True)
+                if "READY" not in "".join(app.terminal.model.screen.display):raise RuntimeError("Terminal failed in bundle.")
+                app.notebook.select(app.traffic_tab)
                 for payload in (b'{"sessionId":"1"}',b'{"sessionId":"123"}'):
                     app.add_event(dict(kind="data",direction="RX",peer="smoke",time=time.time(),data=payload))
                 app.table.selection_set(app.order[-1])
@@ -1207,6 +1143,8 @@ def main():
                 app.update_idletasks()
                 if not any(field.selector=="/sessionId" for field in analysis.protocol.fields):raise RuntimeError("Protocol Inspector failed in bundle.")
                 if not analysis.comparison.differences:raise RuntimeError("Capture Diff failed in bundle.")
+                if "123" not in analysis.payload.decoded.get("1.0","end"):raise RuntimeError("Analyze decoded text failed in bundle.")
+                if not analysis.payload.byte_table.get_children():raise RuntimeError("Analyze byte views failed in bundle.")
                 analysis.destroy()
                 pane=app.sequence_panel
                 app.macros=[dict(name="Smoke template",text="${sid}",flow=dict(extract=[dict(name="sid",source="JSON",selector="sessionId")]))]

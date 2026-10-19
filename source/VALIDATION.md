@@ -1,4 +1,4 @@
-# Probe 1.2.0 Windows validation
+# Probe 1.2.1 Windows validation
 
 ## Native Windows gate
 
@@ -24,13 +24,13 @@ Physical hardware tests are opt-in.
 
 ## Local cross-platform checks
 
-On the Linux development host, 85 backend tests passed (92 total,
+On the Linux development host, 88 backend tests passed (95 total,
 6 attached-device tests and one unprivileged-permission check skipped). COM-pair tests use actual pySerial `socket://`
 endpoints: all 256 byte values, duplex proxying, both injection sides, exact
 captures, ordered stateful replies, reset, endpoint ownership and disconnect
 cleanup. These verify the shared serial path, not a Windows kernel COM driver.
 
-All 24 local GUI tests passed with an isolated X display and temporary preferences. The COM
+All 28 local GUI tests passed with an isolated X display and temporary preferences. The COM
 configuration test presents the Windows panel and exchanges real serial socket
 bytes. Native CI provides the evidence for Windows UI and executable packaging.
 
@@ -102,3 +102,22 @@ cancelling a one-hour delay. OS scheduling may still make a delay longer.
 
 Python documents the clock-resolution behavior in its
 [event loop reference](https://docs.python.org/3.12/library/asyncio-eventloop.html#asyncio.loop.call_later).
+
+## Workspace consolidation (1.2.1)
+
+Main pages are Traffic, Live plot and Terminal. GUI regressions use native Tk
+mouse press/release events on tab labels and traffic cells, not just programmatic
+selection. They verify all message views in one reused Analyze window, source
+snapshot preservation, every-byte pagination, explicit composer loading, and no
+popups from programmatic selection/filtering. The 1060×700 main window and
+920×700 Analyze window were visually inspected.
+
+Real serial loopback tests assert plotted CSV curves, live terminal RX, keyboard
+focus and key transmission. A Serial-to-TCP test selects a concrete TCP client
+and verifies physical serial replies still reach Terminal. A TCP server test
+types before the first RX and preserves the screen after its client disconnects.
+Numeric model tests cover split lines, peer isolation, invalid/binary/non-finite
+inputs, oversized-line recovery and bounded peers/samples. Terminal actions use
+two rows so history, Paste, Reset and Pop out remain visible on narrow windows.
+Frozen GUI diagnostics select all three workspace pages and verify plot curves,
+terminal text and the consolidated Analyze views.

@@ -1,11 +1,10 @@
-# Probe for Windows 1.2.0
+# Probe for Windows 1.2.1
 
 Portable TCP, UDP and USB/COM workbench with traffic recording/replay, a live
 ANSI terminal, serial proxies, recorded device simulation and timed test sequences.
 
 Version 1.2 adds **Protocol Inspector**, **Capture Diff**, and **sequence variables
-and conditions**. Click **Analyze…** beside the traffic view, or right-click a
-message. Advanced sequence rules stay inside the message editor.
+and conditions**. Click a traffic row to open Analyze, or use its right-click menu. Advanced sequence rules stay inside the message editor.
 
 ## Run
 
@@ -33,7 +32,7 @@ COM port and serial parameters. Close other software that already owns that COM.
 ## Hardware test lab
 
 **Test lab** is at the bottom of the control panel; **Appearance** is removed.
-The title shows version 1.2.0, and the sidebar has eight modes including
+The title shows version 1.2.1, and the sidebar has eight modes including
 **Device Simulator**.
 
 * **Device simulator:** record TX/RX with the real device, then load the capture
@@ -134,3 +133,18 @@ uses loopback and real pySerial socket endpoints instead.
 
 See [the full guide](source/README.md), [feature coverage](source/FEATURE_MATRIX.md)
 and [validation scope](source/VALIDATION.md).
+
+## Traffic, live plot and terminal
+
+The main workspace has three pages: **Traffic**, **Live plot** and **Terminal**.
+Click a traffic row (or select it and press Enter) to open one reusable Analyze
+window with **Decoded text**, **Hex + ASCII**, **Every byte**, Protocol Inspector
+and Capture Diff. The separate Analyze button and lower byte-inspector panel
+are removed. Receiving, filtering or following traffic does not open windows.
+
+Live plot reads RX numbers/CSV terminated by LF, such as `1,2\n3,4\n`. It
+shows up to four channels and keeps partial lines separate for each peer. JSON,
+binary frames and TX-only traffic are not numeric plot samples. Terminal shows
+received ANSI/text automatically; enable **Send keyboard**, then click the screen
+to type. Enter and Backspace are configurable. The composer, target and injection
+side remain visible on all three pages.

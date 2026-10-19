@@ -1,5 +1,14 @@
 # Changes
 
+## 1.2.1 (Windows / Linux)
+
+* Consolidate the main workspace into Traffic, Live plot and Terminal. Move decoded text, hex/ASCII and every-byte paging into Analyze; remove the extra Analyze button and lower inspector panel.
+* A single traffic-cell click (or Enter) opens/reuses Analyze, preserving the chosen analysis tab. Filtering, following and programmatic selection do not open windows. Keep copying/saving all snapshot bytes and explicitly loading the composer.
+* Replace positional tab indices and automatic split-pane sizing with stable widget identities and full-page views. Keep target/injection-side/composer controls available on Terminal.
+* Make Send keyboard focus the terminal screen, improve connected/view-only/listening hints, add vertical scrolling and fit all terminal/history controls in two rows. Fix serial bridge RX filtering when a specific TCP client is selected; allow typing to the sole TCP client before its first reply and retain text after peer disconnect.
+* Give Live plot explicit RX numeric-format guidance, peer selection, independent partial lines, bounded samples and a visible single-sample point. Reject binary/non-finite/oversized lines, batch rendering with the UI poll, and preserve main traffic when clearing a plot.
+* Add native mouse-click, serial-loop plot/keyboard, selected-client bridge and first-key TCP regressions; expand frozen GUI diagnostics. No runtime dependencies added.
+
 ## 1.2.0 (Windows / Linux)
 
 * Add a single Analyze entry beside traffic and context-menu shortcuts. Protocol Inspector decodes JSON (including ASCII body-length prefixes), explicit one-byte TLV or definite BER-TLV, with exact byte highlighting and copied field paths.

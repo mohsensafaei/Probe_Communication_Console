@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 
 from .capture import load_capture
-from .codec import hexdump, visible
+from .codec import CONTROLS, hexdump, visible
 from .comparison import compare_bytes, comparison_report, parse_ranges
 from .protocol import (CHECKSUMS, FIELD_TYPES, custom_fields, inspect_payload,
                        json_frame, validate_fields)
@@ -354,7 +354,95 @@ class ComparePane(ttk.Frame,Actions):
         return win
 
 
-def open_analysis(app,tab="Protocol"):
+class PayloadViews:
+    """Three synchronized byte-exact message views inside Analyze only."""
+    def __init__(self,tabs,app):
+        self.app=app;self.data=b"";self.page=0;self.tabs=tabs;self.pages={};self.page_labels=[];self.buttons=[]
+        self.encoding=tk.StringVar(value=app.vars["encoding"].get())
+        for name in ("Decoded text","Hex + ASCII","Every byte"):
+            page=ttk.Frame(tabs,padding=12);self.pages[name]=page;tabs.add(page,text=name)
+            footer=ttk.Frame(page);footer.pack(side="bottom",fill="x",pady=(6,0))
+            previous=ttk.Button(footer,text="← Previous bytes",command=lambda:self.change_page(-1));previous.pack(side="left")
+            next_=ttk.Button(footer,text="Next bytes →",command=lambda:self.change_page(1));next_.pack(side="left",padx=6)
+            label=tk.StringVar();ttk.Label(footer,textvariable=label).pack(side="right");self.page_labels.append(label);self.buttons.append((previous,next_))
+            if name=="Every byte":
+                self.byte_table=table(page,(("offset","Offset",110),("hex","Hex",80),("dec","Decimal",90),("binary","Binary",160),("char","ASCII / control",240)))
+            else:
+                if name=="Decoded text":
+                    bar=ttk.Frame(page);bar.pack(fill="x",pady=(0,6))
+                    ttk.Label(bar,text="Text encoding").pack(side="left",padx=(0,6))
+                    combo=ttk.Combobox(bar,textvariable=self.encoding,values=("utf-8","ascii","latin-1","cp1256","gbk","utf-16-le"),state="readonly",width=15)
+                    combo.pack(side="left");combo.bind("<<ComboboxSelected>>",lambda e:self.render())
+                    ttk.Label(bar,text="Control bytes are named; original bytes stay intact.").pack(side="left",padx=12)
+                box=ttk.Frame(page);box.pack(fill="both",expand=True)
+                text=app.text_widget(box,height=10,wrap="word" if name=="Decoded text" else "none")
+                text.grid(row=0,column=0,sticky="nsew");box.rowconfigure(0,weight=1);box.columnconfigure(0,weight=1)
+                scroll=ttk.Scrollbar(box,command=text.yview);scroll.grid(row=0,column=1,sticky="ns");text.configure(yscrollcommand=scroll.set)
+                if name=="Hex + ASCII":
+                    horizontal=ttk.Scrollbar(box,orient="horizontal",command=text.xview);horizontal.grid(row=1,column=0,sticky="ew");text.configure(xscrollcommand=horizontal.set);self.hextext=text
+                else:self.decoded=text
+        self.render()
+
+    def set_data(self,data):self.data=data;self.page=0;self.render()
+
+    def change_page(self,delta):
+        self.page=max(0,min(self.page+delta,max(0,(len(self.data)-1)//4096)));self.render()
+
+    def render(self):
+        start=self.page*4096;shown=self.data[start:start+4096]
+        self.app.put_text(self.decoded,visible(shown,self.encoding.get()) if shown else "Click a traffic row or Choose traffic to inspect a message.")
+        self.app.put_text(self.hextext,hexdump(shown,start))
+        self.byte_table.delete(*self.byte_table.get_children())
+        for offset,byte in enumerate(shown,start):
+            self.byte_table.insert("","end",iid=f"b{offset}",values=(f"{offset:08X} ({offset})",f"{byte:02X}",byte,f"{byte:08b}",CONTROLS.get(byte,chr(byte) if 32<=byte<127 else "—")))
+        for label in self.page_labels:label.set(f"Bytes {start}–{start+len(shown)-1 if shown else 0} of {len(self.data)} · page {self.page+1}")
+        for previous,next_ in self.buttons:
+            previous.configure(state="normal" if self.page else "disabled");next_.configure(state="normal" if start+4096<len(self.data) else "disabled")
+
+
+class AnalysisWindow(tk.Toplevel,Actions):
+    def __init__(self,app):
+        super().__init__(app);self.app=app;self.data=b"";self.label="";self.event_key=None
+        self.title("Probe · Analyze traffic")
+        self.geometry(f"{min(1000,max(920,app.winfo_screenwidth()-80))}x{min(760,max(700,app.winfo_screenheight()-90))}")
+        self.minsize(920,700)
+        self.configure(bg=app.colors["panel"]);self.transient(app);self.bind("<Escape>",lambda e:self.destroy())
+        self.bind("<Control-plus>",lambda e:app.zoom(1));self.bind("<Control-minus>",lambda e:app.zoom(-1))
+        self.feedback=tk.StringVar();self.source=tk.StringVar(value="Choose traffic to inspect; no connection is required.")
+        body=ttk.Frame(self,padding=12);body.pack(fill="both",expand=True)
+        ttk.Label(body,text="Analyze traffic",font=(app.ui_font,19,"bold")).pack(anchor="w")
+        ttk.Label(body,textvariable=self.source,wraplength=870).pack(anchor="w",pady=(3,6))
+        actions=ttk.Frame(body);actions.pack(fill="x",pady=(0,6))
+        ttk.Button(actions,text="Choose traffic…",command=lambda:TrafficPicker(app,self.set_data,self)).pack(side="left")
+        ttk.Button(actions,text="Copy hex",command=lambda:self.action(self.copy_hex)).pack(side="left",padx=6)
+        ttk.Button(actions,text="Save bytes…",command=lambda:self.action(self.save_bytes)).pack(side="left")
+        ttk.Button(actions,text="Load into composer",command=lambda:self.action(self.load_composer)).pack(side="right")
+        ttk.Label(body,textvariable=self.feedback,wraplength=870).pack(side="bottom",anchor="w")
+        self.tabs=ttk.Notebook(body);self.tabs.pack(fill="both",expand=True)
+        self.payload=PayloadViews(self.tabs,app)
+        self.protocol=ProtocolPane(self.tabs,app);self.tabs.add(self.protocol,text="Protocol Inspector")
+        self.protocol.choose=lambda:TrafficPicker(app,self.set_data,self)
+        self.comparison=ComparePane(self.tabs,app,a_label="Choose A",b_label="Choose B");self.tabs.add(self.comparison,text="Capture Diff")
+
+    def set_data(self,data,label):
+        self.data=data;self.label=label;self.source.set(label);self.payload.set_data(data);self.protocol.set_data(data,label)
+        self.comparison.set_data("B",data,label)
+        self.feedback.set("Inspection never sends or modifies traffic. Load into composer requires a separate Send action.")
+
+    def copy_hex(self):
+        if not self.data:raise ValueError("Choose a message first.")
+        self.clipboard_clear();self.clipboard_append(self.data.hex(" ").upper());self.feedback.set("Copied every original byte as hex.")
+
+    def save_bytes(self):
+        path=filedialog.asksaveasfilename(parent=self,defaultextension=".bin",filetypes=[("Binary bytes","*.bin")])
+        if path:Path(path).write_bytes(self.data);self.feedback.set(f"Saved {len(self.data)} original bytes.")
+
+    def load_composer(self):
+        if not self.data:raise ValueError("Choose a message first.")
+        self.app.load_payload_bytes(self.data);self.feedback.set("Loaded exact bytes into the composer. Press Send in the main window to transmit.")
+
+
+def open_analysis(app,tab=None):
     event=app.selected();data=event["data"] if event else b""
     label=f"{event['direction']} · {event.get('peer','')} · {len(data)} bytes" if event else "Choose traffic to begin. No connection is required."
     previous=None
@@ -363,11 +451,15 @@ def open_analysis(app,tab="Protocol"):
         for row in candidates:
             if row is event:break
             if row.get("direction")==event.get("direction") and row.get("peer")==event.get("peer"):previous=row
-    win=modal(app,"Analyze traffic","1000x740",(920,680));body=ttk.Frame(win,padding=12);body.pack(fill="both",expand=True)
-    ttk.Label(body,text="Analyze traffic",font=(app.ui_font,19,"bold")).pack(anchor="w")
-    ttk.Label(body,text="Offline tools · inspecting and comparing never sends or changes traffic.").pack(anchor="w",pady=(3,8))
-    tabs=ttk.Notebook(body);tabs.pack(fill="both",expand=True)
-    win.protocol=ProtocolPane(tabs,app,data,label);tabs.add(win.protocol,text="Protocol Inspector")
-    win.comparison=ComparePane(tabs,app,previous["data"] if previous else b"","Previous message" if previous else "Choose A",data,label)
-    tabs.add(win.comparison,text="Capture Diff");tabs.select(1 if tab=="Compare" else 0)
+    win=getattr(app,"analysis_window",None)
+    if win is None or not win.winfo_exists():win=AnalysisWindow(app)
+    key=app.table.selection()[0] if event else None
+    if win.event_key!=key or win.data!=data:
+        win.set_data(data,label);win.event_key=key
+        if previous:win.comparison.set_data("A",previous["data"],"Previous message · "+str(previous.get("peer","")))
+        else:win.comparison.a=b"";win.comparison.a_ready=False;win.comparison.a_label.set("Choose A");win.comparison.refresh()
+    if tab is not None:
+        names={"Protocol":win.protocol,"Compare":win.comparison,**win.payload.pages}
+        if tab in names:win.tabs.select(names[tab])
+    win.lift();win.focus_set()
     app.analysis_window=win;return win

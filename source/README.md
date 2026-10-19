@@ -1,11 +1,16 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.2.0** (Windows release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.2.1** (Windows release).
 
 ### Analyze traffic without sending anything
 
-Select a traffic row and click **Analyze…**, or right-click it. The separate
-analysis window has two tabs; the main connection/send workflow stays unchanged.
+Click a traffic row, or select it and press Enter. Analyze opens a single reusable
+window containing **Decoded text**, **Hex + ASCII**, **Every byte**, **Protocol
+Inspector** and **Capture Diff**. There is no separate Analyze button or lower
+byte-inspector panel. New incoming data and programmatic selections never open
+windows. Clicking another row updates the same window and preserves its chosen
+tab. The message views page through every original byte in 4 KiB pages; copy/save
+uses the entire snapshot, even if the main history later changes.
 
 * **Protocol Inspector:** Auto recognizes UTF-8 JSON objects/arrays, optionally
   preceded by 1–12 ASCII body-length digits. Select a field to highlight its exact
@@ -76,7 +81,7 @@ one Probe simulator, connect another Probe as TCP Client, then load
 code; the condition selects a STATUS request containing that ID. These are
 synthetic read-only lab messages, not a vendor POS protocol.
 
-The instrument-panel UI takes visual inspiration from ASUS PC Probe II: an angular silver chassis, blue panels, recessed green readouts and geometric headings. Michroma, Rajdhani and Share Tech Mono are bundled under the SIL Open Font License and loaded privately on Windows/Linux, without installing system fonts. They are open fonts, not ASUS's proprietary typography. The Appearance button has been replaced by Test lab; data fonts can be resized with Ctrl +/-. The layout compresses on short displays; drag the divider to give the traffic table or byte inspector more room. Selecting Terminal opens up the work area and uses the terminal's direct keyboard controls; returning to another inspector tab restores the composer.
+The instrument-panel UI takes visual inspiration from ASUS PC Probe II: an angular silver chassis, blue panels, recessed green readouts and geometric headings. Michroma, Rajdhani and Share Tech Mono are bundled under the SIL Open Font License and loaded privately on Windows/Linux, without installing system fonts. They are open fonts, not ASUS's proprietary typography. The Appearance button has been replaced by Test lab; data fonts can be resized with Ctrl +/-. The layout compresses on short displays. Traffic, Live plot and Terminal each have a full workspace page; the composer and its target/injection-side controls stay visible on every page. Per-message views live together in Analyze.
 
 Probe uses Tkinter, pySerial and the small pure-Python pyte/wcwidth terminal libraries. There is no browser, Electron or Qt runtime. All I/O runs off the UI thread. Windows and Linux share the same source. Hardware drivers remain the operating system's responsibility. STM32 programming is intentionally excluded.
 
@@ -182,7 +187,7 @@ The serial proxy forwards **data bytes**. Baud changes, break and modem line cha
 * Build up to 1000 named test steps in Test lab with independent millisecond delays, repeats, optional expected reply bytes and timeouts. Export/import complete sequences or legacy command shelves. Cycles 0 repeats until stopped. Samples are in `examples/test-sequence.json`.
 * Automatic echo or a fixed composer reply is available in direct modes, once per receive chunk/datagram. These replies are not protocol-aware. Echo at both ends creates a loop.
 * TCP Client and USB / Serial can reconnect automatically when disconnected. This is optional and off by default; manual Disconnect stops reconnection.
-* Live plot accepts newline-separated ASCII numbers or comma/space-separated numeric channels (up to four). It is a numeric display, not a hardware oscilloscope.
+* **Live plot** is a main workspace tab. It accepts RX ASCII numbers or comma/semicolon/space-separated channels, up to four, with LF/CRLF terminating each sample. Example: `1,2\n3,4\n`. Choose a peer or use automatic selection of the first numeric peer; each peer has its own partial-line buffer and last 300 samples, with at most 16 peers. A single sample is shown as a point. JSON, binary, non-finite values and TX-only traffic are not plotted; the empty-state hint explains this. Clear plot leaves captured traffic intact. It is a numeric display, not a hardware oscilloscope.
 
 ## Framing and captures
 
@@ -225,9 +230,9 @@ See `FEATURE_MATRIX.md` for implemented workflows and explicit reference-app gap
 
 ### Live ANSI terminal
 
-Select **Terminal** to see a live ANSI/VT-style screen rather than literal escape bytes. Colors (including truecolor), bold/underline, cursor movement, erase commands, carriage returns, scrollback and alternate-screen switching are supported. Text decoding is incremental across reads. **Pop out** opens a larger screen; use the arrow history buttons for scrollback. The screen is 100×24 cells, with horizontal scrolling in smaller panes.
+Select **Terminal** to see a live ANSI/VT-style screen rather than literal escape bytes. Colors (including truecolor), bold/underline, cursor movement, erase commands, carriage returns, scrollback and alternate-screen switching are supported. Text decoding is incremental across reads. **Pop out** opens a larger screen; use **Older/Newer** for scrollback. The screen is 100×24 cells, with horizontal and vertical scrollbars in smaller views.
 
-Keyboard input is **off by default**. Enable **Keyboard**, click the screen and type directly to the device. Choose CR/LF/CRLF for Enter and DEL/BS for Backspace. Arrow/function keys and Ctrl-letter control bytes are supported. Ctrl+Shift+C/V copies/pastes; Local echo is optional. Keyboard sends original key bytes without composer prefixes, checksums or line endings. Device-status replies are sent only when Keyboard is enabled. The terminal tracks one peer at a time to avoid combining independent escape streams; select a client in the target selector to switch peers.
+Keyboard input is **off by default**. Enable **Send keyboard** to focus the screen, then type directly to the device. Choose CR/LF/CRLF for Enter and DEL/BS for Backspace. Arrow/function keys and Ctrl-letter control bytes are supported. Ctrl+Shift+C/V copies/pastes; Local echo is optional. Keyboard sends original key bytes without composer prefixes, checksums or line endings. Device-status replies are sent only when Send keyboard is enabled. The terminal tracks one peer at a time to avoid combining independent escape streams; select a client in the target selector to switch peers.
 
 The raw traffic table and recordings still contain the original ANSI bytes. Pause freezes the display while capture continues. Unsupported terminal protocols are not claimed as implemented; this is not SSH, a local shell, sixel graphics or a complete implementation of every xterm extension. Oversized/incomplete CSI and control strings are bounded in the terminal view and never alter the raw capture.
 
@@ -237,7 +242,7 @@ Open **Tools → Import capture**, or right-click a traffic row. While disconnec
 
 Connect and choose a target/side, then **Replay TX** (the replay dialog also offers RX). Replay sends exact recorded bytes, without composer transformations, at the original relative timing scaled by 0.1–10×. Negative/backward timing is clamped to preserve order. Stop replay cancels future sends; bytes already queued cannot be recalled. Disconnecting cancels replay. Repeat, sequence and replay runners stop one another when a new runner starts. Replay duration is bounded to 24 hours.
 
-Double-click a traffic row to load its exact hex into the composer, with all transformations reset. Tools also resets byte counters without deleting history or recordings. Pending send data is bounded to 16 MiB to prevent repeat/replay from consuming unlimited memory.
+Click a traffic row to analyze it. **Load into composer** in Analyze, or **Load payload into composer** in the traffic context menu, explicitly loads exact hex with all transformations reset; inspecting never loads or sends a message. Tools also resets byte counters without deleting history or recordings. Pending send data is bounded to 16 MiB to prevent repeat/replay from consuming unlimited memory.
 
 ### Hercules-style payload tokens
 

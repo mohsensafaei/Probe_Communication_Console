@@ -2,7 +2,7 @@
 
 This is a workflow comparison, not a claim of byte-for-byte compatibility with all releases of either application. The requested SSCOM version was not specified. Hercules describes Serial, TCP Client/Server, UDP and HW-group configuration; SSCOM releases vary and some include terminal emulation, waveform display or STM32 ISP tools.
 
-| Feature | Probe 1.2.0 Windows | Notes |
+| Feature | Probe 1.2.1 Windows | Notes |
 | --- | --- | --- |
 | Recorded device simulator | Implemented | TCP / installed Windows virtual COM pair (POSIX PTY on Linux); exact request matching, stateful ordered replies, response timing, reset and model import/export. |
 | Protocol Inspector | Implemented | JSON/ASCII length prefix, explicit TLV/BER-TLV, byte highlighting, custom binary fields, length/checksum validation and reusable profiles. |

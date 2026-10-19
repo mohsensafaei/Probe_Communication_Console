@@ -33,6 +33,95 @@ class UISmoke(unittest.TestCase):
             time.sleep(.01)
         self.fail("UI condition timed out")
 
+    def click_main_tab(self,title):
+        self.app.focus_force();self.app.update()
+        wanted=next(i for i,tab in enumerate(self.app.notebook.tabs()) if self.app.notebook.tab(tab,"text")==title)
+        for x in range(5,self.app.notebook.winfo_width(),5):
+            try:index=self.app.notebook.index(f"@{x},10")
+            except tk.TclError:continue
+            if index==wanted:
+                self.app.notebook.event_generate("<Button-1>",x=x,y=10)
+                self.app.notebook.event_generate("<ButtonRelease-1>",x=x,y=10)
+                self.app.update();self.assertEqual(self.app.notebook.index(self.app.notebook.select()),wanted);return
+        self.fail("Tab is not clickable: "+title)
+
+    def test_click_row_opens_one_analysis_window_with_all_message_views(self):
+        self.assertEqual([self.app.notebook.tab(tab,"text") for tab in self.app.notebook.tabs()],["Traffic","Live plot","Terminal"])
+        for i,data in enumerate((b"FIRST\0\xff",b"SECOND\r\n")):
+            self.app.add_event(dict(kind="data",time=time.time()+i,direction="RX",peer="COM34",data=data))
+        self.app.table.selection_set(self.app.order[0]);self.app.update()
+        self.assertFalse(hasattr(self.app,"analysis_window"))
+        def click(iid):
+            self.app.table.see(iid);self.app.update();x,y,w,h=self.app.table.bbox(iid,"payload")
+            self.app.table.event_generate("<Button-1>",x=x+5,y=y+h//2)
+            self.app.table.event_generate("<ButtonRelease-1>",x=x+5,y=y+h//2);self.app.update()
+        click(self.app.order[0]);win=self.app.analysis_window
+        self.assertEqual(win.data,b"FIRST\0\xff")
+        self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Decoded text")
+        self.assertIn("FIRST",win.payload.decoded.get("1.0","end"))
+        self.assertIn("46 49 52 53 54 00 FF",win.payload.hextext.get("1.0","end"))
+        win.tabs.select(win.payload.pages["Hex + ASCII"])
+        click(self.app.order[1]);self.assertIs(self.app.analysis_window,win)
+        self.assertEqual(win.data,b"SECOND\r\n")
+        self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Hex + ASCII")
+        self.app.table.selection_set(self.app.order[0]);self.app.refresh();self.app.update()
+        self.assertEqual(win.data,b"SECOND\r\n")
+        win.copy_hex();self.assertEqual(self.app.clipboard_get(),b"SECOND\r\n".hex(" ").upper())
+        win.load_composer();self.assertEqual(self.app.payload_bytes(),b"SECOND\r\n")
+        self.assertIsNone(self.app.engine)
+
+    def test_plot_and_terminal_tabs_click_and_work_over_serial_loop(self):
+        self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        self.click_main_tab("Live plot")
+        self.assertTrue(self.app.plot.canvas.winfo_ismapped())
+        self.app.engine.send(b"1,2\n3,4\n")
+        self.spin(lambda:bool(self.app.plot.canvas.find_withtag("curve")))
+        self.assertIn("2 samples",self.app.plot.status.get())
+        self.assertEqual(list(self.app.plot.model.peers["loop://"]["rows"]),[(1,2),(3,4)])
+        self.click_main_tab("Terminal")
+        self.assertTrue(self.app.terminal.text.winfo_ismapped())
+        self.assertTrue(self.app.composer.winfo_ismapped());self.assertTrue(self.app.target_combo.winfo_ismapped())
+        def buttons(widget):
+            for child in widget.winfo_children():
+                if isinstance(child,ttk.Button):yield child
+                yield from buttons(child)
+        for button in buttons(self.app.terminal):self.assertTrue(button.winfo_ismapped(),button.cget("text"))
+        self.assertIn("View only",self.app.terminal.hint.cget("text"))
+        self.app.terminal.keyboard_check.invoke();self.app.update()
+        self.assertEqual(self.app.focus_get(),self.app.terminal.text)
+        self.app.terminal.text.event_generate("<KeyPress>",keysym="k")
+        self.spin(lambda:any(e["direction"]=="TX" and e["data"]==b"k" for e in self.app.events.values()))
+        self.spin(lambda:"k" in "".join(self.app.terminal.model.screen.display))
+        self.assertIn("Send keyboard ON",self.app.terminal.hint.cget("text"))
+        self.click_main_tab("Traffic")
+        self.assertTrue(self.app.table.winfo_ismapped());self.assertFalse(hasattr(self.app,"analysis_window"))
+
+    def test_terminal_serial_bridge_receives_with_explicit_tcp_client_selected(self):
+        import socket
+        self.app.choose_mode("Serial ↔ TCP");self.app.vars["serial_port"].set("loop://");self.app.vars["listen_port"].set("0")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        with socket.create_connection(self.app.engine.server.sockets[0].getsockname()[:2],timeout=3) as client:
+            self.spin(lambda:len(self.app.engine.clients)==1)
+            self.app.vars["target"].set(next(iter(self.app.engine.clients)))
+            self.click_main_tab("Terminal");self.app.engine.send(b"BRIDGE READY\r\n")
+            self.spin(lambda:"BRIDGE READY" in "".join(self.app.terminal.model.screen.display))
+            self.assertEqual(self.app.terminal.peer,"loop://")
+
+    def test_terminal_can_type_to_single_tcp_client_before_first_reply(self):
+        import socket
+        self.app.choose_mode("TCP Server");self.app.vars["listen_port"].set("0")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        with socket.create_connection(self.app.engine.server.sockets[0].getsockname()[:2],timeout=3) as client:
+            self.spin(lambda:len(self.app.engine.clients)==1)
+            self.click_main_tab("Terminal");self.app.terminal.keyboard_check.invoke();self.app.update()
+            self.app.terminal.text.event_generate("<KeyPress>",keysym="k")
+            self.assertEqual(client.recv(1),b"k")
+            client.sendall(b"ACK\r\n")
+            self.spin(lambda:"ACK" in "".join(self.app.terminal.model.screen.display))
+        self.spin(lambda:not self.app.engine.clients)
+        self.assertIn("ACK","".join(self.app.terminal.model.screen.display))
+
     def test_modes_dialogs_and_small_window(self):
         for mode in MODES:
             self.app.choose_mode(mode);self.app.update()
@@ -58,8 +147,8 @@ class UISmoke(unittest.TestCase):
             self.spin(lambda:len(self.app.order)>=2)
             rows=[self.app.events[i] for i in self.app.order]
             self.assertEqual(rows[-1]["data"],bytes.fromhex("00 02 03 A4 FF"))
-            self.app.table.selection_set(self.app.order[-1]);self.app.inspect()
-            self.assertEqual(len(self.app.byte_table.get_children()),5)
+            self.app.table.selection_set(self.app.order[-1]);analysis=self.app.analyze()
+            self.assertEqual(len(analysis.payload.byte_table.get_children()),5)
             self.app.pause();self.app.send();self.spin(lambda:len(self.app.order)>=4)
             self.app.pause();self.assertEqual(len(self.app.table.get_children()),4)
             self.app.vars["search"].set("hex:A4 FF");self.app.refresh()
@@ -103,19 +192,19 @@ class UISmoke(unittest.TestCase):
     def test_inspector_pages_reach_every_byte(self):
         data=bytes(range(256))*40
         self.app.add_event(dict(kind="data",time=time.time(),direction="RX",peer="test",data=data))
-        self.app.table.selection_set(self.app.order[-1]);self.app.select_event()
-        self.assertEqual(len(self.app.byte_table.get_children()),4096)
-        self.app.change_page(1)
-        self.assertEqual(self.app.inspector_offset,4096)
-        self.assertTrue(self.app.byte_table.exists("b4096"))
-        self.app.change_page(1)
-        self.assertEqual(len(self.app.byte_table.get_children()),2048)
-        self.assertTrue(self.app.byte_table.exists("b10239"))
+        self.app.table.selection_set(self.app.order[-1]);pane=self.app.analyze().payload
+        self.assertEqual(len(pane.byte_table.get_children()),4096)
+        pane.change_page(1)
+        self.assertEqual(pane.page,1)
+        self.assertTrue(pane.byte_table.exists("b4096"))
+        pane.change_page(1)
+        self.assertEqual(len(pane.byte_table.get_children()),2048)
+        self.assertTrue(pane.byte_table.exists("b10239"))
 
     def test_live_terminal_preserves_raw_capture(self):
         self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
         self.app.toggle();self.spin(lambda:self.app.engine.ready)
-        self.app.notebook.select(4)
+        self.app.notebook.select(self.app.terminal)
         wire=b"\x1b[31mRED\x1b[0m\r\nREADY> "
         self.app.engine.send(wire)
         self.spin(lambda:"READY>" in "".join(self.app.terminal.model.screen.display))
@@ -415,7 +504,7 @@ class UISmoke(unittest.TestCase):
         wire=b'000001{"data":{"sessionId":"123","code":"000"}}'
         self.app.add_event(dict(kind="data",direction="RX",peer="COM34",time=time.time(),data=wire))
         self.app.table.selection_set(self.app.order[-1]);window=self.app.analyze();pane=window.protocol
-        self.app.update();self.assertTrue(self.app.analyze_button.winfo_ismapped())
+        self.app.update();self.assertFalse(hasattr(self.app,"analyze_button"))
         index=next(i for i,field in enumerate(pane.fields) if field.selector=="/data/sessionId")
         pane.view.selection_set(str(index));pane.highlight();pane.copy_path()
         self.assertEqual(self.app.clipboard_get(),"/data/sessionId")
