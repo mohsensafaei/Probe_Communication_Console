@@ -1,5 +1,15 @@
 # Changes
 
+## 1.2.0 (Windows / Linux)
+
+* Add a single Analyze entry beside traffic and context-menu shortcuts. Protocol Inspector decodes JSON (including ASCII body-length prefixes), explicit one-byte TLV or definite BER-TLV, with exact byte highlighting and copied field paths.
+* Add editable custom binary fields with integer/float/text interpretations, length and checksum validation, saved profiles and clear mismatch/truncation status.
+* Capture Diff compares selected messages or concatenated single-peer/direction streams from history/capture/binary files. Show added/removed/changed ranges, ignore JSON values or byte ranges, and export original bytes plus comparison rules/results.
+* Add optional response rules to sequences: JSON/TLV/byte extraction, named variables, literal/JSON/hex substitution, conditions and stable next/goto/finish/fail routes, including timeout routing. Recompute optional frame length/checksum after substitution.
+* Keep the simple sequence page. Response rules use separate Save reply values / Choose next step tabs, an explicit captured-field picker, Save/Cancel and always-visible editor actions. Initial and last received variables have their own dialog.
+* Version 3 sequence files retain variables/routing/templates while legacy/version 1/2 files still load. Missing variables/fields and dangling branch targets fail explicitly; loops, reply sizes and offline analysis are bounded. No new runtime dependencies.
+* Exercise new modules in source and frozen self-test/GUI diagnostics, including actual TCP extraction and templated sends. Add runnable read-only SESSION/STATUS simulator/sequence examples and a custom protocol profile.
+
 ## 1.1.2 (Windows / Linux)
 
 * Add a clear After interval / After a reply sequence control. Reply mode sends immediately after incoming data, with no interval delay, a shared timeout and visible waiting status. Stop cancels pending waits.

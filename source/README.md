@@ -1,6 +1,80 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.1.2** (Windows release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.2.0** (Windows release).
+
+### Analyze traffic without sending anything
+
+Select a traffic row and click **Analyze…**, or right-click it. The separate
+analysis window has two tabs; the main connection/send workflow stays unchanged.
+
+* **Protocol Inspector:** Auto recognizes UTF-8 JSON objects/arrays, optionally
+  preceded by 1–12 ASCII body-length digits. Select a field to highlight its exact
+  source bytes; **Copy field path** supplies its JSON pointer/TLV tag. Explicitly
+  choose **TLV (1-byte)** for one-byte tag/length fields, or **BER-TLV** for
+  definite-length BER (nested constructed tags included). Raw bytes are never
+  labeled as a guessed protocol. Incomplete data remains visible in the hex view.
+* **Custom fields…:** Add named fields with 0-based offsets and lengths (0 reads
+  the rest), text, signed/unsigned LE/BE integers or 4/8-byte floats. Length fields
+  validate a byte-range size; checksum fields validate SUM/XOR/LRC/CRC bytes over
+  an explicit range. End offsets are excluded. Blank ranges default to bytes after
+  a length field, or bytes preceding a checksum field. Profiles save/load JSON.
+  Try `examples/lab-protocol.json` with hex `30 30 30 30 30 33 41 42 43 06 13`.
+* **Capture Diff:** A defaults to the previous retained message from the same
+  direction/peer; B is the selected message. **Choose A/B…** can load history,
+  JSONL/CSV captures or binary files. Filter one peer/direction and select chunks
+  to combine in recorded order. This compares byte streams, not TCP read chunk
+  boundaries or capture timestamps. Alignment is heuristic; additions/removals
+  and replacements are explicit with original offsets.
+* **Ignore fields…:** Select JSON value fields (paths must exist on both sides),
+  or enter byte ranges such as `0:6 12:16`. Different JSON value lengths remain
+  aligned. Ranges must not overlap; changing length prefixes/checksums may need
+  separate ignores. Originals are unchanged. **Save comparison…** includes both
+  complete inputs, ignore rules and every difference range, including ignored
+  bytes. Protocol analysis supports 1 MiB; comparison 256 KiB per input.
+
+### Use reply values in a sequence
+
+The usual Choose messages → Set timing → Run workflow remains available.
+For a dynamic conversation, edit the request and click **Response & next step…**:
+
+1. In **Save reply values**, choose JSON, TLV, BER-TLV or fixed reply bytes.
+   **Pick field from captured reply…** lets you select captured chunks and then
+   the field. Name the variable, click **Add / update field**, then **Save rules**
+   and **Save message**. Manual JSON paths accept `data.sessionId` or the exact
+   JSON pointer `/data/sessionId`. Binary fields can stay Hex bytes or decode as
+   UTF-8 text / unsigned LE/BE integers. BER nested tags use `6F/84` notation.
+2. Edit the next request and use **Insert variable…**. `${sid}` inserts literal
+   text (raw bytes as hex in Hex mode). `${sid:json}` inserts a safely escaped
+   JSON value; use it without surrounding quotes: `{"sessionId":${sid:json}}`.
+   `${blob:hex}` inserts byte hex. Undefined variables stop before sending; no
+   placeholder text is sent. **Outgoing frame…** in the rules dialog can add an
+   ASCII length prefix and prefix/checksum/suffix after variable substitution.
+3. In **Choose next step**, optionally compare a variable using equals, not
+   equals, contains, greater than or less than. Choose Next message, Go to
+   message, Finish successfully or Fail test for true/false/timeout outcomes.
+   Goto targets retain stable IDs when reordered/renamed. Referenced messages
+   cannot be removed until their branch rules are changed. Stop cancels waits.
+4. **Variables…** on the sequence page defines initial Text/Hex/JSON values and
+   displays the latest received values. Initial values reset each cycle; each
+   extraction clears its previous value before waiting, preventing stale reuse
+   after a timeout. Saved fields publish atomically after all requested fields
+   arrive. Checks wait across receive chunks and use the sequence/message timeout.
+
+Reply rules do not execute Python or expressions. A missing field in complete
+JSON is an error; incomplete fields wait until timeout. Specific expected hex
+bytes still apply. Routes run after each repeated send; a timeout route skips
+remaining repeats. Go-to loops allow at most 10000 message visits per cycle.
+Replies/dynamically rendered messages are bounded to 1 MiB (legacy static
+sequences retain their 8 MiB total), extraction rules to 16 per message,
+initial variables to 64 and runtime variables to 256 / 8 MiB. Export uses version 3 when
+templates/rules/initial values are present, so older releases reject such files.
+Legacy shelves and version 1/2 sequences still load.
+
+For a complete hardware-free example, load `examples/variable-device.json` in
+one Probe simulator, connect another Probe as TCP Client, then load
+`examples/variable-sequence.json`. SESSION returns a session ID and response
+code; the condition selects a STATUS request containing that ID. These are
+synthetic read-only lab messages, not a vendor POS protocol.
 
 The instrument-panel UI takes visual inspiration from ASUS PC Probe II: an angular silver chassis, blue panels, recessed green readouts and geometric headings. Michroma, Rajdhani and Share Tech Mono are bundled under the SIL Open Font License and loaded privately on Windows/Linux, without installing system fonts. They are open fonts, not ASUS's proprietary typography. The Appearance button has been replaced by Test lab; data fonts can be resized with Ctrl +/-. The layout compresses on short displays; drag the divider to give the traffic table or byte inspector more room. Selecting Terminal opens up the work area and uses the terminal's direct keyboard controls; returning to another inspector tab restores the composer.
 

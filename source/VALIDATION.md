@@ -1,4 +1,4 @@
-# Probe 1.1.2 Windows validation
+# Probe 1.2.0 Windows validation
 
 ## Native Windows gate
 
@@ -24,13 +24,13 @@ Physical hardware tests are opt-in.
 
 ## Local cross-platform checks
 
-On the Linux development host, 71 backend tests passed (78 total,
+On the Linux development host, 85 backend tests passed (92 total,
 6 attached-device tests and one unprivileged-permission check skipped). COM-pair tests use actual pySerial `socket://`
 endpoints: all 256 byte values, duplex proxying, both injection sides, exact
 captures, ordered stateful replies, reset, endpoint ownership and disconnect
 cleanup. These verify the shared serial path, not a Windows kernel COM driver.
 
-All 19 local GUI tests passed with an isolated X display and temporary preferences. The COM
+All 24 local GUI tests passed with an isolated X display and temporary preferences. The COM
 configuration test presents the Windows panel and exchanges real serial socket
 bytes. Native CI provides the evidence for Windows UI and executable packaging.
 
@@ -40,7 +40,7 @@ wire, Run/Save/table consistency, independent composer timing, preserved mixed
 imported delays and reply checks, legacy defaults, editor validation/cancel,
 continuous Stop and editing locks. Minimum layouts were visually checked at
 980×680 (sequence page), 800×500 (capture picker), 700×480 (simple editor) and
-760×560 (advanced editor), including visible action buttons and status. This is
+700×620 (advanced editor), including visible action buttons and status. This is
 Linux Tk evidence; the Windows workflow must pass separately for native builds.
 
 Reply-mode regressions cover withheld replies blocking the following send,
@@ -51,6 +51,24 @@ GUI checks verify on-wire gating, waiting status, Stop, disabled timing controls
 mode switching without baking reply flags into messages, JSON round trips and
 button text contrast of at least 4.5:1, including disabled hover states. Buttons
 retain keyboard focus with a solid border and no dotted label overlay.
+
+Version 1.2 checks also cover exact JSON byte spans with nested UTF-8/escapes,
+length mismatch/partial data, TLV/BER nesting and bounds, custom integer/length/
+checksum fields, additions/removals and ignored JSON values of different lengths.
+Reports are verified to preserve both original byte streams. Sequence checks
+exercise actual TCP fragmented replies, extraction/conditional goto, dynamic
+JSON escaping, rebuilt lengths/checksums, binary variables, timeout routing,
+stale-value clearing, missing variables stopping before send and Stop during a
+structured reply wait. GUI tests include the captured-field picker, Save/Cancel,
+stable target IDs after reordering, v3 export/import with initial variables,
+offline analysis not starting a transport and actual templated TCP sending.
+
+Minimum new layouts were inspected at 920×680 (analysis), 820×680 (both response
+rule tabs), 720×540 (variables) and 620×410 (frame options). The advanced message
+editor reserves Save/Cancel before other content and enforces a taller minimum.
+Frozen self-test exercises protocol/comparison and a dynamic TCP conversation;
+frozen GUI diagnostics instantiate both analysis tabs and response/variable
+dialogs so missing lazily imported modules cannot pass the portable gate.
 
 ## Physical USB and COM-pair drivers
 

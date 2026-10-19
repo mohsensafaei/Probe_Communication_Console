@@ -370,16 +370,17 @@ class Engine:
             except Exception as exc: self.event("error", message=f"Control line: {exc}")
         self.schedule(change())
 
-    def start_scenario(self, steps, cycles=1, target="All clients", side="Device / upstream"):
+    def start_scenario(self, steps, cycles=1, target="All clients", side="Device / upstream", variables=None):
         from .scenario import integer, run_scenario
+        from .sequence_flow import needs_reply
         if not self.ready: raise RuntimeError("Connect before running a test sequence.")
         if self.cfg["mode"] == "Device Simulator":
             raise ValueError("Run sequences from an application transport; the simulator replies to its clients.")
         cycles = integer(cycles, "Cycles", 0, 1000000)
         if not steps: raise ValueError("Add a sequence step first.")
-        if target == "All clients" and len(self.clients) > 1 and any(step.expect or step.wait_for_reply for step in steps):
+        if target == "All clients" and len(self.clients) > 1 and any(needs_reply(step) for step in steps):
             raise ValueError("Select one client when checking expected replies.")
-        if (target == "All clients" and len(self.clients) == 1 and any(step.expect or step.wait_for_reply for step in steps)
+        if (target == "All clients" and len(self.clients) == 1 and any(needs_reply(step) for step in steps)
                 and (self.cfg["mode"] in ("TCP Client", "TCP Server", "TCP Proxy") or side == "App / downstream")):
             target = next(iter(self.clients))
         self.scenario_generation += 1
@@ -390,7 +391,7 @@ class Engine:
                 self.scenario_task.cancel()
                 await asyncio.gather(self.scenario_task, return_exceptions=True)
             if generation != self.scenario_generation: return
-            task = asyncio.create_task(run_scenario(self, steps, cycles, target, side))
+            task = asyncio.create_task(run_scenario(self, steps, cycles, target, side, variables))
             self.scenario_task = task
             self.tasks.add(task)
             task.add_done_callback(self.tasks.discard)

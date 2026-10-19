@@ -76,6 +76,7 @@ class Probe(tk.Tk):
         self.simulator_endpoint = ""
         self.simulator_info = tk.StringVar(value="Simulator stopped. Build or load a device model to start.")
         self.sequence_info = tk.StringVar(value="Sequence idle. Connect a transport, add steps, then Run sequence.")
+        self.sequence_values = {}
         self.terminal_popup=None
         self.terminal_popout_pane=None
         self.file_cancel = threading.Event()
@@ -98,7 +99,8 @@ class Probe(tk.Tk):
                         frame_size="16", gap="50", view="Text + Hex", search="", direction="All",
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
                         theme="Probe II", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
-                        sequence_advance="After interval", sequence_reply_timeout="2000", simulator_transport="TCP socket",
+                        sequence_advance="After interval", sequence_reply_timeout="2000", sequence_variables="{}",
+                        protocol_fields="[]", simulator_transport="TCP socket",
                         simulator_matching="Conversation order", simulator_timing="1")
         for k,v in defaults.items(): self.vars[k] = tk.StringVar(value=v)
         self.vars["dtr"] = tk.BooleanVar(value=False); self.vars["rts"] = tk.BooleanVar(value=False)
@@ -288,6 +290,8 @@ class Probe(tk.Tk):
         self.traffic_options=options
         self.history_label=self.label(options,"0 events",9,color=c["muted"],width=18,anchor="w"); self.history_label.pack(side="left")
         self.combo(options,"view",["Text + Hex","Text","Hex","Decimal"],width=11,callback=self.refresh).pack(side="left",padx=8)
+        self.analyze_button=ttk.Button(options,text="Analyze…",command=self.analyze)
+        self.analyze_button.pack(side="left")
         ttk.Button(options,text="Framing",command=self.framing_dialog).pack(side="right",padx=4)
         ttk.Button(options,text="Raw RX file",command=self.raw_record).pack(side="right",padx=4)
         ttk.Checkbutton(options,text="Follow",variable=self.vars["autoscroll"]).pack(side="right")
@@ -570,6 +574,7 @@ class Probe(tk.Tk):
             elif kind=="file_done":self.pressed=False;self.file_button.configure(text="Send file")
             elif kind == "scenario":
                 self.sequence_info.set(event["message"])
+                if "variables" in event:self.sequence_values=event["variables"]
                 self.set_status(event["message"], event["state"] == "failed")
             elif kind == "simulator":
                 self.simulator_info.set(self.simulator_endpoint + " · " + event["message"])
@@ -717,6 +722,9 @@ class Probe(tk.Tk):
         row=self.table.identify_row(event.y)
         if row:self.table.selection_set(row)
         menu=tk.Menu(self,tearoff=False,bg=self.colors["panel"],fg=self.colors["text"])
+        menu.add_command(label="Protocol Inspector…",command=self.analyze)
+        menu.add_command(label="Compare with previous / other traffic…",command=lambda:self.analyze("Compare"))
+        menu.add_separator()
         menu.add_command(label="Load payload into composer",command=self.load_selected_payload)
         menu.add_command(label="Copy hex",command=self.copy_hex)
         menu.add_command(label="Save exact bytes",command=self.save_bytes)
@@ -727,6 +735,10 @@ class Probe(tk.Tk):
         menu.add_command(label="Reset byte counters",command=self.reset_counters)
         try:menu.tk_popup(event.x_root,event.y_root)
         finally:menu.grab_release()
+
+    def analyze(self,tab="Protocol"):
+        from .analysis_ui import open_analysis
+        return open_analysis(self,tab)
 
     def load_selected_payload(self):
         event=self.selected()
@@ -967,8 +979,9 @@ class Probe(tk.Tk):
     def macro_dialog(self):
         return self.test_lab(1)
 
-    def run_sequence(self, rows=None, cycles=None):
+    def run_sequence(self, rows=None, cycles=None, variables=None):
         from .scenario import compile_steps, integer
+        from .sequence_flow import initial_variables
         self.stop_sequence(); self.stop_repeat(); self.stop_replay()
         try:
             if not self.engine or not self.engine.ready:
@@ -976,7 +989,9 @@ class Probe(tk.Tk):
             steps = compile_steps(self.macros, int(self.vars["interval"].get())) if rows is None else compile_steps(rows, 100)
             if cycles is None:
                 cycles = 0 if self.vars["sequence_loop"].get() else integer(self.vars["sequence_cycles"].get(), "Cycles", 0, 1000000)
-            self.engine.start_scenario(steps, cycles, self.vars["target"].get(), self.vars["side"].get())
+            if variables is None:variables=initial_variables(json.loads(self.vars["sequence_variables"].get()))
+            self.sequence_values={}
+            self.engine.start_scenario(steps, cycles, self.vars["target"].get(), self.vars["side"].get(), variables)
             self.sequence_info.set("Starting test sequence…")
             return True
         except (ValueError, RuntimeError, TypeError) as exc:
@@ -1107,6 +1122,8 @@ class Probe(tk.Tk):
             "SHORTCUTS\nCtrl+Enter: send · Ctrl+L: clear · Ctrl+S: export · Ctrl +/-: font · F1: help\n\n"
             "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Keyboard for direct input. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Pop out opens a larger live screen. One peer is displayed at a time.\n\n"
             "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to load exact bytes into the composer.\n\n"
+            "ANALYZE TRAFFIC\nSelect a row, then Analyze. Protocol Inspector shows JSON, explicit TLV/BER-TLV or custom binary fields; selecting a field highlights its bytes. Copy field path supplies a sequence selector. Custom fields can validate lengths/checksums and save profiles. Capture Diff compares messages or combined same-peer/direction capture chunks, highlights changed/added/removed ranges and can ignore JSON values or byte ranges. Save comparison retains all original bytes. These tools send nothing.\n\n"
+            "DYNAMIC SEQUENCES\nEdit message > Response & next step: Save reply values picks JSON/TLV/byte fields and names variables; Choose next step adds conditions and next/goto/finish/fail/timeout actions. Save rules, then Save message. Insert variable adds ${name}, ${name:json} (a JSON value without surrounding quotes) or ${name:hex}. Variables defines initial values and shows latest reply values. Outgoing frame can rebuild length/checksum after substitution. Missing values stop before sending. Version 3 exports retain rules; legacy files still load.\n\n"
             "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
             "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket, Windows virtual COM pair or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
             "TEST SEQUENCES\nChoose messages, then Send next message: After interval or After a reply. Reply mode sends the first immediately and waits after every send, including the last, with no interval delay. Set Reply timeout; missing replies stop the run. Any nonempty incoming chunk from the destination counts, including unsolicited data. Edit message > Advanced > Expected reply can require specific hex bytes across chunks. Interval mode retains shared/individual delays and optional reply checks. Run once, Repeat a set number or Repeat until stopped. Stop cancels waits and pending sends. Save/Load preserves the effective behavior. Timing is best effort, not hard real-time.\n\n"
@@ -1183,6 +1200,19 @@ def main():
                 for tab in (0, 1):
                     app.testlab_notebook.select(tab)
                     app.update_idletasks()
+                for payload in (b'{"sessionId":"1"}',b'{"sessionId":"123"}'):
+                    app.add_event(dict(kind="data",direction="RX",peer="smoke",time=time.time(),data=payload))
+                app.table.selection_set(app.order[-1])
+                analysis=app.analyze()
+                app.update_idletasks()
+                if not any(field.selector=="/sessionId" for field in analysis.protocol.fields):raise RuntimeError("Protocol Inspector failed in bundle.")
+                if not analysis.comparison.differences:raise RuntimeError("Capture Diff failed in bundle.")
+                analysis.destroy()
+                pane=app.sequence_panel
+                app.macros=[dict(name="Smoke template",text="${sid}",flow=dict(extract=[dict(name="sid",source="JSON",selector="sessionId")]))]
+                pane.refresh();pane.open_editor(0)
+                rules=pane.response_rules();rules.tabs.select(1);app.update_idletasks();rules.destroy();pane.editor.destroy()
+                variables=pane.variables_dialog();app.update_idletasks();variables.destroy()
                 if app.terminal.error: raise RuntimeError(app.terminal.error)
             except Exception as exc:
                 report(False, str(exc))

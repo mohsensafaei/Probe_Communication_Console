@@ -411,6 +411,103 @@ class UISmoke(unittest.TestCase):
         # The dotted element is removed, but keyboard focus is still supported.
         self.assertTrue(pane.stop_button.cget("takefocus"))
 
+    def test_protocol_inspector_exact_field_highlight_and_custom_profile(self):
+        wire=b'000001{"data":{"sessionId":"123","code":"000"}}'
+        self.app.add_event(dict(kind="data",direction="RX",peer="COM34",time=time.time(),data=wire))
+        self.app.table.selection_set(self.app.order[-1]);window=self.app.analyze();pane=window.protocol
+        self.app.update();self.assertTrue(self.app.analyze_button.winfo_ismapped())
+        index=next(i for i,field in enumerate(pane.fields) if field.selector=="/data/sessionId")
+        pane.view.selection_set(str(index));pane.highlight();pane.copy_path()
+        self.assertEqual(self.app.clipboard_get(),"/data/sessionId")
+        self.assertTrue(pane.hex.tag_ranges("field"))
+        self.assertEqual(wire[pane.fields[index].offset:pane.fields[index].offset+pane.fields[index].size],b'"123"')
+        editor=pane.edit_fields();editor.edit();editor.field_variables["name"].set("Size")
+        editor.field_variables["kind"].set("Length ASCII");editor.field_variables["length"].set("6")
+        editor.save_field();editor.save();self.app.update()
+        self.assertEqual(pane.fields[0].name,"Size")
+        self.assertEqual(pane.fields[0].status,"Mismatch")
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"protocol.json"
+            with patch("probe.analysis_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save_profile()
+            pane.set_fields([])
+            with patch("probe.analysis_ui.filedialog.askopenfilename",return_value=str(path)):pane.load_profile()
+            self.assertEqual(pane.fields[0].name,"Size")
+        self.assertIsNone(self.app.engine)
+
+    def test_capture_diff_ignore_json_field_and_report_preserves_bytes(self):
+        a=b'{"sid":"1","amount":100}';b=b'{"sid":"longer","amount":100}'
+        for index,data in enumerate((a,b)):self.app.add_event(dict(kind="data",direction="RX",peer="COM34",time=time.time()+index,data=data))
+        self.app.table.selection_set(self.app.order[-1]);window=self.app.analyze("Compare");pane=window.comparison
+        self.app.update();self.assertEqual((pane.a,pane.b),(a,b))
+        dialog=pane.ignore_dialog();self.app.update()
+        iid=next(i for i in pane.ignore_view.get_children() if pane.ignore_view.set(i,"path")=="/sid")
+        pane.ignore_view.selection_set(iid);pane.apply_ignores();self.app.update()
+        self.assertFalse(dialog.winfo_exists())
+        self.assertEqual([item.kind for item in pane.differences if item.kind!="equal"],["ignored"])
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"diff.json"
+            with patch("probe.analysis_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save()
+            report=json.loads(path.read_text());self.assertEqual(bytes.fromhex(report["a_hex"]),a);self.assertEqual(bytes.fromhex(report["b_hex"]),b)
+        self.assertIsNone(self.app.engine)
+
+    def test_analysis_picker_combines_chunks_without_replacing_history(self):
+        from probe.analysis_ui import TrafficPicker
+        original=[("RX",b'{"sid":'),("TX",b"A"),("RX",b'"123"}')]
+        for n,(direction,data) in enumerate(original):self.app.add_event(dict(kind="data",direction=direction,peer="COM34",time=time.time()+n,data=data))
+        result=[];picker=TrafficPicker(self.app,lambda data,label:result.append(data));self.app.update()
+        picker.view.selection_set(picker.view.get_children());picker.choose()
+        self.assertEqual(result,[b'{"sid":"123"}'])
+        self.assertEqual([self.app.events[i]["data"] for i in self.app.order],[data for _,data in original])
+
+    def test_sequence_response_rules_picker_cancel_ids_and_v3_export(self):
+        from probe.scenario import compile_steps
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        self.app.macros=[dict(name="Ready",text="PING",delay_ms=0),dict(name="Use session",text="${sid}",delay_ms=0)]
+        pane.individual.set(True);pane.refresh();pane.open_editor(0)
+        rules=pane.response_rules();self.app.update()
+        rules.reply_chosen(b'{"data":{"sessionId":"123"}}',"Example reply")
+        iid=next(i for i in rules.reply_field_view.get_children() if rules.reply_field_view.set(i,"field")=="/data/sessionId")
+        rules.reply_field_view.selection_set(iid);rules.choose_reply_field();rules.name.set("sid");rules.put()
+        rules.check.set(True);rules.condition_variable.set("sid");rules.expected.set("123");rules.toggle_condition()
+        rules.geometry("820x680");rules.tabs.select(1);self.app.update()
+        for _,_,line in rules.routes.values():
+            self.assertTrue(line.winfo_ismapped())
+            self.assertLess(line.winfo_rooty()+line.winfo_height(),rules.winfo_rooty()+rules.winfo_height()-70)
+        rules.routes["on_true"][0].set("Go to message");rules.routes["on_true"][1].set(next(label for label in rules.destinations if label.startswith("2 ·")))
+        rules.save();pane.save_editor()
+        compiled=compile_steps(pane.effective_rows())
+        self.assertEqual(compiled[0].flow.extract[0].selector,"/data/sessionId")
+        target=compiled[1].step_id;self.assertEqual(compiled[0].flow.on_true.target,target)
+        pane.table.selection_set("1");pane.move(-1)
+        self.assertEqual(compile_steps(pane.effective_rows())[1].flow.on_true.target,target)
+        pane.open_editor(1);pane.response_rules().clear();pane.editor.destroy()
+        self.assertTrue(self.app.macros[1].get("flow"))
+        variables=pane.variables_dialog();variables.name.set("amount");variables.kind.set("JSON");variables.value.set("100");variables.put();variables.save()
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"flow.json"
+            with patch("probe.sequence_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
+            document=json.loads(path.read_text());self.assertEqual(document["version"],3);self.assertIn("amount",document["variables"])
+            self.app.macros=[]
+            with patch("probe.sequence_ui.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
+            self.assertEqual(compile_steps(pane.effective_rows())[1].flow.on_true.target,target)
+
+    def test_sequence_variables_and_branch_run_over_real_tcp(self):
+        import socket
+        from test_sequence_flow import rows
+        self.app.macro_dialog();pane=self.app.sequence_panel
+        self.app.macros=rows();pane.individual.set(True);pane.refresh()
+        self.app.choose_mode("TCP Server");self.app.vars["listen_port"].set("0");self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        with socket.create_connection(self.app.engine.server.sockets[0].getsockname()[:2],timeout=3) as device:
+            self.spin(lambda:len(self.app.engine.clients)==1);pane.run()
+            self.assertEqual(device.recv(4),b"PING");device.sendall(b'{"data":{"sessionId":"123"}}')
+            wire=bytearray()
+            while len(wire)<6:wire.extend(device.recv(6-len(wire)))
+            size=int(wire);body=bytearray()
+            while len(body)<size:body.extend(device.recv(size-len(body)))
+            self.assertEqual(json.loads(body)["sessionId"],"123")
+            self.spin(lambda:"Sequence complete" in pane.status.get())
+            self.assertEqual(self.app.sequence_values["sid"],"123")
+
     def test_lab_com_pair_configuration_and_application_endpoint(self):
         import socket
         now = time.time()

@@ -1,8 +1,10 @@
 """A short sequence workflow: choose bytes, set timing, send to a visible endpoint."""
 import json
+import copy
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from uuid import uuid4
 
 from .capture import load_capture
 from .codec import visible
@@ -77,6 +79,8 @@ class SequencePane(ttk.Frame):
         self.button(bar, "Move up", lambda: self.move(-1)).pack(side="left", padx=(0, 6))
         self.button(bar, "Move down", lambda: self.move(1)).pack(side="left", padx=(0, 6))
         self.button(bar, "Duplicate", self.duplicate).pack(side="left")
+        self.variables_button=ttk.Button(bar,text="Variables…",command=lambda:self.action(self.variables_dialog))
+        self.variables_button.pack(side="right")
 
         ttk.Label(below, text="2. Set timing", font=(app.ui_font, 16, "bold")).pack(anchor="w", pady=(4, 2))
         timing = ttk.Frame(below)
@@ -312,8 +316,9 @@ class SequencePane(ttk.Frame):
             if index < len(steps):
                 step = steps[index]
                 options = ", ".join(x for x in (f"×{step.repeat}" if step.repeat > 1 else "",
-                                                "Match reply" if step.expect else "Any reply" if step.wait_for_reply else "") if x) or "—"
-                values = (step.name, len(step.payload), step.delay_ms, options, visible(step.payload[:64]))
+                                                "Rules" if step.flow else "Match reply" if step.expect else "Any reply" if step.wait_for_reply else "") if x) or "—"
+                values = (step.name, "dynamic" if step.template else len(step.payload), step.delay_ms, options,
+                          str(row.get("text",""))[:64] if step.template else visible(step.payload[:64]))
             else:values = (row.get("name", "Invalid message"), "?", "?", "Check settings", "")
             self.table.insert("", "end", iid=str(index), values=values)
         chosen = str(selected) if selected is not None else previous[0] if previous else None
@@ -363,12 +368,18 @@ class SequencePane(ttk.Frame):
         self.edit_index = index
         delay = 100 if self.reply_mode() else integer(self.interval.get(), "Interval (ms)", 0, MAX_DELAY)
         row = self.editable_rows()[index] if index is not None else dict(name="New message", text="", send_mode="Hex", delay_ms=delay)
-        step = compile_steps([row], 100)[0] if index is not None else None
+        step = compile_steps([row], 100, check_targets=False)[0] if index is not None else None
+        self.editor_flow=copy.deepcopy(row.get("flow",{}))
+        self.editor_step_id=row.get("step_id","")
+        self.editor_packet=dict(checksum="None",prefix="",suffix="",length_prefix=0)
         self.editor_wait.set(bool(step and step.wait_for_reply))
         self._editor_timeout = str(step.timeout_ms if step else 2000)
         defaults = dict(name=step.name if step else row["name"], send_mode="Hex", encoding="utf-8", ending="None",
                         delay_ms=str(step.delay_ms if step else delay), repeat=str(step.repeat if step else 1),
                         expect=step.expect.hex(" ").upper() if step else "", timeout_ms=self.reply_timeout.get() if self.reply_mode() else self._editor_timeout)
+        if step and step.template:
+            defaults.update(send_mode=row.get("send_mode","Text"),encoding=row.get("encoding","utf-8"),ending=row.get("ending","None"))
+            self.editor_packet={key:row.get(key,default) for key,default in self.editor_packet.items()}
         for key, value in defaults.items():self.fields[key].set(value)
         win = tk.Toplevel(self)
         self.editor = win
@@ -376,18 +387,26 @@ class SequencePane(ttk.Frame):
         win.geometry("760x520");win.minsize(700, 480)
         win.transient(self.winfo_toplevel());win.configure(bg=self.app.colors["panel"])
         body = ttk.Frame(win, padding=16);body.pack(fill="both", expand=True)
+        # Reserve actions first so even an expanded editor cannot push Save or
+        # Cancel out of the window. Advanced options have a taller minimum.
+        footer = ttk.Frame(body);footer.pack(side="bottom",fill="x",pady=(4,0))
+        self.editor_feedback = tk.StringVar()
+        ttk.Label(body,textvariable=self.editor_feedback,wraplength=660).pack(side="bottom",anchor="w",pady=6)
         ttk.Label(body, text="Edit message" if index is not None else "New message", font=(self.app.ui_font, 18, "bold")).pack(anchor="w")
         rowbox = ttk.Frame(body);rowbox.pack(fill="x", pady=8);rowbox.columnconfigure(0, weight=1)
         self.field(rowbox, "Message name", self.fields["name"], 0, width=36)
         self.field(rowbox, "Format", self.fields["send_mode"], 1, ["Hex", "Text", "Escaped", "Decimal", "Hercules"], 12)
-        ttk.Label(body, text="Payload — saved bytes are sent exactly as shown").pack(anchor="w")
+        ttk.Label(body, text="Payload — write bytes/text, or insert a saved reply variable").pack(anchor="w")
         self.payload = self.app.text_widget(body, height=3, wrap="word");self.payload.pack(fill="both", expand=True, pady=6)
-        if step:self.payload.insert("1.0", step.payload.hex(" ").upper())
+        if step:self.payload.insert("1.0", str(row.get("text","")) if step.template else step.payload.hex(" ").upper())
         advanced = ttk.Frame(body)
         expanded = tk.BooleanVar(value=bool(step and (step.expect or step.wait_for_reply or step.repeat > 1)) or (self.individual.get() and not self.reply_mode()))
         def toggle():
-            if expanded.get():advanced.pack(fill="x", after=toggle_button, pady=4)
-            else:advanced.pack_forget()
+            if expanded.get():
+                win.minsize(700,620)
+                advanced.pack(fill="x", after=toggle_button, pady=4)
+            else:
+                win.minsize(700,480);advanced.pack_forget()
         toggle_button = ttk.Checkbutton(body, text="Advanced: line ending, individual delay, repeat and reply check", variable=expanded, command=toggle)
         toggle_button.pack(anchor="w", pady=4)
         first = ttk.Frame(advanced);first.pack(fill="x", pady=3)
@@ -405,10 +424,11 @@ class SequencePane(ttk.Frame):
             timeout_widget.configure(state="disabled");wait_check.configure(state="disabled")
         ttk.Label(advanced, text="Reply mode uses the sequence timeout and no delay. In interval mode, reply checks run before the delay.", wraplength=690).pack(anchor="w")
         toggle()
-        self.editor_feedback = tk.StringVar(value="Waits for a reply using the sequence timeout. Expected bytes above can require a specific response." if self.reply_mode()
-                                            else "Uses the shared interval. Enable individual delays on the sequence page to customize timing." if not self.individual.get() else "")
-        ttk.Label(body, textvariable=self.editor_feedback, wraplength=700).pack(anchor="w", pady=6)
-        footer = ttk.Frame(body);footer.pack(fill="x", pady=(4, 0))
+        self.editor_feedback.set("Waits for a reply using the sequence timeout. Expected bytes above can require a specific response." if self.reply_mode()
+                                 else "Uses the shared interval. Enable individual delays on the sequence page to customize timing." if not self.individual.get() else "")
+        ttk.Button(footer,text="Insert variable…",command=self.insert_variable).pack(side="left")
+        self.rules_button=ttk.Button(footer,text="Response & next step…",command=lambda:self.action(self.response_rules))
+        self.rules_button.pack(side="left",padx=6)
         ttk.Button(footer, text="Cancel", command=win.destroy).pack(side="right", padx=6)
         ttk.Button(footer, text="Save message", style="Accent.TButton", command=lambda: self.action(self.save_editor)).pack(side="right")
         win.bind("<Escape>", lambda event: win.destroy());win.grab_set()
@@ -428,8 +448,10 @@ class SequencePane(ttk.Frame):
         if not self.individual.get() and not self.reply_mode():row["delay_ms"] = self.interval.get()
         if self.reply_mode():row["timeout_ms"] = self._editor_timeout
         if self.editor_wait.get():row["wait_for_reply"] = True
-        row.update(text=self.payload.get("1.0", "end-1c"), checksum="None", prefix="", suffix="")
-        compile_steps([row], 100)
+        row.update(text=self.payload.get("1.0", "end-1c"), **self.editor_packet)
+        if self.editor_flow:row["flow"]=copy.deepcopy(self.editor_flow)
+        if self.editor_step_id:row["step_id"]=self.editor_step_id
+        compile_steps([row], 100, check_targets=False)
         return row
 
     def save_editor(self):
@@ -449,12 +471,20 @@ class SequencePane(ttk.Frame):
     def duplicate(self):
         self.ensure_idle()
         index = self.selected_index();rows = self.editable_rows()
-        rows.insert(index+1, dict(rows[index]));compile_steps(rows, 100)
+        duplicate=copy.deepcopy(rows[index])
+        if duplicate.get("step_id"):
+            old=duplicate["step_id"];duplicate["step_id"]=uuid4().hex
+            for key in ("on_true","on_false","on_timeout"):
+                route=duplicate.get("flow",{}).get(key,{})
+                if route.get("target")==old:route["target"]=duplicate["step_id"]
+        rows.insert(index+1, duplicate);compile_steps(rows, 100)
         self.app.macros = rows;self.changed(index+1)
 
     def remove(self):
         self.ensure_idle()
-        index = self.selected_index();del self.app.macros[index]
+        index = self.selected_index();rows=list(self.app.macros);del rows[index]
+        if rows:compile_steps(rows,100)
+        self.app.macros=rows
         self.changed(min(index, len(self.app.macros)-1))
 
     def move(self, delta):
@@ -468,9 +498,11 @@ class SequencePane(ttk.Frame):
         path = filedialog.askopenfilename(parent=self, filetypes=[("Probe sequence", "*.json")])
         if not path:return
         if Path(path).stat().st_size > 24 * 1024 * 1024:raise ValueError("File is too large (24 MiB maximum).")
-        rows, cycles = sequence_from_dict(json.loads(Path(path).read_text(encoding="utf-8-sig")))
+        document=json.loads(Path(path).read_text(encoding="utf-8-sig"))
+        rows, cycles = sequence_from_dict(document)
         if self.app.macros and not messagebox.askyesno("Replace sequence", "Replace the current sequence with this file?", parent=self):return
         self.app.macros = rows;self.adopt_timing()
+        self.app.vars["sequence_variables"].set(json.dumps(document.get("variables",{}) if isinstance(document,dict) else {}))
         self.update_timing_controls()
         self._syncing = True
         try:
@@ -482,12 +514,17 @@ class SequencePane(ttk.Frame):
 
     def save_file(self):
         rows = self.effective_rows();cycles = self.run_cycles()
+        from .sequence_flow import initial_variables
+        definitions=json.loads(self.app.vars["sequence_variables"].get());initial_variables(definitions)
         path = filedialog.asksaveasfilename(parent=self, defaultextension=".json", filetypes=[("Probe sequence", "*.json")])
         if path:
             # Older releases ignore unknown per-step flags. Version 2 makes
             # them reject a reply-gated file instead of sending without waits.
             version = 2 if any(row.get("wait_for_reply") for row in rows) else 1
-            Path(path).write_text(json.dumps(dict(format="probe-sequence", version=version, cycles=cycles, steps=rows), indent=2), encoding="utf-8")
+            if definitions or any(step.template or step.flow for step in compile_steps(rows,100)):version=3
+            document=dict(format="probe-sequence",version=version,cycles=cycles,steps=rows)
+            if definitions:document["variables"]=definitions
+            Path(path).write_text(json.dumps(document, indent=2), encoding="utf-8")
             self.feedback.set("Saved the sequence with the timing, repetitions and reply checks that Run will use.")
 
     def run(self):
@@ -507,6 +544,27 @@ class SequencePane(ttk.Frame):
     def stop(self):
         self.app.stop_sequence();self._starting = False
         self.monitor_now()
+
+    def variables_dialog(self):
+        from .sequence_flow_ui import VariablesEditor
+        return VariablesEditor(self)
+
+    def response_rules(self):
+        from .sequence_flow_ui import ResponseRules
+        self.rules_window=ResponseRules(self);return self.rules_window
+
+    def insert_variable(self):
+        names=set(json.loads(self.app.vars["sequence_variables"].get()))
+        for row in self.app.macros:names.update(item["name"] for item in row.get("flow",{}).get("extract",[]))
+        names.update(item["name"] for item in self.editor_flow.get("extract",[]))
+        if not names:self.editor_feedback.set("No variables yet. Add initial values in Variables, or save a reply field in Response & next step.");return
+        menu=tk.Menu(self.editor,tearoff=False)
+        for name in sorted(names):
+            menu.add_command(label=name+(" — hex bytes" if self.fields["send_mode"].get()=="Hex" else " — literal text"),
+                             command=lambda key=name:self.payload.insert("insert","${"+key+"}"))
+            if self.fields["send_mode"].get()!="Hex":menu.add_command(label=name+" — JSON value",command=lambda key=name:self.payload.insert("insert","${"+key+":json}"))
+        try:menu.tk_popup(self.editor.winfo_pointerx(),self.editor.winfo_pointery())
+        finally:menu.grab_release()
 
 
 class CapturePicker(tk.Toplevel):

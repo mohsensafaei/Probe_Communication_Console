@@ -24,7 +24,9 @@ def verify(archive: Path) -> None:
         root = roots[0]
         executable = root / ("Probe.exe" if os.name == "nt" else "Probe")
         for required in (executable, root/"README.md", root/"LICENSE", root/"licenses"/"pyserial-LICENSE.txt",
-                         root/"examples"/"device-model.json", root/"examples"/"test-sequence.json"):
+                         root/"examples"/"device-model.json", root/"examples"/"test-sequence.json",
+                         root/"examples"/"lab-protocol.json", root/"examples"/"variable-sequence.json",
+                         root/"examples"/"variable-device.json"):
             if not required.is_file():
                 raise RuntimeError(f"Missing bundle input: {required.name}")
         if os.name == "nt":
