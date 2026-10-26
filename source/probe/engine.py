@@ -185,7 +185,7 @@ class Engine:
                 await self.simulator_send(data, target)
                 self.event("data", direction="RX", peer=target, data=data)
             elif mode == "UDP":
-                await self.loop.sock_sendto(self.udp, data, self.udp_target)
+                await self._udp_send(data, self.udp_target)
                 self.event("data", direction="TX", peer=str(self.udp_target), data=data)
             elif mode in ("USB / Serial", "Serial Proxy", "Serial ↔ TCP") and side == "Device / upstream":
                 await self._serial_write(self.serials[0], data)
@@ -295,12 +295,12 @@ class Engine:
             self.udp.setblocking(False)
             self._connected(f"UDP bound to {self.udp.getsockname()}", address=self.udp.getsockname())
             while True:
-                data, address = await self.loop.sock_recvfrom(self.udp, 65535)
+                data, address = await self._udp_receive()
                 peer = f"{address[0]}:{address[1]}"
                 self.event("data", direction="RX", peer=peer, data=data)
                 response = data if self.echo else self.auto_reply
                 if response is not None:
-                    await self.loop.sock_sendto(self.udp, response, address)
+                    await self._udp_send(response, address)
                     self.event("data", direction="TX", peer=peer, data=response)
         else:
             physical = self._port(cfg["serial_port"])
@@ -344,6 +344,21 @@ class Engine:
                 if time.monotonic() > next_lines:
                     self._lines(physical); next_lines = time.monotonic() + .5
                 await sleep_at_least(.01)
+
+    async def _udp_receive(self):
+        if hasattr(self.loop,"sock_recvfrom"):
+            return await self.loop.sock_recvfrom(self.udp,65535)
+        # Python 3.10 lacks the datagram socket coroutine helpers.
+        while True:
+            try:return self.udp.recvfrom(65535)
+            except (BlockingIOError,InterruptedError):await sleep_at_least(.001)
+
+    async def _udp_send(self,data,address):
+        if hasattr(self.loop,"sock_sendto"):
+            return await self.loop.sock_sendto(self.udp,data,address)
+        while True:
+            try:return self.udp.sendto(data,address)
+            except (BlockingIOError,InterruptedError):await sleep_at_least(.001)
 
     async def _app_write(self, data):
         if self.pty_fds:

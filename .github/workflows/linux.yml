@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   native-linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     defaults:
       run:
