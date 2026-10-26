@@ -45,7 +45,7 @@ class UISmoke(unittest.TestCase):
                 self.app.update();self.assertEqual(self.app.notebook.index(self.app.notebook.select()),wanted);return
         self.fail("Tab is not clickable: "+title)
 
-    def test_click_row_opens_one_analysis_window_with_all_message_views(self):
+    def test_double_click_row_opens_one_analysis_window_with_all_message_views(self):
         self.assertEqual([self.app.notebook.tab(tab,"text") for tab in self.app.notebook.tabs()],["Traffic","Live plot","Terminal"])
         for i,data in enumerate((b"FIRST\0\xff",b"SECOND\r\n")):
             self.app.add_event(dict(kind="data",time=time.time()+i,direction="RX",peer="COM34",data=data))
@@ -55,13 +55,16 @@ class UISmoke(unittest.TestCase):
             self.app.table.see(iid);self.app.update();x,y,w,h=self.app.table.bbox(iid,"payload")
             self.app.table.event_generate("<Button-1>",x=x+5,y=y+h//2)
             self.app.table.event_generate("<ButtonRelease-1>",x=x+5,y=y+h//2);self.app.update()
-        click(self.app.order[0]);win=self.app.analysis_window
+        self.assertTrue(self.app.table.bind("<Double-1>"))
+        self.assertFalse(self.app.table.bind("<ButtonRelease-1>"))
+        click(self.app.order[0]);self.assertFalse(hasattr(self.app,"analysis_window"))
+        self.app.traffic_clicked(SimpleNamespace(x=self.app.table.bbox(self.app.order[0],"payload")[0]+5,y=self.app.table.bbox(self.app.order[0],"payload")[1]+5));win=self.app.analysis_window
         self.assertEqual(win.data,b"FIRST\0\xff")
         self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Decoded text")
         self.assertIn("FIRST",win.payload.decoded.get("1.0","end"))
         self.assertIn("46 49 52 53 54 00 FF",win.payload.hextext.get("1.0","end"))
         win.tabs.select(win.payload.pages["Hex + ASCII"])
-        click(self.app.order[1]);self.assertIs(self.app.analysis_window,win)
+        click(self.app.order[1]);self.app.traffic_clicked(SimpleNamespace(x=self.app.table.bbox(self.app.order[1],"payload")[0]+5,y=self.app.table.bbox(self.app.order[1],"payload")[1]+5));self.assertIs(self.app.analysis_window,win)
         self.assertEqual(win.data,b"SECOND\r\n")
         self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Hex + ASCII")
         self.app.table.selection_set(self.app.order[0]);self.app.refresh();self.app.update()

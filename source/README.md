@@ -338,3 +338,5 @@ Settings retain timing/repeat choices separately from the composer's Repeat
 interval. Editing is locked during a run; Stop cancels future sends and waits.
 Synthetic runnable examples are `examples/device-model.json`
 and `examples/test-sequence.json`; they do not claim a vendor-specific POS protocol.
+
+Capture Diff: choose Reference (A) and Message (B). Comparison is automatic; select a difference to see its hex and decoded text. Single-click selects traffic; double-click opens Analyze.

@@ -251,15 +251,15 @@ class ComparePane(ttk.Frame,Actions):
         self.feedback=tk.StringVar();self.a_label=tk.StringVar(value=a_label);self.b_label=tk.StringVar(value=b_label)
         self.a_ready=bool(a) or a_label!="Choose A";self.b_ready=bool(b) or b_label!="Choose B"
         self.show_equal=tk.BooleanVar(value=False)
-        ttk.Label(self,text="Compare two messages or captured streams",font=(app.ui_font,16,"bold")).pack(anchor="w")
-        ttk.Label(self,text="Choose the same direction and peer on each side. Capture chunk boundaries are ignored.",wraplength=880).pack(anchor="w",pady=4)
+        ttk.Label(self,text="Compare messages",font=(app.ui_font,16,"bold")).pack(anchor="w")
+        ttk.Label(self,text="1. Choose a reference (A).   2. Choose a message to check (B).   Differences appear automatically.",wraplength=880).pack(anchor="w",pady=4)
         for letter,label in (("A",self.a_label),("B",self.b_label)):
             bar=ttk.Frame(self);bar.pack(fill="x",pady=3)
-            ttk.Button(bar,text=f"Choose {letter}…",command=lambda side=letter:self.choose(side)).pack(side="left",padx=(0,10))
+            ttk.Button(bar,text="1. Reference (A)…" if letter=="A" else "2. Message (B)…",command=lambda side=letter:self.choose(side)).pack(side="left",padx=(0,10))
             ttk.Label(bar,textvariable=label,wraplength=730).pack(side="left")
         bar=ttk.Frame(self);bar.pack(fill="x",pady=4)
         ttk.Button(bar,text="Swap A / B",command=lambda:self.action(self.swap)).pack(side="left")
-        ttk.Button(bar,text="Ignore fields…",command=self.ignore_dialog).pack(side="left",padx=6)
+        ttk.Button(bar,text="Ignore variable fields…",command=self.ignore_dialog).pack(side="left",padx=6)
         ttk.Checkbutton(bar,text="Show unchanged",variable=self.show_equal,command=self.render).pack(side="left",padx=6)
         ttk.Button(bar,text="Save comparison…",command=lambda:self.action(self.save)).pack(side="right")
         lower=ttk.Frame(self);lower.pack(side="bottom",fill="x")
@@ -267,9 +267,10 @@ class ComparePane(ttk.Frame,Actions):
         paging=ttk.Frame(lower);paging.pack(fill="x")
         ttk.Button(paging,text="← Previous",command=lambda:self.turn_page(-1)).pack(side="left")
         ttk.Button(paging,text="Next →",command=lambda:self.turn_page(1)).pack(side="left",padx=6)
+        ttk.Label(lower,text="Changed = different bytes · Added = only in B · Removed = only in A · Click a result for text and hex.",wraplength=880).pack(anchor="w",pady=4)
         self.page_label=tk.StringVar();ttk.Label(paging,textvariable=self.page_label).pack(side="left")
-        self.detail=app.text_widget(lower,height=4,wrap="none");self.detail.pack(fill="x",pady=6)
-        self.view=table(self,(("kind","Change",95),("a","A offset / bytes",115),("av","A (before)",270),("b","B offset / bytes",115),("bv","B (after)",270)))
+        self.detail=app.text_widget(lower,height=7,wrap="word");self.detail.pack(fill="x",pady=6)
+        self.view=table(self,(("kind","Change",95),("a","A offset / bytes",115),("av","Reference (A) · Hex",270),("b","B offset / bytes",115),("bv","Message (B) · Hex",270)))
         for kind,color in (("changed",app.colors["red"]),("added",app.colors["accent"]),("removed",app.colors["red"]),("ignored",app.colors["muted"])):self.view.tag_configure(kind,foreground=color)
         self.view.bind("<<TreeviewSelect>>",lambda e:self.show_detail());self.refresh()
 
@@ -286,11 +287,11 @@ class ComparePane(ttk.Frame,Actions):
 
     def refresh(self):
         self.differences=();self.view.delete(*self.view.get_children());self.app.put_text(self.detail,"")
-        if not self.a_ready or not self.b_ready:self.feedback.set("Choose A and B from traffic history, capture files or binary files.");return
+        if not self.a_ready or not self.b_ready:self.feedback.set("Choose a reference (A) and a message (B) above to begin. No traffic is sent.");return
         try:
             self.differences=compare_bytes(self.a,self.b,self.ranges,self.selectors)
             counts={kind:sum(max(d.a_end-d.a_start,d.b_end-d.b_start) for d in self.differences if d.kind==kind) for kind in ("changed","added","removed","ignored")}
-            self.feedback.set(f"A: {len(self.a)} bytes · B: {len(self.b)} bytes · "+" · ".join(f"{key}: {value}" for key,value in counts.items())+". Original bytes are preserved.")
+            self.feedback.set(("Messages match. " if not any(counts[k] for k in ("changed","added","removed")) else "Differences found. ")+f"A: {len(self.a)} bytes · B: {len(self.b)} bytes · "+" · ".join(f"{key}: {value}" for key,value in counts.items())+". Original bytes are preserved.")
         except (ValueError,TypeError) as exc:self.feedback.set(str(exc))
         self.render()
 
@@ -302,6 +303,8 @@ class ComparePane(ttk.Frame,Actions):
             self.view.insert("","end",iid=str(i),values=(item.kind.title(),f"{item.a_start} / {len(a)}",a[:24].hex(" ").upper()+(" …" if len(a)>24 else ""),
                              f"{item.b_start} / {len(b)}",b[:24].hex(" ").upper()+(" …" if len(b)>24 else "")),tags=(item.kind,))
         self.page_label.set(f"Page {self.page+1}/{pages} · {len(self.shown)} ranges")
+        children=self.view.get_children()
+        if children:self.view.selection_set(children[0]);self.show_detail()
         if not self.shown and self.differences:self.app.put_text(self.detail,"The inputs are identical. Enable Show unchanged to inspect their ranges.")
 
     def turn_page(self,delta):self.page+=delta;self.render()
@@ -312,6 +315,7 @@ class ComparePane(ttk.Frame,Actions):
         item=self.shown[int(ids[0])]
         a=self.a[item.a_start:min(item.a_end,item.a_start+2048)];b=self.b[item.b_start:min(item.b_end,item.b_start+2048)]
         text=f"{item.kind.upper()} · A [{item.a_start}:{item.a_end}] → B [{item.b_start}:{item.b_end}]\nA:\n{hexdump(a,item.a_start)}\nB:\n{hexdump(b,item.b_start)}"
+        text+="\nReference text: "+visible(a,self.app.vars["encoding"].get())+"\nMessage text: "+visible(b,self.app.vars["encoding"].get())
         if item.a_end-item.a_start>2048 or item.b_end-item.b_start>2048:text+="\n[Preview limited to 2048 bytes per side. Save comparison includes every byte.]"
         self.app.put_text(self.detail,text)
 
@@ -390,7 +394,7 @@ class PayloadViews:
 
     def render(self):
         start=self.page*4096;shown=self.data[start:start+4096]
-        self.app.put_text(self.decoded,visible(shown,self.encoding.get()) if shown else "Click a traffic row or Choose traffic to inspect a message.")
+        self.app.put_text(self.decoded,visible(shown,self.encoding.get()) if shown else "Double-click a traffic row or Choose traffic to inspect a message.")
         self.app.put_text(self.hextext,hexdump(shown,start))
         self.byte_table.delete(*self.byte_table.get_children())
         for offset,byte in enumerate(shown,start):
