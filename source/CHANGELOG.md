@@ -1,5 +1,12 @@
 # Changes
 
+## Visual identity refresh
+
+* Original connected-endpoint mark and lowercase Probe wordmark.
+* Flat graphite/teal/violet workbench, matching light palette, unified headings.
+* Removed metallic chassis, ornamental rails and faux meter stripes.
+* Retained transport workflows, keyboard focus and bundled OFL font notices.
+
 ## 1.2.1 (Windows / Linux)
 
 * Consolidate the main workspace into Traffic, Live plot and Terminal. Move decoded text, hex/ASCII and every-byte paging into Analyze; remove the extra Analyze button and lower inspector panel.

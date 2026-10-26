@@ -492,7 +492,7 @@ class UISmoke(unittest.TestCase):
             channels=[v/12.92 if v<=.04045 else ((v+.055)/1.055)**2.4 for v in channels]
             return sum(v*w for v,w in zip(channels,(.2126,.7152,.0722)))
         from probe.app import DARK, LIGHT
-        for theme,colors in (("Probe II",DARK),("Light",LIGHT)):
+        for theme,colors in (("Probe Dark",DARK),("Light",LIGHT)):
             self.app.vars["theme"].set(theme);self.app.colors=dict(colors);self.app._style()
             for style in ("TButton","Accent.TButton"):
                 self.assertNotIn("Button.focus",str(self.app.style.layout(style)))

@@ -108,3 +108,10 @@ hex and decoded text for the selected difference.
 Live plot accepts numeric RX lines ending in LF (for example `1,2,3\n`).
 Terminal displays RX immediately; enable **Send keyboard** to transmit keys.
 Linux automatic PTY support and the native portable build scripts are retained.
+
+## Probe visual identity
+
+The interface uses an original connected-endpoint mark, flat graphite surfaces,
+teal actions and violet TX highlights. Headings and controls share Rajdhani;
+byte data stays in Share Tech Mono. Light and dark palettes preserve the same
+transport controls and message workflows. No vendor logo or proprietary skin is used.
