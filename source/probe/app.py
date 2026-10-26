@@ -23,14 +23,15 @@ from .serial_endpoints import VirtualPair, simulator_transports
 from .typography import load_fonts, font_roles
 from .skin import Chassis, MeterStrip, Rail
 
-DARK = dict(bg="#121a28", panel="#202d43", input="#101c2e", border="#53637c",
-            text="#eef3fc", muted="#b0bfd4", accent="#b6ed8a", blue="#82c7ff",
-            red="#ff8b8b", select="#354963", metal="#b9c2cf", shine="#edf3fc",
-            ink="#243047", lcd="#0e1825")
-LIGHT = dict(bg="#d1d8e2", panel="#e8edf3", input="#f8fafc", border="#8698af",
-             text="#152941", muted="#50647e", accent="#36710d", blue="#16679e",
-             red="#b32737", select="#c6d6e7", metal="#bbc8d9", shine="#ffffff",
-             ink="#243951", lcd="#e0e9d6")
+# Probe's own neutral workbench palette: teal actions, violet transmitted data.
+DARK = dict(bg="#10171c", panel="#18232b", input="#101b22", border="#40535f",
+            text="#eef4f6", muted="#adbec8", accent="#63dfc3", blue="#b8b0ff",
+            red="#ff9caa", select="#304653", metal="#253640", shine="#354b58",
+            ink="#edf4f6", lcd="#142129")
+LIGHT = dict(bg="#e9eff1", panel="#f8fafb", input="#ffffff", border="#91a5af",
+             text="#172e39", muted="#48616e", accent="#006e5c", blue="#6051b1",
+             red="#ae2947", select="#d6e8e7", metal="#e0e9ed", shine="#cfdee4",
+             ink="#172e39", lcd="#eef4f5")
 
 def data_directory():
     base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
@@ -97,7 +98,7 @@ class Probe(tk.Tk):
                         prefix="", suffix="", interval="1000", framing="Chunks", delimiter="0A",
                         frame_size="16", gap="50", view="Text + Hex", search="", direction="All",
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
-                        theme="Probe II", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
+                        theme="Probe Dark", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
                         sequence_advance="After interval", sequence_reply_timeout="2000", sequence_variables="{}",
                         protocol_fields="[]", simulator_transport="TCP socket",
                         simulator_matching="Conversation order", simulator_timing="1")
@@ -113,7 +114,7 @@ class Probe(tk.Tk):
             self.vars["simulator_transport"].set("TCP socket")
         if os.name == "nt" and self.vars["app_port"].get() == "Auto PTY":
             self.vars["app_port"].set("COM20")
-        if self.vars["theme"].get() == "Midnight": self.vars["theme"].set("Probe II")
+        if self.vars["theme"].get() in ("Midnight","Probe II"): self.vars["theme"].set("Probe Dark")
         if self.vars["theme"].get() == "Light": self.colors = dict(LIGHT)
         self._style()
         self._build()
@@ -139,7 +140,7 @@ class Probe(tk.Tk):
         s.configure("TLabel", background=c["panel"], foreground=c["text"])
         s.configure("Muted.TLabel", foreground=c["muted"])
         s.configure("TButton", background=c["metal"], foreground=c["ink"], padding=(9,3), borderwidth=1,
-                    relief="raised", font=(self.ui_font,11,"bold"))
+                    relief="flat", font=(self.ui_font,11,"bold"))
         # Clam's Button.focus element draws a dotted rectangle over the label.
         # Keep normal keyboard traversal and indicate focus with a solid border.
         s.layout("TButton", [("Button.border", {"sticky":"nswe", "border":1, "children":[
@@ -149,7 +150,7 @@ class Probe(tk.Tk):
               bordercolor=[("!disabled","focus",c["blue"])],
               lightcolor=[("!disabled","focus",c["blue"])], darkcolor=[("!disabled","focus",c["blue"])],
               relief=[("disabled","flat"),("pressed","sunken")])
-        s.configure("Accent.TButton", background=c["accent"], foreground="#ffffff" if self.vars["theme"].get()=="Light" else "#1e3312", font=(self.ui_font,12,"bold"))
+        s.configure("Accent.TButton", background=c["accent"], foreground="#ffffff" if self.vars["theme"].get()=="Light" else "#102b27", font=(self.ui_font,12,"bold"))
         s.map("Accent.TButton", background=[("disabled",c["panel"]),("active",c["accent"])])
         s.configure("TEntry", fieldbackground=c["input"], foreground=c["text"], padding=3, insertcolor=c["accent"])
         s.configure("TCombobox", fieldbackground=c["input"], background=c["input"], foreground=c["text"],
@@ -163,7 +164,7 @@ class Probe(tk.Tk):
         s.configure("Treeview", background=c["panel"], fieldbackground=c["panel"], foreground=c["text"],
                     borderwidth=1, rowheight=31, font=(self.mono,self.font_size))
         s.map("Treeview", background=[("selected",c["select"])], foreground=[("selected",c["text"])])
-        s.configure("Treeview.Heading", background=c["metal"], foreground=c["ink"], relief="raised",
+        s.configure("Treeview.Heading", background=c["metal"], foreground=c["ink"], relief="flat",
                     font=(self.ui_font,10,"bold"), padding=3)
         s.map("Treeview.Heading", background=[("active",c["border"])])
         s.configure("Bytes.Treeview", rowheight=25, font=(self.mono,10))
@@ -182,7 +183,7 @@ class Probe(tk.Tk):
 
     def bezel(self, parent, **kw):
         return self.frame(parent, highlightbackground=self.colors["border"], highlightthickness=1,
-                          bd=2, relief="raised", **kw)
+                          bd=0, relief="flat", **kw)
 
     def combo(self, parent, key, values, width=15, callback=None, readonly=True):
         w = ttk.Combobox(parent, textvariable=self.vars[key], values=values, width=width,
@@ -201,11 +202,11 @@ class Probe(tk.Tk):
         self.sidebar = self.bezel(self,width=252); self.sidebar.pack(side="left",fill="y",padx=(12,0),pady=12)
         self.sidebar.pack_propagate(False)
         brand = tk.Frame(self.sidebar,bg=c["metal"]); brand.pack(fill="x",padx=5,pady=(5,12))
-        self.label(brand,"CONTROL PANEL",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(10,3))
-        self.label(brand,f"01–{len(MODES):02}  /  TRANSPORT SELECT",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,10))
+        self.label(brand,"CONNECTIONS",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(10,3))
+        self.label(brand,"Choose a transport",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,10))
         self.nav=[]
         for i,mode in enumerate(MODES):
-            button=tk.Button(self.sidebar,text=f"{i+1:02}    {mode}",anchor="w",relief="raised",bd=1,
+            button=tk.Button(self.sidebar,text=f"{i+1:02}    {mode}",anchor="w",relief="flat",bd=0,
                 bg=c["panel"],fg=c["muted"],activebackground=c["select"],activeforeground=c["accent"],
                 highlightthickness=0,
                 padx=13,pady=7,font=(self.ui_font,12,"bold"),cursor="hand2",command=lambda m=mode:self.choose_mode(m))
@@ -232,13 +233,13 @@ class Probe(tk.Tk):
                 self.config_canvas.yview_scroll(step,"units")
         self.bind_all("<MouseWheel>",wheel,add="+")
         self.bind_all("<Button-4>",wheel,add="+");self.bind_all("<Button-5>",wheel,add="+")
-        self.rail=Rail(self,self);self.rail.pack(side="left",fill="y",padx=(3,0),pady=24)
+        self.rail=Rail(self,self)  # Compatibility handle; no ornamental side rail.
         self.content=tk.Frame(self,bg=c["bg"]); self.content.pack(side="left",fill="both",expand=True,padx=12,pady=12)
         self.content.columnconfigure(0,weight=1);self.content.rowconfigure(3,weight=1)
         self.chassis=Chassis(self.content,self,bg=c["bg"]);self.chassis.grid(row=0,column=0,sticky="ew",pady=(0,10))
         header=tk.Frame(self.content,bg=c["bg"]); header.grid(row=1,column=0,sticky="ew",pady=(0,10))
         title=tk.Frame(header,bg=c["bg"]); title.pack(side="left")
-        self.hero=self.label(title,"SIGNAL WORKSPACE",16,True);self.hero.pack(anchor="w")
+        self.hero=self.label(title,"Signal workspace",16,True);self.hero.pack(anchor="w")
         self.subtitle=self.label(title,"Inspect the link. Keep the original bytes.",10,color=c["muted"])
         self.subtitle.pack(anchor="w",pady=(3,0))
         profile=tk.Frame(header,bg=c["bg"]); profile.pack(side="right")
@@ -259,7 +260,7 @@ class Probe(tk.Tk):
             self.stat_labels[name]=tk.Label(lcd,text="Disconnected" if name=="state" else "0 B" if name in ("tx","rx") else "00:00",
                                             bg=c["lcd"],fg=color,font=(self.mono,17),anchor="w")
             self.stat_labels[name].pack(fill="x",padx=10,pady=(4,4))
-            strip=MeterStrip(lcd,self,bg=c["lcd"]);strip.pack(fill="x",padx=10,pady=(0,3))
+
         self.notebook=ttk.Notebook(self.content);self.notebook.grid(row=3,column=0,sticky="nsew")
         traffic=self.bezel(self.notebook);self.traffic_tab=traffic;self.notebook.add(traffic,text="Traffic")
         traffic.columnconfigure(0,weight=1);traffic.rowconfigure(1,weight=1)
@@ -326,7 +327,7 @@ class Probe(tk.Tk):
         mode=self.vars["mode"].get(); c=self.colors
         for button,m in zip(self.nav,MODES):
             button.configure(bg=c["select"] if m==mode else c["input"],fg=c["accent"] if m==mode else c["muted"],
-                             relief="sunken" if m==mode else "raised")
+                             relief="flat")
         for w in self.config_frame.winfo_children(): w.destroy()
         self.config_canvas.yview_moveto(0)
         self.config_controls=[]

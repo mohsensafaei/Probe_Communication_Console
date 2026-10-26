@@ -148,3 +148,10 @@ binary frames and TX-only traffic are not numeric plot samples. Terminal shows
 received ANSI/text automatically; enable **Send keyboard**, then click the screen
 to type. Enter and Backspace are configurable. The composer, target and injection
 side remain visible on all three pages.
+
+## Probe visual identity
+
+The interface uses an original connected-endpoint mark, flat graphite surfaces,
+teal actions and violet TX highlights. Headings and controls share Rajdhani;
+byte data stays in Share Tech Mono. Light and dark palettes preserve the same
+transport controls and message workflows. No vendor logo or proprietary skin is used.

@@ -38,6 +38,6 @@ def font_roles(root):
     from tkinter import font
     families = set(font.families(root))
     body = "Rajdhani" if "Rajdhani" in families else font.nametofont("TkDefaultFont", root=root).actual("family")
-    heading = "Michroma" if "Michroma" in families else body
+    heading = body  # Unified Probe typography; no imitation of a vendor wordmark.
     mono = "Share Tech Mono" if "Share Tech Mono" in families else font.nametofont("TkFixedFont", root=root).actual("family")
     return body, heading, mono
