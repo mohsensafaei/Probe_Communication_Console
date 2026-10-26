@@ -10,6 +10,8 @@ import threading
 import time
 from pathlib import Path
 
+from .timing import sleep_at_least
+
 MODES = ("TCP Client", "TCP Server", "TCP Proxy", "UDP", "USB / Serial",
          "Serial Proxy", "Serial ↔ TCP", "Device Simulator")
 
@@ -238,7 +240,7 @@ class Engine:
                       rtscts=cfg.get("flow") == "RTS/CTS", dsrdtr=cfg.get("flow") == "DSR/DTR")
         if os.name != "nt" and "://" not in name: kwargs["exclusive"] = True
         if not hasattr(serial, "serial_for_url"):
-            raise RuntimeError("Wrong 'serial' package installed. Use the Linux launcher to install pyserial.")
+            raise RuntimeError("Wrong 'serial' package installed. Use the source launcher to install pyserial.")
         port = serial.serial_for_url(name, do_not_open=True, **kwargs)
         try:
             port.dtr = bool(cfg.get("dtr",False)); port.rts = bool(cfg.get("rts",False))
@@ -312,8 +314,10 @@ class Engine:
                     tty.setraw(slave); os.set_blocking(master, False)
                     self.app_path = os.ttyname(slave)
                 else:
-                    if app_port == cfg["serial_port"]: raise ValueError("Physical and app-side ports must be different.")
-                    self._port(app_port); self.app_path = app_port
+                    from .serial_endpoints import VirtualPair
+                    pair = VirtualPair(app_port, cfg.get("app_peer_port", ""))
+                    pair.validate(cfg["serial_port"])
+                    self._port(pair.probe); self.app_path = pair.application
                 self._connected(f"Serial proxy ready. App connects to {self.app_path}", app_path=self.app_path)
             else: self._connected(f'Opened {cfg["serial_port"]}')
             next_lines = 0
@@ -339,7 +343,7 @@ class Engine:
                         self.event("data", direction="TX", peer=cfg["serial_port"], data=sent)
                 if time.monotonic() > next_lines:
                     self._lines(physical); next_lines = time.monotonic() + .5
-                await asyncio.sleep(.01)
+                await sleep_at_least(.01)
 
     async def _app_write(self, data):
         if self.pty_fds:
@@ -349,7 +353,7 @@ class Engine:
                 try: view = view[os.write(self.pty_fds[0], view):]
                 except BlockingIOError:
                     if time.monotonic() > deadline: raise TimeoutError("App is not reading its PTY.")
-                    await asyncio.sleep(.01)
+                    await sleep_at_least(.01)
         else: await self._serial_write(self.serials[1], data)
 
     def _lines(self, port):
@@ -366,16 +370,17 @@ class Engine:
             except Exception as exc: self.event("error", message=f"Control line: {exc}")
         self.schedule(change())
 
-    def start_scenario(self, steps, cycles=1, target="All clients", side="Device / upstream"):
+    def start_scenario(self, steps, cycles=1, target="All clients", side="Device / upstream", variables=None):
         from .scenario import integer, run_scenario
+        from .sequence_flow import needs_reply
         if not self.ready: raise RuntimeError("Connect before running a test sequence.")
         if self.cfg["mode"] == "Device Simulator":
             raise ValueError("Run sequences from an application transport; the simulator replies to its clients.")
         cycles = integer(cycles, "Cycles", 0, 1000000)
         if not steps: raise ValueError("Add a sequence step first.")
-        if target == "All clients" and len(self.clients) > 1 and any(step.expect for step in steps):
+        if target == "All clients" and len(self.clients) > 1 and any(needs_reply(step) for step in steps):
             raise ValueError("Select one client when checking expected replies.")
-        if (target == "All clients" and len(self.clients) == 1 and any(step.expect for step in steps)
+        if (target == "All clients" and len(self.clients) == 1 and any(needs_reply(step) for step in steps)
                 and (self.cfg["mode"] in ("TCP Client", "TCP Server", "TCP Proxy") or side == "App / downstream")):
             target = next(iter(self.clients))
         self.scenario_generation += 1
@@ -386,7 +391,7 @@ class Engine:
                 self.scenario_task.cancel()
                 await asyncio.gather(self.scenario_task, return_exceptions=True)
             if generation != self.scenario_generation: return
-            task = asyncio.create_task(run_scenario(self, steps, cycles, target, side))
+            task = asyncio.create_task(run_scenario(self, steps, cycles, target, side, variables))
             self.scenario_task = task
             self.tasks.add(task)
             task.add_done_callback(self.tasks.discard)
@@ -483,7 +488,7 @@ class Engine:
                 if data:
                     self.event("data", direction="RX", peer=self.cfg["serial_port"], data=data)
                     for peer, links in list(self.clients.items()): await self._write(links[0], data)
-                await asyncio.sleep(.01)
+                await sleep_at_least(.01)
         except asyncio.CancelledError: raise
         except Exception as exc:
             self.event("error", message=f"Serial bridge stopped: {exc}")

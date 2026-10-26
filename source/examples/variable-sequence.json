@@ -1,0 +1,54 @@
+{
+  "format": "probe-sequence",
+  "version": 3,
+  "cycles": 1,
+  "steps": [
+    {
+      "step_id": "session",
+      "name": "Read session",
+      "text": "SESSION?\\r\\n",
+      "send_mode": "Escaped",
+      "delay_ms": 0,
+      "timeout_ms": 2000,
+      "flow": {
+        "extract": [
+          {
+            "name": "sid",
+            "source": "JSON",
+            "selector": "/data/sessionId"
+          },
+          {
+            "name": "code",
+            "source": "JSON",
+            "selector": "/data/responseCode"
+          }
+        ],
+        "condition": {
+          "variable": "code",
+          "operator": "equals",
+          "value": "000"
+        },
+        "on_true": {
+          "action": "goto",
+          "target": "status"
+        },
+        "on_false": {
+          "action": "fail"
+        },
+        "on_timeout": {
+          "action": "fail"
+        }
+      }
+    },
+    {
+      "step_id": "status",
+      "name": "Read status using session",
+      "text": "{\"request\":\"status\",\"sessionId\":${sid:json}}",
+      "send_mode": "Text",
+      "length_prefix": 6,
+      "delay_ms": 0,
+      "expect": "4F 4B",
+      "timeout_ms": 2000
+    }
+  ]
+}

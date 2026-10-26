@@ -1,121 +1,132 @@
-# Probe 1.1.0 Linux validation
+# Linux synchronization validation
 
-Validated on 2026-10-15: Debian 13 x86_64, glibc 2.41, CPython 3.12.13,
-Tcl/Tk 9.0.3, pySerial 3.5, pyte 0.8.2, wcwidth 0.2.13 and PyInstaller 6.22.3.
+Shared application code and regression tests synchronized from Windows commit
+`660536e`. Linux launchers, portable builder and automatic PTY support retained.
+Windows-specific validation below records upstream evidence; it is not a Linux
+build claim. The Linux CI workflow runs source diagnostics, backend tests, native
+Tk GUI tests under Xvfb, and a frozen portable build. Physical hardware tests are
+opt-in.
 
-## Source checks
+# Probe 1.2.1 Windows validation
 
-```sh
-./start_linux.sh --self-test
-.venv/bin/python -m unittest discover -s tests -v
-xvfb-run -a .venv/bin/python -m unittest discover -s tests -p ui_smoke.py -v
-```
+## Native Windows gate
 
-**56 backend/model/transport/sequence tests and 10 GUI tests passed.** The tests
-use actual loopback TCP/UDP, pySerial loopback and Linux PTYs. They cover binary
-duplex traffic, proxy injection and half-close, multiple clients, captures,
-checksums/framing, ANSI rendering, import/replay, serial permission errors,
-unplug cleanup and GUI serial reconnect. GUI tests use isolated preferences.
+The `Windows tests and portable builds` workflow on the `windows` branch uses
+Windows Server 2022 x64 and CPython 3.12, with pinned pySerial 3.5, pyte 0.8.2,
+wcwidth 0.2.13 and PyInstaller 6.22.3. Exact runner/tool versions and test results:
 
-The default system Python here lacks Tkinter and pySerial. The Linux launcher
-successfully selected the installed Python 3.12 with Tkinter, created `.venv`,
-installed the pinned requirements and passed the full runtime self-test.
+https://github.com/mohsensafaei/Probe_Communication_Console/actions/workflows/windows.yml
 
-## Frozen bundle checks
+The gate runs the Windows batch source/build launchers, backend tests and native
+Tk GUI tests. It builds folder and single-executable ZIPs, extracts each under a
+temporary path containing spaces outside the repository, and runs frozen I/O and
+GUI diagnostics. JSON reports must confirm the current version and success.
+Folder bundles are checked for a PE executable, Tcl/Tk DLLs, `_tkinter.pyd`, fonts,
+licenses and sample models/sequences. Both ZIPs exclude `probe-data`. Artifacts
+upload only after verification. A committed workflow alone is not a passing run;
+consult its run conclusion and individual executed steps.
 
-```sh
-./build_linux.sh
-xvfb-run -a ./dist/Probe/Probe --smoke-test
-./dist/Probe/Probe --version
-```
+GUI checks cover all eight transport panels, visible Test lab, Appearance removal,
+sequence editing/import/export/run, model building and the COM pair's advertised
+application endpoint. POSIX-only PTY/permission checks skip explicitly on Windows.
+Physical hardware tests are opt-in.
 
-The builder executes the frozen program's `--self-test` from a temporary working
-directory outside the source tree. It exercises serial loopback, direct PTY,
-PTY serial proxy, Serial-to-TCP, TCP client/server/proxy, UDP, JSONL capture and
-ANSI terminal support. The frozen GUI smoke check opens all eight mode panels and both Test lab tabs.
+## Local cross-platform checks
 
-An initial native build reproduced missing `libtcl9.0.so` / `libtcl9tk9.0.so`.
-The spec now includes the shared libraries from standalone Python installations;
-the rebuilt executable passes both the runtime and GUI checks. ZIP contents are
-checked for the executable, launcher, native Tcl/Tk libraries and pySerial
-license. Local `probe-data` preferences are excluded.
+On the Linux development host, 88 backend tests passed (95 total,
+6 attached-device tests and one unprivileged-permission check skipped). COM-pair tests use actual pySerial `socket://`
+endpoints: all 256 byte values, duplex proxying, both injection sides, exact
+captures, ordered stateful replies, reset, endpoint ownership and disconnect
+cleanup. These verify the shared serial path, not a Windows kernel COM driver.
 
-## Attached USB hardware verification
+All 28 local GUI tests passed with an isolated X display and temporary preferences. The COM
+configuration test presents the Windows panel and exchanges real serial socket
+bytes. Native CI provides the evidence for Windows UI and executable packaging.
 
-A Samsung Android phone (USB VID:PID `04e8:6860`) was subsequently attached.
-Its CDC ACM communication/data interfaces bind to Linux `cdc_acm` and expose
-`/dev/ttyACM0`. Read/write access for the current user was confirmed, including
-the effective device ACL. No phone serial number or personal data is recorded
-in these tests or this report.
+Sequence-specific checks cover default RX and optional TX selection, subset
+order, unchanged destination, exact binary bytes, shared 100 ms timing on the
+wire, Run/Save/table consistency, independent composer timing, preserved mixed
+imported delays and reply checks, legacy defaults, editor validation/cancel,
+continuous Stop and editing locks. Minimum layouts were visually checked at
+980×680 (sequence page), 800×500 (capture picker), 700×480 (simple editor) and
+700×620 (advanced editor), including visible action buttons and status. This is
+Linux Tk evidence; the Windows workflow must pass separately for native builds.
 
-**All 6 opt-in hardware tests passed** using the real phone:
+Reply-mode regressions cover withheld replies blocking the following send,
+selected-peer isolation, ignored startup/outgoing/empty data, immediate and split
+matching replies, physical-serial and downstream bridge replies, repeat/cycle
+counts, timeout halting the run and cancellation of a one-hour reply wait.
+GUI checks verify on-wire gating, waiting status, Stop, disabled timing controls,
+mode switching without baking reply flags into messages, JSON round trips and
+button text contrast of at least 4.5:1, including disabled hover states. Buttons
+retain keyboard focus with a solid border and no dotted label overlay.
 
-* Direct USB serial: `AT\r` transmitted and `AT\r\r\nOK\r\n` received;
-  JSONL capture preserved the exact transmitted/received bytes.
-* USB serial proxy: a separate pySerial application opened Probe's generated
-  PTY, sent `AT\r` through the physical USB port, and received the phone's `OK`.
-  Device-side injection also reached the phone; app-side injection reached only
-  the application. JSONL and raw RX captures matched the delivered bytes.
-* Serial-to-TCP: a real loopback TCP client received the physical phone's AT
-  response through the bridge with matching transport capture bytes.
-* GUI direct serial: the composer sent the command and the traffic table and
-  ANSI terminal displayed the physical phone's response.
-* GUI serial proxy: the application opened the PTY advertised by the UI,
-  exchanged AT/OK with the phone, and disconnected cleanly.
+Version 1.2 checks also cover exact JSON byte spans with nested UTF-8/escapes,
+length mismatch/partial data, TLV/BER nesting and bounds, custom integer/length/
+checksum fields, additions/removals and ignored JSON values of different lengths.
+Reports are verified to preserve both original byte streams. Sequence checks
+exercise actual TCP fragmented replies, extraction/conditional goto, dynamic
+JSON escaping, rebuilt lengths/checksums, binary variables, timeout routing,
+stale-value clearing, missing variables stopping before send and Stop during a
+structured reply wait. GUI tests include the captured-field picker, Save/Cancel,
+stable target IDs after reordering, v3 export/import with initial variables,
+offline analysis not starting a transport and actual templated TCP sending.
 
-Reproduce from the `source` directory with an explicitly selected AT-capable
-device (only the read-only AT attention command is sent to the phone):
+Minimum new layouts were inspected at 920×680 (analysis), 820×680 (both response
+rule tabs), 720×540 (variables) and 620×410 (frame options). The advanced message
+editor reserves Save/Cancel before other content and enforces a taller minimum.
+Frozen self-test exercises protocol/comparison and a dynamic TCP conversation;
+frozen GUI diagnostics instantiate both analysis tabs and response/variable
+dialogs so missing lazily imported modules cannot pass the portable gate.
 
-```sh
-PROBE_TEST_SERIAL_PORT=/dev/ttyACM0 PROBE_TEST_GUI=1 xvfb-run -a \
-  .venv/bin/python -m unittest discover -s tests -p test_serial_hardware.py -v
-```
+## Physical USB and COM-pair drivers
 
-Hardware tests are skipped by default. They use temporary captures and isolated
-GUI preferences. The normal 56 backend and 10 GUI tests remain the hardware-free
-regression gate (6 device tests are skipped by default). The initial setup reproduced permission errors on unused
-`/dev/ttyS*` ports; those entries must not be confused with the phone's ACM port.
+This environment has no Windows USB host or installed Windows COM-pair driver.
+Earlier Samsung CDC ACM / AT direct, proxy, capture, bridge, GUI and recorded
+emulation tests passed on Linux; they are not Windows hardware results.
 
-These results validate the phone's USB **serial** interface. Its separate MTP
-file-transfer interface is not proxied by Probe. Physical RTS/CTS wiring,
-vendor-specific modem commands and an actual RFC2217 server remain outside
-these checks. Windows and older Linux distributions were not validated.
+The six opt-in `tests/test_serial_hardware.py` checks now support Windows.
+Set `PROBE_TEST_SERIAL_PORT=COM3`, `PROBE_TEST_APP_PORT=COM20`,
+`PROBE_TEST_PEER_PORT=COM21`, and `PROBE_TEST_GUI=1` after attaching an AT-capable
+USB device and installing the COM20/COM21 pair. Direct/bridge/GUI direct and
+recorded TCP emulation also work without the pair; COM proxy checks require it.
+Only read-only `AT` attention commands are sent. Captures/settings are temporary.
+USB HID, MTP and arbitrary bulk interfaces are outside this serial backend.
 
-## Hardware test lab validation (1.1.0)
+A COM pair is a driver prerequisite. Probe opens one end and the other application
+opens its partner. Drivers are not installed automatically. Physical RTS/CTS,
+vendor protocols, hard real-time timing and a real RFC2217 server still require
+device-specific validation.
 
-**66 hardware-free tests passed**: 56 backend/model/transport checks and 10 GUI
-checks. All 6 opt-in Samsung phone tests also passed while the phone was attached.
-The phone was removed before the final regression run, so those 6 hardware checks
-are explicitly skipped in the final hardware-free run. Added tests cover capture
-compilation, exact binary replies, preserved response delays, legacy proxy peer
-names, stream fragmentation/coalescing, unknown-byte resynchronization, model
-JSON validation and ambiguous-rule rejection. Independent TCP clients and a real
-Linux PTY communicate with the emulator without any physical port being opened.
+## Windows timing correction
 
-A hardware test recorded the phone's AT/OK conversation, closed the real device
-session, then reproduced its exact reply through a separate virtual serial device.
-This proves the emulator does not depend on an open connection to the original
-hardware. No phone identifiers or transaction data are persisted in the repository.
+The first native run reproduced a real timing defect: CPython 3.12's coarse
+Windows monotonic clock let short asyncio sleeps finish before their requested
+5–10 ms delays. The sequence now measures durations with `perf_counter` and uses
+bounded worker sleeps on coarse clocks, preserving minimum delays without blocking
+the event loop. Cancellation leaves at most a 50 ms sleep to finish. Reply timeouts
+and delayed simulated responses share this timer. Tests use the performance clock
+for duration measurements and verify minimum waits, early-reply interruption and
+cancelling a one-hour delay. OS scheduling may still make a delay longer.
 
-Sequence tests cover per-step repeats/delays, expected reply bytes, timeout failure,
-UDP and TCP responses, cancellation before startup, stopping infinite loops and
-closing connected servers with delayed replies pending. A 200-cycle TCP test sent
-400 commands and checked all 400 replies in order. Reset matching cancels delayed
-responses from the previous simulated conversation.
+Python documents the clock-resolution behavior in its
+[event loop reference](https://docs.python.org/3.12/library/asyncio-eventloop.html#asyncio.loop.call_later).
 
-GUI checks cover converting retained history into a virtual device, sequence
-editing/duplication/reordering, JSON round trips, real execution with reply checks,
-empty/error states, removal of the Appearance button and visible controls at
-980×680. Screenshots were inspected before/after at 1360×900 and for both Test lab
-tabs at 1040×720. Source and frozen --self-test now also exercise TCP/PTY device
-simulation and reply-checked test sequences. Frozen --smoke-test opens both new tabs.
+## Workspace consolidation (1.2.1)
 
-The timing and loop tests validate these specific workloads. They do not guarantee
-hard real-time timing, arbitrary POS protocol emulation or immunity to all possible
-hardware faults. The supplied PING/BUY model and sequence are synthetic examples.
+Main pages are Traffic, Live plot and Terminal. GUI regressions use native Tk
+mouse press/release events on tab labels and traffic cells, not just programmatic
+selection. They verify all message views in one reused Analyze window, source
+snapshot preservation, every-byte pagination, explicit composer loading, and no
+popups from programmatic selection/filtering. The 1060×700 main window and
+920×700 Analyze window were visually inspected.
 
-The final checks also cover reply expectations on both sides of Serial-to-TCP,
-and an 8192-byte serial loopback exchange whose reply arrives during the write.
-Serial input continues draining during a write; fast reply publication is deferred
-until the successful TX is recorded. TCP queued writes are captured before waiting
-for drain. This prevents a fast RX from preceding its initiating TX in recordings.
+Real serial loopback tests assert plotted CSV curves, live terminal RX, keyboard
+focus and key transmission. A Serial-to-TCP test selects a concrete TCP client
+and verifies physical serial replies still reach Terminal. A TCP server test
+types before the first RX and preserves the screen after its client disconnects.
+Numeric model tests cover split lines, peer isolation, invalid/binary/non-finite
+inputs, oversized-line recovery and bounded peers/samples. Terminal actions use
+two rows so history, Paste, Reset and Pop out remain visible on narrow windows.
+Frozen GUI diagnostics select all three workspace pages and verify plot curves,
+terminal text and the consolidated Analyze views.

@@ -138,4 +138,21 @@ def self_test():
             with serial.Serial(ready["app_path"], 115200, timeout=3) as app:
                 app.write(b"PING\r\n")
                 expect_equal(app.read(6), b"PONG\r\n")
-    print("PASS device simulator (TCP / PTY) and timed reply-checked sequences")
+    print("PASS device simulator (TCP; PTY on POSIX) and timed reply-checked sequences")
+    from .protocol import json_value
+    from .comparison import compare_bytes
+    from .scenario import compile_steps
+    if json_value(b'000019{"sessionId":"123"}',"sessionId")!="123":
+        raise RuntimeError("Protocol Inspector JSON extraction failed")
+    if not any(item.kind=="changed" for item in compare_bytes(b"AB",b"AC")):
+        raise RuntimeError("Capture comparison failed")
+    dynamic=DeviceModel((Exchange(b"SESSION?",(Reply(b'{"sessionId":"123"}'),)),
+                         Exchange(b'{"sessionId":"123"}',(Reply(b"OK"),))))
+    with session("Device Simulator",simulator_model=dynamic) as (_,events,ready):
+        with session("TCP Client",port=ready["address"][1]) as (engine,events,_):
+            steps=compile_steps([dict(name="Read session",text="SESSION?",delay_ms=0,
+                                      flow=dict(extract=[dict(name="sid",source="JSON",selector="sessionId")])),
+                                 dict(name="Use session",text='{"sessionId":${sid:json}}',delay_ms=0,expect="4F4B")])
+            engine.start_scenario(steps)
+            wait_for(lambda:any(event.get("state")=="complete" for event in events),events)
+    print("PASS protocol interpretation, byte comparison and reply variables over TCP")

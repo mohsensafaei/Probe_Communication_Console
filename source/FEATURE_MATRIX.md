@@ -2,9 +2,12 @@
 
 This is a workflow comparison, not a claim of byte-for-byte compatibility with all releases of either application. The requested SSCOM version was not specified. Hercules describes Serial, TCP Client/Server, UDP and HW-group configuration; SSCOM releases vary and some include terminal emulation, waveform display or STM32 ISP tools.
 
-| Feature | Probe 1.1.0 Linux | Notes |
+| Feature | Probe 1.2.1 Linux | Notes |
 | --- | --- | --- |
-| Recorded device simulator | Implemented | TCP / Linux PTY; exact request matching, stateful ordered replies, response timing, reset and model import/export. |
+| Recorded device simulator | Implemented | TCP / installed Windows virtual COM pair (POSIX PTY on Linux); exact request matching, stateful ordered replies, response timing, reset and model import/export. |
+| Protocol Inspector | Implemented | JSON/ASCII length prefix, explicit TLV/BER-TLV, byte highlighting, custom binary fields, length/checksum validation and reusable profiles. |
+| Capture Diff | Implemented | Message or same-flow stream comparison, changed/added/removed ranges, JSON-value/byte-range ignores and lossless comparison reports. |
+| Dynamic sequence flow | Implemented | JSON/TLV/byte extraction, initial/runtime variables, escaped JSON/hex templates, conditions and stable goto/finish/fail/timeout actions; declarative, no eval. |
 | TCP client | Implemented | Binary/text, DNS and encoding options. |
 | TCP server | Implemented | Up to 16 clients, per-peer send or broadcast. |
 | UDP send/receive | Implemented | IPv4 bind, broadcast and sender identity. |
@@ -18,7 +21,7 @@ This is a workflow comparison, not a claim of byte-for-byte compatibility with a
 | Save received data / readable logs | Implemented | Raw RX, streaming JSONL, CSV/text export. |
 | File transmit | Implemented | Binary, chunked, cancellable. |
 | Timed transmit | Implemented | Minimum interval 50 ms. |
-| Multiple predefined sends | Implemented | 1000 steps; independent millisecond timing, repeats, reply checks, JSON import/export. |
+| Multiple predefined sends | Implemented | 1000 messages; shared/individual intervals or advance on reply, timeout/Stop, readable finite/continuous repetition, optional expected-byte checks, RX/TX selection and JSON import/export. |
 | Header + data + checksum + trailer | Implemented | Explicit checksum coverage; seven checksum choices including None. |
 | Escape sequences | Implemented | Escaped text and Hercules-style #decimal/$hex/named controls. |
 | Reconnect on disconnect/unplug | Implemented | Optional TCP Client / direct Serial reconnect. Device must return at same configured path. |

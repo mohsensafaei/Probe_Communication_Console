@@ -1,4 +1,4 @@
-# Probe for Linux 1.1.0
+# Probe for Linux 1.2.1
 
 TCP, UDP and USB/serial communications console with an ANSI terminal, binary
 inspector, capture/replay, serial proxy and Serial-to-TCP bridge.
@@ -94,3 +94,17 @@ Try `source/examples/device-model.json` with `source/examples/test-sequence.json
 using two Probe instances: one simulates a TCP device, the other runs the sequence
 as a TCP Client. These are synthetic PING/BUY examples; replace their payloads with
 the actual protocol bytes for your own hardware.
+
+## Updated workbench
+
+All shared features through Windows commit `660536e` are available on Linux:
+reply-gated sequences, RX/TX capture selection, dynamic variables and routing,
+Protocol Inspector, Capture Diff, and the simplified Traffic / Live plot / Terminal workspace.
+Single-click selects a transaction; double-click opens Analyze with Decoded text,
+Hex + ASCII and Every byte. Export offers Hex and Decoded text checkboxes.
+Capture Diff compares Reference (A) with Message (B) automatically and shows
+hex and decoded text for the selected difference.
+
+Live plot accepts numeric RX lines ending in LF (for example `1,2,3\n`).
+Terminal displays RX immediately; enable **Send keyboard** to transmit keys.
+Linux automatic PTY support and the native portable build scripts are retained.

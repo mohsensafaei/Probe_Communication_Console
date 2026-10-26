@@ -13,6 +13,7 @@ def load_capture(path,max_events=2000,max_bytes=8*1024*1024):
             if row.get("kind","data")!="data":continue
             direction=row.get("direction")
             if direction not in ("TX","RX"):raise ValueError("Capture rows must have TX or RX direction.")
+            if "hex" not in row:raise ValueError("This export contains decoded text only. Export with Hex enabled to import or replay exact bytes.")
             data=bytes.fromhex(row["hex"])
             timestamp=row.get("time",row.get("timestamp",0))
             try:timestamp=float(timestamp)

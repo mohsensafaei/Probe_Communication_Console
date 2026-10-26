@@ -1,5 +1,52 @@
 # Changes
 
+## 1.2.1 (Windows / Linux)
+
+* Consolidate the main workspace into Traffic, Live plot and Terminal. Move decoded text, hex/ASCII and every-byte paging into Analyze; remove the extra Analyze button and lower inspector panel.
+* A single traffic-cell click (or Enter) opens/reuses Analyze, preserving the chosen analysis tab. Filtering, following and programmatic selection do not open windows. Keep copying/saving all snapshot bytes and explicitly loading the composer.
+* Replace positional tab indices and automatic split-pane sizing with stable widget identities and full-page views. Keep target/injection-side/composer controls available on Terminal.
+* Make Send keyboard focus the terminal screen, improve connected/view-only/listening hints, add vertical scrolling and fit all terminal/history controls in two rows. Fix serial bridge RX filtering when a specific TCP client is selected; allow typing to the sole TCP client before its first reply and retain text after peer disconnect.
+* Give Live plot explicit RX numeric-format guidance, peer selection, independent partial lines, bounded samples and a visible single-sample point. Reject binary/non-finite/oversized lines, batch rendering with the UI poll, and preserve main traffic when clearing a plot.
+* Add native mouse-click, serial-loop plot/keyboard, selected-client bridge and first-key TCP regressions; expand frozen GUI diagnostics. No runtime dependencies added.
+
+## 1.2.0 (Windows / Linux)
+
+* Add a single Analyze entry beside traffic and context-menu shortcuts. Protocol Inspector decodes JSON (including ASCII body-length prefixes), explicit one-byte TLV or definite BER-TLV, with exact byte highlighting and copied field paths.
+* Add editable custom binary fields with integer/float/text interpretations, length and checksum validation, saved profiles and clear mismatch/truncation status.
+* Capture Diff compares selected messages or concatenated single-peer/direction streams from history/capture/binary files. Show added/removed/changed ranges, ignore JSON values or byte ranges, and export original bytes plus comparison rules/results.
+* Add optional response rules to sequences: JSON/TLV/byte extraction, named variables, literal/JSON/hex substitution, conditions and stable next/goto/finish/fail routes, including timeout routing. Recompute optional frame length/checksum after substitution.
+* Keep the simple sequence page. Response rules use separate Save reply values / Choose next step tabs, an explicit captured-field picker, Save/Cancel and always-visible editor actions. Initial and last received variables have their own dialog.
+* Version 3 sequence files retain variables/routing/templates while legacy/version 1/2 files still load. Missing variables/fields and dangling branch targets fail explicitly; loops, reply sizes and offline analysis are bounded. No new runtime dependencies.
+* Exercise new modules in source and frozen self-test/GUI diagnostics, including actual TCP extraction and templated sends. Add runnable read-only SESSION/STATUS simulator/sequence examples and a custom protocol profile.
+
+## 1.1.2 (Windows / Linux)
+
+* Add a clear After interval / After a reply sequence control. Reply mode sends immediately after incoming data, with no interval delay, a shared timeout and visible waiting status. Stop cancels pending waits.
+* Preserve optional expected-byte matching across receive chunks, repeats, cycles and legacy timing/checks. Export/import reply mode and restore prior timing when switching modes.
+* Route reply checks to the selected client and injection side; ignore outgoing sends, other clients, empty data and traffic preceding the send.
+* Fix disabled button text contrast, including Stop and hovered disabled buttons. Remove Clam's dotted button focus element while preserving keyboard traversal and a solid focus border.
+* Add real TCP/serial gating, timeout/Stop, immediate/split reply, mode-switch, JSON round-trip and button-contrast regressions. No new runtime dependencies.
+
+## 1.1.1 (Windows)
+
+* Simplify Sequences to choose messages, set timing and send; show the actual destination and separate message editing into a Save/Cancel dialog.
+* Replace TX-only capture conversion with an RX/TX picker, initially RX, with source/peer filters, previews, selection and loading a capture without replacing the main traffic view.
+* One shared interval immediately controls the table, Run and Save; individual recorded/file timing is explicit and preserved, alongside repeats and expected replies.
+* Replace numeric infinite-cycle configuration with Run once, Repeat a set number and Repeat until stopped. Keep advanced per-message options in the editor.
+* Preserve original capture bytes/order and composer transforms; keep source direction independent of the outgoing destination.
+* Lock sequence editing while running, keep Stop visible on short windows and decouple timing from the composer's Repeat interval.
+* Add RX/TX binary capture, bounds, GUI selection, timing-on-wire, legacy import, exact edit/cancel and continuous-stop regressions.
+
+## 1.1.0 (Windows)
+
+* Bring all recording/replay, Test lab device models, timed/reply-checked sequences and Appearance removal to Windows.
+* Simulate a recorded device through an installed virtual COM pair as well as TCP; the physical device is unnecessary.
+* Correct Serial Proxy endpoint reporting: display/copy the application-side partner, never the COM opened by Probe. Reject aliased COM names.
+* Isolated Windows source/build launchers install pinned dependencies, select Python explicitly and preserve failure exit codes without pausing CI.
+* Native Windows x64 CI tests source, GUI and both extracted portable ZIPs before artifact upload. Windowed diagnostics can write JSON reports.
+* Correct early 5–10 ms sequence/reply delays on coarse Windows asyncio clocks; use high-resolution duration checks and cancellable bounded worker sleeps.
+* Version visible in the window title. Windows hardware tests accept explicit physical and virtual-pair COM ports.
+
 ## 1.1.0 (Linux)
 
 * Hardware Test lab with a recorded device simulator on TCP or an independent Linux virtual serial PTY.

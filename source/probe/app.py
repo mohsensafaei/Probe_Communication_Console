@@ -14,10 +14,12 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
 
 from . import __version__
-from .codec import encode, hexdump, visible, CONTROLS, Framer
+from .codec import encode, hexdump, visible, Framer
 from .engine import Engine, MODES
 from .terminal_ui import TerminalPane
+from .plot_ui import LivePlotPane
 from .capture import load_capture, replay_plan
+from .serial_endpoints import VirtualPair, simulator_transports
 from .typography import load_fonts, font_roles
 from .skin import Chassis, MeterStrip, Rail
 
@@ -48,7 +50,7 @@ class Probe(tk.Tk):
     def __init__(self, demo=False):
         load_fonts()
         super().__init__()
-        self.title("Probe · Communications workbench")
+        self.title(f"Probe {__version__} · Communications workbench")
         icon_base=Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parent.parent))
         try:
             self.icon_image=tk.PhotoImage(file=str(icon_base/"assets"/"probe.png"))
@@ -75,27 +77,29 @@ class Probe(tk.Tk):
         self.simulator_endpoint = ""
         self.simulator_info = tk.StringVar(value="Simulator stopped. Build or load a device model to start.")
         self.sequence_info = tk.StringVar(value="Sequence idle. Connect a transport, add steps, then Run sequence.")
+        self.sequence_values = {}
         self.terminal_popup=None
         self.terminal_popout_pane=None
         self.file_cancel = threading.Event()
         self.started = 0; self.rx_total = self.tx_total = 0
         self.framers = {}; self.frame_meta = {}
-        self.numeric_tail = ""; self.samples = []
         self.record_path = None; self.raw_path = None
         self.search_job = None
         self.last_error = ""
-        self.inspector_offset=0
         self.manual_disconnect=False
         self.closing=False
         self.vars = {}
         defaults = dict(mode="TCP Client", host="127.0.0.1", port="9000", bind="127.0.0.1",
                         listen_port="9001", serial_port="", baud="115200", bits="8", parity="N",
                         stopbits="1", flow="None", app_port="Auto PTY" if os.name != "nt" else "COM20",
+                        app_peer_port="COM21", simulator_port="COM20", simulator_peer_port="COM21",
                         send_mode="Text", encoding="utf-8", ending="None", checksum="None",
                         prefix="", suffix="", interval="1000", framing="Chunks", delimiter="0A",
                         frame_size="16", gap="50", view="Text + Hex", search="", direction="All",
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
-                        theme="Probe II", sequence_cycles="1", simulator_transport="TCP socket",
+                        theme="Probe II", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
+                        sequence_advance="After interval", sequence_reply_timeout="2000", sequence_variables="{}",
+                        protocol_fields="[]", simulator_transport="TCP socket",
                         simulator_matching="Conversation order", simulator_timing="1")
         for k,v in defaults.items(): self.vars[k] = tk.StringVar(value=v)
         self.vars["dtr"] = tk.BooleanVar(value=False); self.vars["rts"] = tk.BooleanVar(value=False)
@@ -105,6 +109,10 @@ class Probe(tk.Tk):
         self.vars["sequence_loop"] = tk.BooleanVar(value=False)
         self.vars["simulator_repeat"] = tk.BooleanVar(value=True)
         self._load_settings()
+        if self.vars["simulator_transport"].get() not in simulator_transports():
+            self.vars["simulator_transport"].set("TCP socket")
+        if os.name == "nt" and self.vars["app_port"].get() == "Auto PTY":
+            self.vars["app_port"].set("COM20")
         if self.vars["theme"].get() == "Midnight": self.vars["theme"].set("Probe II")
         if self.vars["theme"].get() == "Light": self.colors = dict(LIGHT)
         self._style()
@@ -132,9 +140,17 @@ class Probe(tk.Tk):
         s.configure("Muted.TLabel", foreground=c["muted"])
         s.configure("TButton", background=c["metal"], foreground=c["ink"], padding=(9,3), borderwidth=1,
                     relief="raised", font=(self.ui_font,11,"bold"))
-        s.map("TButton", background=[("active",c["shine"])], foreground=[("disabled",c["muted"])])
+        # Clam's Button.focus element draws a dotted rectangle over the label.
+        # Keep normal keyboard traversal and indicate focus with a solid border.
+        s.layout("TButton", [("Button.border", {"sticky":"nswe", "border":1, "children":[
+            ("Button.padding", {"sticky":"nswe", "children":[("Button.label", {"sticky":"nswe"})]})]})])
+        s.map("TButton", background=[("disabled",c["panel"]),("active",c["shine"])],
+              foreground=[("disabled",c["muted"])],
+              bordercolor=[("!disabled","focus",c["blue"])],
+              lightcolor=[("!disabled","focus",c["blue"])], darkcolor=[("!disabled","focus",c["blue"])],
+              relief=[("disabled","flat"),("pressed","sunken")])
         s.configure("Accent.TButton", background=c["accent"], foreground="#ffffff" if self.vars["theme"].get()=="Light" else "#1e3312", font=(self.ui_font,12,"bold"))
-        s.map("Accent.TButton", background=[("active",c["accent"]),("disabled",c["border"])])
+        s.map("Accent.TButton", background=[("disabled",c["panel"]),("active",c["accent"])])
         s.configure("TEntry", fieldbackground=c["input"], foreground=c["text"], padding=3, insertcolor=c["accent"])
         s.configure("TCombobox", fieldbackground=c["input"], background=c["input"], foreground=c["text"],
                     arrowcolor=c["muted"], padding=3, selectbackground=c["select"], selectforeground=c["text"])
@@ -244,9 +260,8 @@ class Probe(tk.Tk):
                                             bg=c["lcd"],fg=color,font=(self.mono,17),anchor="w")
             self.stat_labels[name].pack(fill="x",padx=10,pady=(4,4))
             strip=MeterStrip(lcd,self,bg=c["lcd"]);strip.pack(fill="x",padx=10,pady=(0,3))
-        self.split=ttk.Panedwindow(self.content,orient="vertical"); self.split.grid(row=3,column=0,sticky="nsew")
-        self.split.bind("<Configure>",lambda event:self.after_idle(self._fit_panes,event.height))
-        traffic=self.bezel(self.split); self.split.add(traffic,weight=3)
+        self.notebook=ttk.Notebook(self.content);self.notebook.grid(row=3,column=0,sticky="nsew")
+        traffic=self.bezel(self.notebook);self.traffic_tab=traffic;self.notebook.add(traffic,text="Traffic")
         traffic.columnconfigure(0,weight=1);traffic.rowconfigure(1,weight=1)
         toolbar=self.frame(traffic); toolbar.grid(row=0,column=0,sticky="ew",padx=10,pady=6)
         self.traffic_toolbar=toolbar
@@ -266,44 +281,22 @@ class Probe(tk.Tk):
         self.table.pack(side="left",fill="both",expand=True)
         scroll=ttk.Scrollbar(tableframe,command=self.table.yview); scroll.pack(side="right",fill="y"); self.table.configure(yscrollcommand=scroll.set)
         self.table.tag_configure("RX",foreground=c["accent"]); self.table.tag_configure("TX",foreground=c["blue"])
-        self.table.bind("<<TreeviewSelect>>",lambda e:self.select_event())
+        self.table.bind("<Double-1>",self.traffic_clicked)
+        self.table.bind("<Return>",lambda e:(self.analyze(),"break")[1])
         self.table.bind("<Button-3>",self.traffic_menu)
-        self.table.bind("<Double-1>",lambda e:self.load_selected_payload())
         options=self.frame(traffic); options.grid(row=2,column=0,sticky="ew",padx=12,pady=(3,5))
         self.traffic_options=options
         self.history_label=self.label(options,"0 events",9,color=c["muted"],width=18,anchor="w"); self.history_label.pack(side="left")
         self.combo(options,"view",["Text + Hex","Text","Hex","Decimal"],width=11,callback=self.refresh).pack(side="left",padx=8)
+        ttk.Label(options,text="Double-click a row to analyze").pack(side="left",padx=4)
         ttk.Button(options,text="Framing",command=self.framing_dialog).pack(side="right",padx=4)
         ttk.Button(options,text="Raw RX file",command=self.raw_record).pack(side="right",padx=4)
         ttk.Checkbutton(options,text="Follow",variable=self.vars["autoscroll"]).pack(side="right")
-        detail=self.bezel(self.split); self.split.add(detail,weight=2)
-        detailbar=self.frame(detail); detailbar.pack(fill="x",padx=12,pady=(6,4))
-        self.detailbar=detailbar
-        self.selection_label=self.label(detailbar,"BYTE INSPECTOR",12,True,color=c["blue"]); self.selection_label.pack(side="left")
-        ttk.Button(detailbar,text="Save bytes",width=9,command=self.save_bytes).pack(side="right",padx=(5,0))
-        ttk.Button(detailbar,text="Copy hex",width=8,command=self.copy_hex).pack(side="right")
-        self.page_next=ttk.Button(detailbar,text="→",width=3,command=lambda:self.change_page(1));self.page_next.pack(side="right",padx=4)
-        self.page_prev=ttk.Button(detailbar,text="←",width=3,command=lambda:self.change_page(-1));self.page_prev.pack(side="right")
-        self.notebook=ttk.Notebook(detail); self.notebook.pack(fill="both",expand=True,padx=12,pady=(0,10))
-        decoded=ttk.Frame(self.notebook); raw=ttk.Frame(self.notebook); values=ttk.Frame(self.notebook); plot=ttk.Frame(self.notebook)
-        self.notebook.add(decoded,text="Decoded text"); self.notebook.add(raw,text="Hex + ASCII")
-        self.notebook.add(values,text="Every byte"); self.notebook.add(plot,text="Live plot")
-        self.terminal=TerminalPane(self.notebook,self)
-        self.notebook.add(self.terminal,text="Terminal")
-        self.decoded=self.text_widget(decoded,height=4,wrap="word"); self.decoded.pack(fill="both",expand=True)
-        self.hextext=self.text_widget(raw,height=4,wrap="none"); self.hextext.pack(fill="both",expand=True)
-        self.byte_table=ttk.Treeview(values,columns=("offset","hex","dec","binary","char"),show="headings",style="Bytes.Treeview",height=5)
-        for key,title,width in [("offset","OFFSET",90),("hex","HEX",75),("dec","DECIMAL",80),("binary","BINARY",125),("char","ASCII / CONTROL",140)]:
-            self.byte_table.heading(key,text=title); self.byte_table.column(key,width=width,anchor="center")
-        self.byte_table.pack(side="left",fill="both",expand=True)
-        bscroll=ttk.Scrollbar(values,command=self.byte_table.yview); bscroll.pack(side="right",fill="y"); self.byte_table.configure(yscrollcommand=bscroll.set)
-        self.byte_table.bind("<<TreeviewSelect>>",lambda e:self.byte_selected())
-        self.plot_canvas=tk.Canvas(plot,bg=c["input"],highlightthickness=0,height=130); self.plot_canvas.pack(fill="both",expand=True)
-        self.plot_canvas.bind("<Configure>",lambda e:self.draw_plot())
+        self.plot=LivePlotPane(self.notebook,self);self.notebook.add(self.plot,text="Live plot")
+        self.terminal=TerminalPane(self.notebook,self);self.notebook.add(self.terminal,text="Terminal")
         self.notebook.bind("<<NotebookTabChanged>>",self._tab_changed)
-        self.vars["target"].trace_add("write",lambda *_:self.terminal.reset())
-        self.put_text(self.decoded,"Choose a traffic row. Control bytes are shown as ⟨STX⟩, ⟨CR⟩ and ⟨LF⟩.\nOriginal bytes are always preserved.")
-        self.put_text(self.hextext,"Offset    Hex bytes                                       ASCII\n\nSelect a row to see a byte-exact dump.")
+        self._terminal_target=self.vars["target"].get()
+        self.vars["target"].trace_add("write",self.terminal_target_changed)
         composer=self.bezel(self.content); composer.grid(row=4,column=0,sticky="ew",pady=(10,0));self.composer=composer
         composebar=self.frame(composer); composebar.pack(fill="x",padx=12,pady=(6,6))
         self.composebar=composebar
@@ -347,7 +340,10 @@ class Probe(tk.Tk):
         if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP","Device Simulator"):
             field("Listen address","bind"); field("Listen port (0 = automatic)","listen_port")
         if mode == "Device Simulator":
-            field("Expose device as", "simulator_transport", ["TCP socket", "Virtual serial (PTY)"], True)
+            field("Expose device as", "simulator_transport", simulator_transports(), True)
+            if os.name == "nt":
+                field("Probe-side virtual COM", "simulator_port")
+                field("Application-side partner COM", "simulator_peer_port")
             count = len(self.simulator_model.exchanges) if self.simulator_model else 0
             self.label(self.config_frame, f"{count} recorded exchanges loaded.\nNo physical device is needed.", 9,
                        color=c["muted"], wraplength=200, justify="left").pack(anchor="w", pady=8)
@@ -370,6 +366,7 @@ class Probe(tk.Tk):
             self.refresh_ports()
         if mode=="Serial Proxy":
             field("Probe-side virtual port","app_port",["Auto PTY"] if os.name!="nt" else [],False)
+            field("Application-side partner port", "app_peer_port")
             hint="Linux: Auto PTY creates a port for the other app." if os.name!="nt" else "COM pair: app → COM21; Probe → COM20. Install the pair first."
             self.label(self.config_frame,hint,9,color=c["muted"],wraplength=220,justify="left").pack(anchor="w",pady=7)
         if mode=="TCP Proxy":
@@ -383,21 +380,23 @@ class Probe(tk.Tk):
         self.side_combo.configure(state="readonly" if mode in ("TCP Proxy","Serial Proxy","Serial ↔ TCP") else "disabled")
         self.vars["side"].set("Device / upstream")
 
-    def _fit_panes(self, height):
-        # The terminal's preferred screen size must not squeeze traffic away.
-        # This runs when the overall pane area changes, not while dragging a sash.
-        if not self.closing and len(self.split.panes()) == 2:
-            if self.notebook.select()==str(self.terminal):
-                self.split.sashpos(0,round(height*.40))
-            else:self.split.sashpos(0,min(height-155,max(185,round(height*.55))))
-
     def _tab_changed(self,event=None):
-        if not hasattr(self,"composer"):return
-        # The live terminal already has its own direct keyboard input.
-        if self.notebook.select()==str(self.terminal):self.composer.grid_remove()
-        else:self.composer.grid()
-        self.draw_plot();self.terminal.render(force=True)
-        self.after_idle(self._fit_panes,self.split.winfo_height())
+        if not hasattr(self,"composer") or event is not None and event.widget is not self.notebook:return
+        # Keep target and injection-side selectors reachable on every page.
+        self.plot.render(force=True);self.terminal.render(force=True)
+        self.terminal.update_hint()
+        if self.notebook.select()==str(self.terminal) and self.terminal.keyboard.get():self.terminal.text.focus_set()
+
+    def traffic_clicked(self,event):
+        row=self.table.identify_row(event.y)
+        if row and self.table.identify_region(event.x,event.y) in ("cell","tree"):
+            self.table.selection_set(row);self.table.focus(row);self.analyze()
+            return "break"
+
+    def terminal_target_changed(self,*_):
+        target=self.vars["target"].get()
+        if target!=self._terminal_target and self.active:self.terminal.reset()
+        self._terminal_target=target
 
     def choose_mode(self,mode):
         if self.active:
@@ -424,7 +423,7 @@ class Probe(tk.Tk):
             if not cfg["host"].strip(): raise ValueError("Enter a remote host.")
             p=int(cfg["port"])
             if not 1<=p<=65535: raise ValueError("Remote port must be 1–65535.")
-        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP","Device Simulator"):
+        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP") or (mode == "Device Simulator" and cfg["simulator_transport"] == "TCP socket"):
             p=int(cfg["listen_port"])
             if not 0<=p<=65535: raise ValueError("Listen port must be 0–65535.")
         if mode == "Device Simulator":
@@ -433,6 +432,12 @@ class Probe(tk.Tk):
             RequestMatcher(self.simulator_model, cfg["simulator_matching"] == "Conversation order", cfg["simulator_repeat"])
             scale=float(cfg["simulator_timing"])
             if not math.isfinite(scale) or not 0 <= scale <= 10: raise ValueError("Reply timing multiplier must be 0–10.")
+            if cfg["simulator_transport"] not in simulator_transports():
+                raise ValueError("Choose a supported simulator transport for this operating system.")
+            if cfg["simulator_transport"] == "Virtual COM pair":
+                VirtualPair(cfg["simulator_port"], cfg["simulator_peer_port"]).validate()
+        if mode == "Serial Proxy" and cfg["app_port"] != "Auto PTY":
+            VirtualPair(cfg["app_port"], cfg["app_peer_port"]).validate(cfg["serial_port"])
         if "Serial" in mode:
             if not cfg["serial_port"]: raise ValueError("Choose or enter a physical serial port.")
             if int(cfg["baud"])<1: raise ValueError("Baud must be positive.")
@@ -502,7 +507,7 @@ class Probe(tk.Tk):
                 direction=event["direction"]
                 if direction=="TX": self.tx_total+=len(event["data"])
                 else:
-                    self.rx_total+=len(event["data"]); self.add_samples(event["data"])
+                    self.rx_total+=len(event["data"]); self.plot.feed(event)
                 key=(direction,event["peer"])
                 if key not in self.framers: self.framers[key]=self.new_framer()
                 for data in self.framers[key].tick(event["time"]):
@@ -535,8 +540,8 @@ class Probe(tk.Tk):
                         self.after(1500,retry)
             elif kind=="peers":
                 peers=["All clients"]+event["peers"];self.target_combo.configure(values=peers)
-                if self.vars["mode"].get() in ("TCP Client","TCP Server","TCP Proxy") and self.terminal.peer and self.terminal.peer not in event["peers"]:self.terminal.reset()
-                if self.vars["target"].get() not in peers: self.vars["target"].set("All clients")
+                if self.vars["target"].get() not in peers:
+                    self._terminal_target="All clients";self.vars["target"].set("All clients")
             elif kind=="lines" and hasattr(self,"line_label"):
                 self.line_label.configure(text="   ".join(f"{k} {'●' if event[k] else '○'}" for k in ("CTS","DSR","DCD","RI")))
             elif kind in ("error","info"):
@@ -545,6 +550,7 @@ class Probe(tk.Tk):
             elif kind=="file_done":self.pressed=False;self.file_button.configure(text="Send file")
             elif kind == "scenario":
                 self.sequence_info.set(event["message"])
+                if "variables" in event:self.sequence_values=event["variables"]
                 self.set_status(event["message"], event["state"] == "failed")
             elif kind == "simulator":
                 self.simulator_info.set(self.simulator_endpoint + " · " + event["message"])
@@ -562,8 +568,10 @@ class Probe(tk.Tk):
         if changed and self.vars["autoscroll"].get() and not self.paused:
             items=self.table.get_children()
             if items: self.table.see(items[-1])
-        if self.notebook.index(self.notebook.select())==4:self.terminal.render()
-        if self.terminal_popup and self.terminal_popup.winfo_exists():self.terminal_popout_pane.render()
+        if self.notebook.select()==str(self.plot):self.plot.render()
+        self.terminal.update_hint()
+        if self.notebook.select()==str(self.terminal):self.terminal.render()
+        if self.terminal_popup and self.terminal_popup.winfo_exists():self.terminal_popout_pane.update_hint();self.terminal_popout_pane.render()
         self.after(40,self.poll)
 
     @staticmethod
@@ -622,15 +630,14 @@ class Probe(tk.Tk):
     def pause(self):
         self.paused=not self.paused;self.pause_button.configure(text="Resume" if self.paused else "Pause")
         if not self.paused:self.refresh()
-        if not self.paused:self.terminal.render(force=True)
+        if not self.paused:self.terminal.render(force=True);self.plot.render(force=True)
         self.set_status("Display paused. Transport and recording continue." if self.paused else "Live display resumed.")
 
     def clear(self):
         self.events.clear();self.order.clear();self.retained_bytes=0;self.evicted=0;self.dropped=0
-        self.framers.clear();self.frame_meta.clear();self.samples.clear();self.numeric_tail=""
-        self.table.delete(*self.table.get_children());self.byte_table.delete(*self.byte_table.get_children())
-        self.selection_label.configure(text="Byte inspector");self.put_text(self.decoded,"");self.put_text(self.hextext,"")
-        self.draw_plot();self.set_status("Display cleared. Recorded files and session byte counters continue.")
+        self.framers.clear();self.frame_meta.clear();self.plot.clear()
+        self.table.delete(*self.table.get_children())
+        self.set_status("Display cleared. Recorded files and session byte counters continue.")
 
     def selected(self):
         ids=self.table.selection();return self.events.get(ids[0]) if ids else None
@@ -638,35 +645,6 @@ class Probe(tk.Tk):
     @staticmethod
     def put_text(widget,text):
         widget.configure(state="normal");widget.delete("1.0","end");widget.insert("1.0",text);widget.configure(state="disabled")
-
-    def select_event(self):
-        self.inspector_offset=0;self.inspect()
-
-    def change_page(self,delta):
-        event=self.selected()
-        if not event:return
-        last=max(0,(len(event["data"])-1)//4096*4096)
-        self.inspector_offset=max(0,min(last,self.inspector_offset+delta*4096));self.inspect()
-
-    def inspect(self):
-        event=self.selected()
-        if not event:return
-        data=event["data"];start=self.inspector_offset;shown=data[start:start+4096]
-        self.selection_label.configure(text=f"{event['direction']} · {len(data):,} bytes"+(f" · page {start//4096+1}" if len(data)>4096 else ""))
-        self.page_prev.configure(state="normal" if start else "disabled")
-        self.page_next.configure(state="normal" if start+len(shown)<len(data) else "disabled")
-        notice=f"\n\n[Bytes {start:,}–{start+len(shown)-1:,} of {len(data):,}. Use ← / → for other pages.]" if len(data)>len(shown) else ""
-        self.put_text(self.decoded,visible(shown,self.vars["encoding"].get())+notice)
-        self.put_text(self.hextext,hexdump(shown,start)+notice)
-        self.byte_table.delete(*self.byte_table.get_children())
-        for i,b in enumerate(shown,start):
-            self.byte_table.insert("","end",iid=f"b{i}",values=(f"{i:04X} ({i})",f"{b:02X}",b,f"{b:08b}",CONTROLS.get(b,chr(b) if 32<=b<127 else "—")))
-
-    def byte_selected(self):
-        event=self.selected();ids=self.byte_table.selection()
-        if not event or not ids:return
-        i=int(ids[0][1:]);b=event["data"][i]
-        self.set_status(f"Byte at offset {i}: hex 0x{b:02X} · decimal {b} · binary {b:08b} · {CONTROLS.get(b,repr(chr(b)) if 32<=b<127 else 'non-ASCII')}")
 
     def copy_hex(self):
         event=self.selected()
@@ -684,6 +662,7 @@ class Probe(tk.Tk):
         if not self.engine or not self.engine.ready:raise RuntimeError("Connect before sending terminal keys.")
         target=self.vars["target"].get()
         if self.vars["mode"].get() in ("TCP Server","TCP Proxy") and target=="All clients":
+            if peer not in self.engine.clients and len(self.engine.clients)==1:peer=next(iter(self.engine.clients))
             if peer not in self.engine.clients:raise ValueError("Select a connected peer for the terminal.")
             target=peer
         self.engine.send(data,target,self.vars["side"].get())
@@ -692,6 +671,10 @@ class Probe(tk.Tk):
         row=self.table.identify_row(event.y)
         if row:self.table.selection_set(row)
         menu=tk.Menu(self,tearoff=False,bg=self.colors["panel"],fg=self.colors["text"])
+        menu.add_command(label="Analyze message…",command=self.analyze)
+        menu.add_command(label="Protocol Inspector…",command=lambda:self.analyze("Protocol"))
+        menu.add_command(label="Compare with previous / other traffic…",command=lambda:self.analyze("Compare"))
+        menu.add_separator()
         menu.add_command(label="Load payload into composer",command=self.load_selected_payload)
         menu.add_command(label="Copy hex",command=self.copy_hex)
         menu.add_command(label="Save exact bytes",command=self.save_bytes)
@@ -703,13 +686,20 @@ class Probe(tk.Tk):
         try:menu.tk_popup(event.x_root,event.y_root)
         finally:menu.grab_release()
 
+    def analyze(self,tab=None):
+        from .analysis_ui import open_analysis
+        return open_analysis(self,tab)
+
     def load_selected_payload(self):
         event=self.selected()
         if not event:return
+        self.load_payload_bytes(event["data"])
+
+    def load_payload_bytes(self,data):
         self.vars["send_mode"].set("Hex");self.vars["ending"].set("None")
         for key in ("prefix","suffix"):self.vars[key].set("")
         self.vars["checksum"].set("None")
-        self.payload.delete("1.0","end");self.payload.insert("1.0",event["data"].hex(" ").upper());self.preview()
+        self.payload.delete("1.0","end");self.payload.insert("1.0",data.hex(" ").upper());self.preview()
         self.set_status("Exact captured payload loaded; press Send to transmit it.")
 
     def import_capture(self,path=None):
@@ -722,7 +712,7 @@ class Probe(tk.Tk):
             self.tx_total=sum(len(e["data"]) for e in rows if e["direction"]=="TX")
             self.rx_total=sum(len(e["data"]) for e in rows if e["direction"]=="RX")
             self.paused=False;self.pause_button.configure(text="Pause")
-            for event in rows:self.add_event(event);self.terminal.feed(event)
+            for event in rows:self.add_event(event);self.terminal.feed(event);self.plot.feed(event)
             self.terminal.render(force=True);self.set_status(f"Imported {len(rows)} events. No bytes were sent.")
         except Exception as exc:self.set_status(f"Import failed: {exc}",True)
 
@@ -782,7 +772,7 @@ class Probe(tk.Tk):
             self.preview_label.configure(text=f"{len(data):,} bytes · {data[:12].hex(' ').upper()}{' …' if len(data)>12 else ''}",fg=self.colors["muted"])
         except Exception as exc:self.preview_label.configure(text=str(exc),fg=self.colors["red"])
 
-    def encoding_changed(self):self.preview();self.refresh();self.inspect();self.terminal.reset()
+    def encoding_changed(self):self.preview();self.refresh();self.terminal.reset()
 
     def send(self,text=None):
         try:
@@ -867,20 +857,54 @@ class Probe(tk.Tk):
             except OSError as exc:self.set_status(str(exc),True)
 
     def export(self):
-        path=filedialog.asksaveasfilename(parent=self,defaultextension=".jsonl",filetypes=[("Session JSON Lines","*.jsonl"),("CSV","*.csv"),("Readable log","*.txt")])
-        if not path:return
-        try:
-            rows=[self.events[i] for i in self.order]
-            with open(path,"w",encoding="utf-8",newline="") as f:
-                if path.lower().endswith(".csv"):
-                    writer=csv.writer(f);writer.writerow(["timestamp","direction","peer","byte_count","hex","text"])
-                    for e in rows:writer.writerow([dt.datetime.fromtimestamp(e["time"]).isoformat(),e["direction"],e["peer"],len(e["data"]),e["data"].hex(" ").upper(),visible(e["data"],self.vars["encoding"].get())])
-                elif path.lower().endswith(".txt"):
-                    for e in rows:f.write(f"{dt.datetime.fromtimestamp(e['time']).isoformat()} {e['direction']} {e['peer']} {len(e['data'])} bytes\n{hexdump(e['data'])}\n\n")
-                else:
-                    for e in rows:f.write(json.dumps({k:v for k,v in e.items() if k!="data"}|{"hex":e["data"].hex().upper()})+"\n")
-            self.set_status(f"Exported {len(rows)} retained events (including rows hidden by the filter).")
-        except OSError as exc:self.set_status(str(exc),True)
+        win=self.dialog("Export traffic","470x300")
+        self.label(win,"Choose what to save",17,True).pack(anchor="w",padx=20,pady=(20,12))
+        hex_option=tk.BooleanVar(value=True)
+        text_option=tk.BooleanVar(value=True)
+        ttk.Checkbutton(win,text="Hex",variable=hex_option).pack(anchor="w",padx=20,pady=5)
+        ttk.Checkbutton(win,text="Decoded text",variable=text_option).pack(anchor="w",padx=20,pady=5)
+        self.label(win,"Decoded text uses the current encoding.\nInclude Hex to preserve exact bytes for replay.",10,
+                   color=self.colors["muted"],justify="left").pack(anchor="w",padx=20,pady=12)
+        actions=self.frame(win);actions.pack(fill="x",padx=20,pady=10)
+        save=ttk.Button(actions,text="Save…",style="Accent.TButton")
+        def update(*_):save.configure(state="normal" if hex_option.get() or text_option.get() else "disabled")
+        def choose():
+            if not (hex_option.get() or text_option.get()):return
+            path=filedialog.asksaveasfilename(parent=win,defaultextension=".jsonl",filetypes=[("Session JSON Lines","*.jsonl"),("CSV","*.csv"),("Readable log","*.txt")])
+            if not path:return
+            try:
+                rows=[self.events[i] for i in self.order]
+                encoding=self.vars["encoding"].get()
+                with open(path,"w",encoding="utf-8",newline="") as f:
+                    if path.lower().endswith(".csv"):
+                        fields=["timestamp","direction","peer","byte_count"]
+                        if hex_option.get():fields.append("hex")
+                        if text_option.get():fields.append("text")
+                        writer=csv.DictWriter(f,fieldnames=fields);writer.writeheader()
+                        for e in rows:
+                            row=dict(timestamp=dt.datetime.fromtimestamp(e["time"]).isoformat(),direction=e["direction"],peer=e["peer"],byte_count=len(e["data"]))
+                            if hex_option.get():row["hex"]=e["data"].hex(" ").upper()
+                            if text_option.get():row["text"]=visible(e["data"],encoding)
+                            writer.writerow(row)
+                    elif path.lower().endswith(".txt"):
+                        for e in rows:
+                            f.write(f"{dt.datetime.fromtimestamp(e['time']).isoformat()} {e['direction']} {e['peer']} {len(e['data'])} bytes\n")
+                            if hex_option.get():f.write("Hex: "+e["data"].hex(" ").upper()+"\n")
+                            if text_option.get():f.write("Decoded text: "+visible(e["data"],encoding)+"\n")
+                            f.write("\n")
+                    else:
+                        for e in rows:
+                            row={k:v for k,v in e.items() if k not in ("data","hex","text")}
+                            if hex_option.get():row["hex"]=e["data"].hex().upper()
+                            if text_option.get():row["text"]=visible(e["data"],encoding)
+                            f.write(json.dumps(row,ensure_ascii=False)+"\n")
+                win.destroy()
+                self.set_status(f"Exported {len(rows)} retained events (including rows hidden by the filter).")
+            except OSError as exc:messagebox.showerror("Export",str(exc),parent=win)
+        save.configure(command=choose);save.pack(side="right")
+        ttk.Button(actions,text="Cancel",command=win.destroy).pack(side="right",padx=8)
+        hex_option.trace_add("write",update);text_option.trace_add("write",update)
+        win.bind("<Escape>",lambda _:win.destroy())
 
     def dialog(self,title,size="610x470"):
         win=tk.Toplevel(self);win.title(title);win.geometry(size);win.configure(bg=self.colors["panel"])
@@ -942,15 +966,19 @@ class Probe(tk.Tk):
     def macro_dialog(self):
         return self.test_lab(1)
 
-    def run_sequence(self):
+    def run_sequence(self, rows=None, cycles=None, variables=None):
         from .scenario import compile_steps, integer
+        from .sequence_flow import initial_variables
         self.stop_sequence(); self.stop_repeat(); self.stop_replay()
         try:
             if not self.engine or not self.engine.ready:
                 raise ValueError("Connect before running a test sequence.")
-            steps = compile_steps(self.macros, int(self.vars["interval"].get()))
-            cycles = 0 if self.vars["sequence_loop"].get() else integer(self.vars["sequence_cycles"].get(), "Cycles", 0, 1000000)
-            self.engine.start_scenario(steps, cycles, self.vars["target"].get(), self.vars["side"].get())
+            steps = compile_steps(self.macros, int(self.vars["interval"].get())) if rows is None else compile_steps(rows, 100)
+            if cycles is None:
+                cycles = 0 if self.vars["sequence_loop"].get() else integer(self.vars["sequence_cycles"].get(), "Cycles", 0, 1000000)
+            if variables is None:variables=initial_variables(json.loads(self.vars["sequence_variables"].get()))
+            self.sequence_values={}
+            self.engine.start_scenario(steps, cycles, self.vars["target"].get(), self.vars["side"].get(), variables)
             self.sequence_info.set("Starting test sequence…")
             return True
         except (ValueError, RuntimeError, TypeError) as exc:
@@ -969,34 +997,6 @@ class Probe(tk.Tk):
     def export_macros(self):
         self.test_lab(1)
         self.sequence_panel.action(self.sequence_panel.save_file)
-
-    def add_samples(self,data):
-        self.numeric_tail+=data.decode("ascii",errors="replace")
-        lines=self.numeric_tail.split("\n");self.numeric_tail=lines.pop()[-1024:]
-        for line in lines:
-            try:
-                values=[float(x) for x in re.split(r"[,;\s]+",line.strip()) if x]
-                if values and all(math.isfinite(x) for x in values):self.samples.append(values[:4])
-            except ValueError:pass
-        self.samples=self.samples[-300:]
-        if self.notebook.index(self.notebook.select())==3:self.draw_plot()
-
-    def draw_plot(self):
-        cv=self.plot_canvas;c=self.colors;cv.delete("all")
-        w=max(100,cv.winfo_width());h=max(80,cv.winfo_height())
-        if not self.samples:
-            cv.create_text(20,25,text="Live numeric plot",anchor="w",fill=c["text"],font=(self.ui_font,11,"bold"))
-            cv.create_text(20,52,text="Receive newline-separated numbers or CSV (up to four channels).",anchor="w",fill=c["muted"],font=(self.ui_font,9));return
-        lo=min(min(x) for x in self.samples);hi=max(max(x) for x in self.samples)
-        if hi==lo:hi=lo+1
-        for j in range(4):
-            y=15+(h-35)*j/3;cv.create_line(50,y,w-15,y,fill=c["border"])
-            cv.create_text(6,y,text=f"{hi-(hi-lo)*j/3:.3g}",anchor="w",fill=c["muted"],font=(self.mono,8))
-        for channel,color in enumerate([c["accent"],c["blue"],c["red"],"#c7a0fa"]):
-            coords=[]
-            for i,sample in enumerate(self.samples):
-                if channel<len(sample):coords.extend([50+(w-65)*i/max(1,len(self.samples)-1),15+(h-35)*(hi-sample[channel])/(hi-lo)])
-            if len(coords)>=4:cv.create_line(*coords,fill=color,width=2)
 
     def _load_settings(self):
         try:
@@ -1030,7 +1030,10 @@ class Probe(tk.Tk):
 
     def zoom(self,delta):
         self.font_size=max(8,min(16,self.font_size+delta));self._style()
-        for w in (self.payload,self.hextext,self.decoded):w.configure(font=(self.mono,self.font_size))
+        self.payload.configure(font=(self.mono,self.font_size))
+        analysis=getattr(self,"analysis_window",None)
+        if analysis is not None and analysis.winfo_exists():
+            for widget in (analysis.payload.decoded,analysis.payload.hextext,analysis.protocol.hex,analysis.comparison.detail):widget.configure(font=(self.mono,self.font_size))
         panes=[self.terminal]
         if self.terminal_popup and self.terminal_popup.winfo_exists():panes.append(self.terminal_popout_pane)
         for pane in panes:
@@ -1053,7 +1056,6 @@ class Probe(tk.Tk):
         self.hero.configure(font=(self.display_font,10 if compact else 12))
         self.chassis.configure(height=46 if compact else 66)
         self.traffic_toolbar.grid_configure(pady=4 if compact else 6)
-        self.detailbar.pack_configure(pady=(4,3) if compact else (6,4))
         self.composebar.pack_configure(pady=(4,4) if compact else (6,6))
         self.payload.configure(height=2)
         for label in self.stat_labels.values():
@@ -1069,7 +1071,7 @@ class Probe(tk.Tk):
         win=self.dialog("Probe · Quick guide","780x620")
         text=self.text_widget(win,height=25,wrap="word");text.pack(fill="both",expand=True,padx=16,pady=16)
         self.put_text(text,f"PROBE {__version__}\n\n"
-            "GET STARTED\nChoose a mode, enter its endpoint, then Connect. Type a payload and press Ctrl+Enter. Select any traffic row for text, hex, decimal and binary inspection.\n\n"
+            "GET STARTED\nChoose a mode, enter its endpoint, then Connect. Type a payload and press Ctrl+Enter. Click a traffic row (or select it and press Enter) to open Analyze for decoded text, hex/ASCII, every byte, protocol fields and comparison. One reusable window keeps all message views together.\n\n"
             "TCP CLIENT / SERVER\nClient connects to a device. Server accepts up to 16 clients. Choose a client or All clients before sending. Bind to 0.0.0.0 to accept LAN connections.\n\n"
             "TCP PROXY\nSet Listen to 127.0.0.1:9001 and Upstream to the real server. Point the other app to 127.0.0.1:9001. TX = app to upstream; RX = upstream to app. Each client has its own upstream connection. Binary bytes and half-close are preserved. TLS traffic remains encrypted.\n\n"
             "USB / SERIAL\nSupports COM / tty serial devices, including USB CDC and USB-to-UART adapters. Refresh lists ports. Set baud, bits, parity, stop and flow. DTR/RTS start OFF. Use loop:// for a hardware-free check; rfc2217://host:port for remote serial. Raw USB HID / bulk protocols are device-specific and not supported.\n\n"
@@ -1079,11 +1081,14 @@ class Probe(tk.Tk):
             "CAPTURE\nRecord streams lossless JSONL (hex+metadata) before filtering and framing. Raw RX file concatenates received bytes. Export saves the retained rolling window, including filtered rows. Display is bounded to 2000 rows / 8 MiB; the inspector pages through every byte in 4 KiB pages. Under overload, UI drops are reported; record for full capture.\n\n"
             "FRAMING / AUTOMATIC REPLIES\nTCP and serial are streams, not messages. Display by read chunk, delimiter, fixed length or idle gap. Framing never changes forwarding. Echo / composer reply runs once per receive chunk, not per protocol message. Do not enable echo at both ends.\n\n"
             "SHORTCUTS\nCtrl+Enter: send · Ctrl+L: clear · Ctrl+S: export · Ctrl +/-: font · F1: help\n\n"
-            "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Keyboard for direct input. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Pop out opens a larger live screen. One peer is displayed at a time.\n\n"
-            "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to load exact bytes into the composer.\n\n"
+            "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Send keyboard for direct input. Traffic, Live plot and Terminal are main workspace pages; the composer target and injection side stay visible. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Pop out opens a larger live screen. One peer is displayed at a time.\n\n"
+            "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to inspect it. Use Load into composer in Analyze to explicitly load exact bytes, then Send to transmit.\n\n"
+            "ANALYZE TRAFFIC\nClick a traffic row to open Analyze. Decoded text, Hex + ASCII and Every byte are included there. Protocol Inspector shows JSON, explicit TLV/BER-TLV or custom binary fields; selecting a field highlights its bytes. Copy field path supplies a sequence selector. Custom fields can validate lengths/checksums and save profiles. Capture Diff compares messages or combined same-peer/direction capture chunks, highlights changed/added/removed ranges and can ignore JSON values or byte ranges. Save comparison retains all original bytes. These tools send nothing.\n\n"
+            "LIVE PLOT\nOpen the Live plot workspace page. Receive LF/CRLF-terminated RX numbers or CSV, up to four channels: 1,2 followed by LF, then 3,4 followed by LF. Choose the RX peer or automatic selection. JSON, binary and TX-only data do not produce numeric samples. Separate peer buffers and the last 300 samples keep plotting bounded.\n\n"
+            "DYNAMIC SEQUENCES\nEdit message > Response & next step: Save reply values picks JSON/TLV/byte fields and names variables; Choose next step adds conditions and next/goto/finish/fail/timeout actions. Save rules, then Save message. Insert variable adds ${name}, ${name:json} (a JSON value without surrounding quotes) or ${name:hex}. Variables defines initial values and shows latest reply values. Outgoing frame can rebuild length/checksum after substitution. Missing values stop before sending. Version 3 exports retain rules; legacy files still load.\n\n"
             "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
-            "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
-            "TEST SEQUENCES\nAdd, edit, reorder or duplicate up to 1000 steps in Test lab. Each step has payload bytes, a delay after send/reply in milliseconds, repetition count, optional expected reply bytes and a timeout. Cycles 0 runs until stopped. Stop cancels pending waits and future sends. Import/export preserves timing. Timing is best effort, not hard real-time.\n\n"
+            "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket, Windows virtual COM pair or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
+            "TEST SEQUENCES\nChoose messages, then Send next message: After interval or After a reply. Reply mode sends the first immediately and waits after every send, including the last, with no interval delay. Set Reply timeout; missing replies stop the run. Any nonempty incoming chunk from the destination counts, including unsolicited data. Edit message > Advanced > Expected reply can require specific hex bytes across chunks. Interval mode retains shared/individual delays and optional reply checks. Run once, Repeat a set number or Repeat until stopped. Stop cancels waits and pending sends. Save/Load preserves the effective behavior. Timing is best effort, not hard real-time.\n\n"
             "VENDOR FEATURES\nHW-group proprietary UDP discovery, device IP configuration and TEA/I/O extensions are not implemented without verified protocol/SDK information. STM32 programming is intentionally outside this application's scope. See FEATURE_MATRIX.md.\n")
 
     def demo(self):
@@ -1097,7 +1102,7 @@ class Probe(tk.Tk):
         self.tx_total=sum(len(d) for dr,d in messages if dr=="TX");self.rx_total=sum(len(d) for dr,d in messages if dr=="RX")
         self.stat_labels["tx"].configure(text=self.format_bytes(self.tx_total));self.stat_labels["rx"].configure(text=self.format_bytes(self.rx_total))
         self.history_label.configure(text=f"{len(self.order)} events · demo")
-        self.table.selection_set("3");self.inspect();self.notebook.select(1)
+        self.table.selection_set("3")
         self.vars["send_mode"].set("Hex");self.payload.delete("1.0","end");self.payload.insert("1.0","02 A4 04 50 43 30 31 B0 06 00 00 00 01 25 00 03")
         self.set_status("DEMO PREVIEW · synthetic sample traffic; no network or hardware connection is open.")
 
@@ -1117,17 +1122,35 @@ def main():
     parser.add_argument("--version",action="version",version=__version__)
     parser.add_argument("--self-test",action="store_true",help="Test bundled serial, PTY, network and terminal support without a display")
     parser.add_argument("--smoke-test",action="store_true",help="Open the GUI briefly and verify all transport panels")
+    parser.add_argument("--diagnostic-report",type=Path,help="Write self-test/smoke-test results as JSON (also works in windowed Windows builds)")
     args=parser.parse_args()
+    def report(success, error=""):
+        if args.diagnostic_report:
+            args.diagnostic_report.write_text(json.dumps(dict(success=success, version=__version__,
+                platform=sys.platform, check="self-test" if args.self_test else "smoke-test", error=error)), encoding="utf-8")
     if args.self_test:
         from .diagnostics import self_test
-        self_test()
+        try:
+            self_test()
+        except Exception as exc:
+            report(False, str(exc))
+            print(f"Self-test failed: {exc}", file=sys.stderr)
+            raise SystemExit(1)
+        report(True)
         return
+    if args.diagnostic_report and not args.smoke_test:
+        parser.error("--diagnostic-report requires --self-test or --smoke-test")
     if sys.platform=="win32":
         try:
             import ctypes
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except Exception:pass
-    app=Probe(demo=args.demo)
+    try:
+        app=Probe(demo=args.demo)
+    except Exception as exc:
+        if not args.smoke_test: raise
+        report(False, str(exc))
+        raise SystemExit(1)
     if args.smoke_test:
         app.save_settings=lambda: None
         def check():
@@ -1139,10 +1162,35 @@ def main():
                 for tab in (0, 1):
                     app.testlab_notebook.select(tab)
                     app.update_idletasks()
+                for page in (app.traffic_tab,app.plot,app.terminal):
+                    app.notebook.select(page);app.update_idletasks()
+                    if app.notebook.select()!=str(page):raise RuntimeError("Main workspace tab is not selectable.")
+                app.plot.feed(dict(direction="RX",peer="smoke",data=b"1,2\n3,4\n"));app.plot.render(force=True)
+                if not app.plot.canvas.find_withtag("curve"):raise RuntimeError("Live plot failed in bundle.")
+                app.terminal.feed(dict(direction="RX",peer="smoke",data=b"READY\r\n"));app.terminal.render(force=True)
+                if "READY" not in "".join(app.terminal.model.screen.display):raise RuntimeError("Terminal failed in bundle.")
+                app.notebook.select(app.traffic_tab)
+                for payload in (b'{"sessionId":"1"}',b'{"sessionId":"123"}'):
+                    app.add_event(dict(kind="data",direction="RX",peer="smoke",time=time.time(),data=payload))
+                app.table.selection_set(app.order[-1])
+                analysis=app.analyze()
+                app.update_idletasks()
+                if not any(field.selector=="/sessionId" for field in analysis.protocol.fields):raise RuntimeError("Protocol Inspector failed in bundle.")
+                if not analysis.comparison.differences:raise RuntimeError("Capture Diff failed in bundle.")
+                if "123" not in analysis.payload.decoded.get("1.0","end"):raise RuntimeError("Analyze decoded text failed in bundle.")
+                if not analysis.payload.byte_table.get_children():raise RuntimeError("Analyze byte views failed in bundle.")
+                analysis.destroy()
+                pane=app.sequence_panel
+                app.macros=[dict(name="Smoke template",text="${sid}",flow=dict(extract=[dict(name="sid",source="JSON",selector="sessionId")]))]
+                pane.refresh();pane.open_editor(0)
+                rules=pane.response_rules();rules.tabs.select(1);app.update_idletasks();rules.destroy();pane.editor.destroy()
+                variables=pane.variables_dialog();app.update_idletasks();variables.destroy()
                 if app.terminal.error: raise RuntimeError(app.terminal.error)
-            except Exception:
+            except Exception as exc:
+                report(False, str(exc))
                 app.close()
-                raise
+                raise SystemExit(1)
+            report(True)
             app.close()
         app.after(300,check)
         app.report_callback_exception=lambda *error: sys.exit(1)

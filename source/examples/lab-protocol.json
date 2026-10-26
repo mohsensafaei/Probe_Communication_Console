@@ -1,0 +1,27 @@
+{
+  "format": "probe-protocol",
+  "version": 1,
+  "fields": [
+    {
+      "name": "Body length",
+      "offset": 0,
+      "length": 6,
+      "kind": "Length ASCII",
+      "start": 6,
+      "end": 9
+    },
+    {
+      "name": "Payload",
+      "offset": 6,
+      "length": 3,
+      "kind": "Text"
+    },
+    {
+      "name": "CRC",
+      "offset": 9,
+      "length": 2,
+      "kind": "Checksum",
+      "algorithm": "CRC16 Modbus"
+    }
+  ]
+}

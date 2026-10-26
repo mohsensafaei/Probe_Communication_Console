@@ -1,0 +1,23 @@
+{
+  "format": "probe-sequence",
+  "version": 2,
+  "cycles": 1,
+  "steps": [
+    {
+      "name": "Ready check",
+      "text": "50 49 4E 47 0D 0A",
+      "send_mode": "Hex",
+      "delay_ms": 0,
+      "wait_for_reply": true,
+      "timeout_ms": 2000
+    },
+    {
+      "name": "Demo purchase",
+      "text": "42 55 59 3A 31 30 30 30 0D 0A",
+      "send_mode": "Hex",
+      "delay_ms": 0,
+      "wait_for_reply": true,
+      "timeout_ms": 2000
+    }
+  ]
+}
