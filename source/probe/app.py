@@ -857,20 +857,54 @@ class Probe(tk.Tk):
             except OSError as exc:self.set_status(str(exc),True)
 
     def export(self):
-        path=filedialog.asksaveasfilename(parent=self,defaultextension=".jsonl",filetypes=[("Session JSON Lines","*.jsonl"),("CSV","*.csv"),("Readable log","*.txt")])
-        if not path:return
-        try:
-            rows=[self.events[i] for i in self.order]
-            with open(path,"w",encoding="utf-8",newline="") as f:
-                if path.lower().endswith(".csv"):
-                    writer=csv.writer(f);writer.writerow(["timestamp","direction","peer","byte_count","hex","text"])
-                    for e in rows:writer.writerow([dt.datetime.fromtimestamp(e["time"]).isoformat(),e["direction"],e["peer"],len(e["data"]),e["data"].hex(" ").upper(),visible(e["data"],self.vars["encoding"].get())])
-                elif path.lower().endswith(".txt"):
-                    for e in rows:f.write(f"{dt.datetime.fromtimestamp(e['time']).isoformat()} {e['direction']} {e['peer']} {len(e['data'])} bytes\n{hexdump(e['data'])}\n\n")
-                else:
-                    for e in rows:f.write(json.dumps({k:v for k,v in e.items() if k!="data"}|{"hex":e["data"].hex().upper()})+"\n")
-            self.set_status(f"Exported {len(rows)} retained events (including rows hidden by the filter).")
-        except OSError as exc:self.set_status(str(exc),True)
+        win=self.dialog("Export traffic","470x300")
+        self.label(win,"Choose what to save",17,True).pack(anchor="w",padx=20,pady=(20,12))
+        hex_option=tk.BooleanVar(value=True)
+        text_option=tk.BooleanVar(value=True)
+        ttk.Checkbutton(win,text="Hex",variable=hex_option).pack(anchor="w",padx=20,pady=5)
+        ttk.Checkbutton(win,text="Decoded text",variable=text_option).pack(anchor="w",padx=20,pady=5)
+        self.label(win,"Decoded text uses the current encoding.\nInclude Hex to preserve exact bytes for replay.",10,
+                   color=self.colors["muted"],justify="left").pack(anchor="w",padx=20,pady=12)
+        actions=self.frame(win);actions.pack(fill="x",padx=20,pady=10)
+        save=ttk.Button(actions,text="Save…",style="Accent.TButton")
+        def update(*_):save.configure(state="normal" if hex_option.get() or text_option.get() else "disabled")
+        def choose():
+            if not (hex_option.get() or text_option.get()):return
+            path=filedialog.asksaveasfilename(parent=win,defaultextension=".jsonl",filetypes=[("Session JSON Lines","*.jsonl"),("CSV","*.csv"),("Readable log","*.txt")])
+            if not path:return
+            try:
+                rows=[self.events[i] for i in self.order]
+                encoding=self.vars["encoding"].get()
+                with open(path,"w",encoding="utf-8",newline="") as f:
+                    if path.lower().endswith(".csv"):
+                        fields=["timestamp","direction","peer","byte_count"]
+                        if hex_option.get():fields.append("hex")
+                        if text_option.get():fields.append("text")
+                        writer=csv.DictWriter(f,fieldnames=fields);writer.writeheader()
+                        for e in rows:
+                            row=dict(timestamp=dt.datetime.fromtimestamp(e["time"]).isoformat(),direction=e["direction"],peer=e["peer"],byte_count=len(e["data"]))
+                            if hex_option.get():row["hex"]=e["data"].hex(" ").upper()
+                            if text_option.get():row["text"]=visible(e["data"],encoding)
+                            writer.writerow(row)
+                    elif path.lower().endswith(".txt"):
+                        for e in rows:
+                            f.write(f"{dt.datetime.fromtimestamp(e['time']).isoformat()} {e['direction']} {e['peer']} {len(e['data'])} bytes\n")
+                            if hex_option.get():f.write("Hex: "+e["data"].hex(" ").upper()+"\n")
+                            if text_option.get():f.write("Decoded text: "+visible(e["data"],encoding)+"\n")
+                            f.write("\n")
+                    else:
+                        for e in rows:
+                            row={k:v for k,v in e.items() if k not in ("data","hex","text")}
+                            if hex_option.get():row["hex"]=e["data"].hex().upper()
+                            if text_option.get():row["text"]=visible(e["data"],encoding)
+                            f.write(json.dumps(row,ensure_ascii=False)+"\n")
+                win.destroy()
+                self.set_status(f"Exported {len(rows)} retained events (including rows hidden by the filter).")
+            except OSError as exc:messagebox.showerror("Export",str(exc),parent=win)
+        save.configure(command=choose);save.pack(side="right")
+        ttk.Button(actions,text="Cancel",command=win.destroy).pack(side="right",padx=8)
+        hex_option.trace_add("write",update);text_option.trace_add("write",update)
+        win.bind("<Escape>",lambda _:win.destroy())
 
     def dialog(self,title,size="610x470"):
         win=tk.Toplevel(self);win.title(title);win.geometry(size);win.configure(bg=self.colors["panel"])
