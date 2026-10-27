@@ -1,5 +1,14 @@
 # Changes
 
+## 1.2.2 — deadline scheduling and capture isolation
+
+* Use absolute interval deadlines across sequence messages/repeats/cycles; count missed slots without dropping messages or replaying an overdue burst.
+* Preserve reply-gated behavior and explicit post-reply delays; complete interval mode after the final send (no trailing interval).
+* Report dispatch lateness and missed slots; add monotonic/scheduled metadata to sequence captures.
+* Move capture encoding/writes to a bounded worker process, with drain-on-stop and explicit incomplete-recording errors.
+* Offload dynamic template and reply-field processing to another process; throttle routine progress notifications.
+* Support multiprocessing in source/module entry points and PyInstaller bundles.
+
 ## Traffic search
 
 * Add visible Text, Hex bytes and JSON field filters with matching/retained counts.

@@ -10,7 +10,8 @@ import threading
 import time
 from pathlib import Path
 
-from .timing import sleep_at_least
+from .timing import sleep_at_least, SCHEDULED_NS
+from .recording import CaptureWriter
 
 MODES = ("TCP Client", "TCP Server", "TCP Proxy", "UDP", "USB / Serial",
          "Serial Proxy", "Serial ↔ TCP", "Device Simulator")
@@ -38,7 +39,10 @@ class Engine:
         self.echo = False
         self.capture = None
         self.raw_rx = None
-        self.capture_lock = threading.Lock()
+        self.record_control_lock=threading.Lock()
+        self.capture_writer=None
+        self.recording_error_message=""
+        self.compute_pool=None
         self.cfg = {}
         self.pending_sends = threading.BoundedSemaphore(64)
         self.accepting = 0
@@ -51,36 +55,43 @@ class Engine:
 
     def event(self, kind, **fields):
         event = {"kind": kind, "time": time.time(), **fields}
+        if kind=='data':
+            event['monotonic_ns']=time.perf_counter_ns()
+            scheduled=SCHEDULED_NS.get()
+            if scheduled is not None:
+                event['scheduled_ns']=scheduled;event['dispatch_lateness_ns']=max(0,event['monotonic_ns']-scheduled)
         if kind == "data":
             data = fields["data"]
             if fields["direction"] == "TX": self.tx += len(data)
             else: self.rx += len(data)
             for observer in tuple(self.observers): observer(event)
-        with self.capture_lock:
-            try:
-                if self.capture:
-                    disk = {**event}
-                    if "data" in disk: disk["hex"] = disk.pop("data").hex().upper()
-                    self.capture.write(json.dumps(disk, ensure_ascii=True) + "\n")
-                    self.capture.flush()
-                if self.raw_rx and kind == "data" and fields["direction"] == "RX":
-                    self.raw_rx.write(fields["data"]); self.raw_rx.flush()
-            except OSError as exc:
-                for handle in (self.capture, self.raw_rx):
-                    if handle:
-                        with contextlib.suppress(OSError): handle.close()
-                self.capture = self.raw_rx = None
-                self.emit({"kind": "error", "time": time.time(), "message": f"Recording stopped: {exc}"})
+        writer=self.capture_writer
+        if writer and (self.capture or self.raw_rx):writer.enqueue(event)
         self.emit(event)
 
-    def record(self, path=None, raw=False):
-        # Open before replacing the current recording, so a bad path cannot destroy it.
-        handle = open(path, "ab" if raw else "a", **({} if raw else {"encoding": "utf-8"})) if path else None
-        with self.capture_lock:
-            old = self.raw_rx if raw else self.capture
-            if old: old.close()
-            if raw: self.raw_rx = handle
-            else: self.capture = handle
+    def _recording_error(self,message):
+        self.capture=self.raw_rx=None;self.recording_error_message='Recording incomplete: '+message
+        self.emit(dict(kind='recording_error',time=time.time(),message=self.recording_error_message))
+
+    def record(self,path=None,raw=False):
+        with self.record_control_lock:
+            # Control waits only in the caller, outside the transport capture enqueue lock.
+            if self.capture_writer is not None and self.capture_writer.failed:
+                self.capture_writer.close();self.capture_writer=None;self.capture=self.raw_rx=None
+            if self.capture_writer is None:
+                if path is None:return
+                self.capture_writer=CaptureWriter(self._recording_error)
+            self.capture_writer.control('raw' if raw else 'capture',path)
+            if path:self.recording_error_message=''
+            if raw:self.raw_rx=str(path) if path else None
+            else:self.capture=str(path) if path else None
+
+    async def compute(self,function,*args):
+        if self.compute_pool is None:
+            import multiprocessing
+            from concurrent.futures import ProcessPoolExecutor
+            self.compute_pool=ProcessPoolExecutor(max_workers=1,mp_context=multiprocessing.get_context('spawn'))
+        return await self.loop.run_in_executor(self.compute_pool,function,*args)
 
     def start(self, cfg):
         if self.thread and self.thread.is_alive(): raise RuntimeError("Session is already running.")
@@ -122,7 +133,7 @@ class Engine:
                     with contextlib.suppress(OSError): os.close(fd)
                 if self.udp: self.udp.close()
                 self.clients.clear()
-                self.record(); self.record(raw=True)
+                self._close_workers()
                 self.event("state", state="Disconnected")
         asyncio.run(main())
         self.loop = None
@@ -140,8 +151,17 @@ class Engine:
                 if self.root_task: self.root_task.cancel()
             with contextlib.suppress(RuntimeError): loop.call_soon_threadsafe(cancel_session)
 
+    def _close_workers(self):
+        with self.record_control_lock:
+            if self.capture_writer:
+                self.capture_writer.close();self.capture_writer=None
+                self.capture=self.raw_rx=None
+        if self.compute_pool:
+            self.compute_pool.shutdown(wait=False,cancel_futures=True);self.compute_pool=None
+
     def join(self, timeout=5):
-        if self.thread: self.thread.join(timeout)
+        if self.thread:self.thread.join(timeout)
+        else:self._close_workers()
 
     def schedule(self, coro):
         loop = self.loop

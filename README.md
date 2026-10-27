@@ -1,4 +1,4 @@
-# Probe for Linux 1.2.1
+# Probe for Linux 1.2.2
 
 TCP, UDP and USB/serial communications console with an ANSI terminal, binary
 inspector, capture/replay, serial proxy and Serial-to-TCP bridge.

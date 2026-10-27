@@ -62,7 +62,7 @@ class SequencePane(ttk.Frame):
         self.table = ttk.Treeview(tablebox, columns=("name", "bytes", "delay", "options", "preview"),
                                   show="headings", height=5, selectmode="browse")
         for key, title, width in (("name", "Message", 205), ("bytes", "Bytes", 60),
-                                  ("delay", "Delay after (ms)", 115), ("options", "Checks / repeats", 120),
+                                  ("delay", "Interval (ms)", 115), ("options", "Checks / repeats", 120),
                                   ("preview", "Payload preview", 340)):
             self.table.heading(key, text=title)
             self.table.column(key, width=width, minwidth=50, stretch=key in ("name", "preview"))
@@ -113,7 +113,7 @@ class SequencePane(ttk.Frame):
         self.count_entry.pack(side="left")
         ttk.Label(self.count_box, text="runs").pack(side="left", padx=4)
         self.controls.append(self.count_entry)
-        self.individual_check = ttk.Checkbutton(below, text="Advanced: use individual message delays",
+        self.individual_check = ttk.Checkbutton(below, text="Advanced: use individual intervals",
                                                 variable=self.individual)
         self.individual_check.pack(anchor="w", pady=(4, 6))
         self.controls.append(self.individual_check)
@@ -233,7 +233,7 @@ class SequencePane(ttk.Frame):
         else:
             self.reply_box.grid_remove();self.interval_box.grid()
             self.individual_check.pack(anchor="w", before=self.hint_label, pady=(4, 6))
-            hint = "Messages use the interval shown, or their individual delays."
+            hint = "Fixed deadlines between sends. Late slots are skipped; all messages are kept."
         self.timing_hint.set(hint)
         self.interval_entry.configure(state="disabled" if self.individual.get() or self.reply_mode() else "normal")
 
@@ -412,7 +412,7 @@ class SequencePane(ttk.Frame):
         first = ttk.Frame(advanced);first.pack(fill="x", pady=3)
         self.field(first, "Encoding", self.fields["encoding"], 0, ["utf-8", "ascii", "latin-1", "cp1256", "gbk", "utf-16-le"], 12)
         self.field(first, "Line ending", self.fields["ending"], 1, ["None", "CR", "LF", "CRLF"], 10)
-        delay_widget = self.field(first, "Delay after (ms)", self.fields["delay_ms"], 2, width=12)
+        delay_widget = self.field(first, "Interval (ms)", self.fields["delay_ms"], 2, width=12)
         if not self.individual.get() or self.reply_mode():delay_widget.configure(state="disabled")
         self.field(first, "Send this message", self.fields["repeat"], 3, width=10)
         second = ttk.Frame(advanced);second.pack(fill="x", pady=3);second.columnconfigure(0, weight=1)
