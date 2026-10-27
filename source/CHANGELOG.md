@@ -1,5 +1,10 @@
 # Changes
 
+## Plot workspace layout
+
+* Move Value source, custom configuration, RX peer and Clear into one compact footer.
+* Give the chart all remaining height; show setup guidance only when no samples exist.
+
 ## Focused workspace workflows
 
 * Detach/dock Terminal without two visible terminal screens.
