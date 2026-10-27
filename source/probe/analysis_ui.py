@@ -430,14 +430,21 @@ class AnalysisWindow(tk.Toplevel,Actions):
         self.protocol.choose=lambda:TrafficPicker(app,self.set_data,self)
         self.comparison=ComparePane(self.tabs,app,a_label="Choose A",b_label="Choose B");self.tabs.add(self.comparison,text="Capture Diff")
         self.tabs.bind("<<NotebookTabChanged>>",self.remember_tab)
-        self.wm_protocol("WM_DELETE_WINDOW",self.withdraw)
-        self.bind("<Escape>",lambda e:self.withdraw())
+        self.wm_protocol("WM_DELETE_WINDOW",self.hide)
+        self.bind("<Escape>",lambda e:self.hide())
+
+    def hide(self):
+        self.remember_tab();self.withdraw()
 
     def remember_tab(self,event=None):
         if self.event_key is not None:
             if not hasattr(self.app,"analysis_tabs"):self.app.analysis_tabs={}
+            if not hasattr(self.app,"analysis_picker_states"):self.app.analysis_picker_states={}
             self.app.analysis_tabs[self.event_key]=self.tabs.tab(self.tabs.select(),"text")
-            if len(self.app.analysis_tabs)>2000:self.app.analysis_tabs.pop(next(iter(self.app.analysis_tabs)))
+            self.app.analysis_picker_states[self.event_key]=dict(self.comparison.picker_state)
+            if len(self.app.analysis_tabs)>2000:
+                old=next(iter(self.app.analysis_tabs));self.app.analysis_tabs.pop(old)
+                self.app.analysis_picker_states.pop(old,None)
 
     def set_data(self,data,label):
         self.data=data;self.label=label;self.source.set(label);self.payload.set_data(data);self.protocol.set_data(data,label)
@@ -474,7 +481,7 @@ def open_analysis(app,tab=None):
         win.set_data(data,label);win.event_key=key
         win.comparison.direction=event.get("direction","RX") if event else "RX"
         win.comparison.peer=event.get("peer","") if event else ""
-        win.comparison.picker_state={}
+        win.comparison.picker_state=dict(getattr(app,"analysis_picker_states",{}).get(key,{}))
         remembered=getattr(app,"analysis_tabs",{}).get(key)
         if remembered:
             for page in win.tabs.tabs():

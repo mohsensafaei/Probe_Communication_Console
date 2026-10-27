@@ -247,6 +247,9 @@ class UISmoke(unittest.TestCase):
         picker=pane.choose("A");self.assertEqual(picker.direction.get(),"RX");picker.destroy()
         win.tabs.select(win.payload.pages["Every byte"]);self.app.update();win.withdraw()
         self.app.analyze();self.app.update();self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Every byte")
+        self.app.table.selection_set(self.app.order[0]);self.app.analyze();self.app.update()
+        picker=pane.choose("A");self.assertEqual(picker.direction.get(),"RX");picker.destroy()
+        self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Capture Diff")
 
     def test_custom_plot_configuration_on_real_serial_rx(self):
         self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
