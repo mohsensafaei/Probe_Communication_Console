@@ -372,3 +372,23 @@ missing/non-numeric fields are skipped. Partial data is separate per peer and
 bounded to 64 KiB. Settings persist; changing them clears plotted samples, not
 traffic. Both modes use RX only, last 300 samples per peer; the horizontal axis
 is sample order, not a precise time axis.
+
+## Search traffic
+
+The labeled Search bar filters retained traffic while RX/TX filtering still applies.
+* **Text**: case-insensitive search of the entire decoded payload, JSON string values
+  (including escaped Unicode) or peer name. Example: `APPROVED` or `10000`.
+* **Hex bytes**: an exact, byte-aligned contiguous sequence, e.g. `A4 FF 00`,
+  `A4FF00` or `0xA4,0xFF,0x00`. Incomplete/invalid hex shows Invalid search.
+* **JSON field**: enter `data.amount` or `/data/amount` in Field, then a value to
+  find within it. Array paths such as `data.items[0].id` are supported. A blank
+  value finds messages where the field exists. UTF-8 JSON with optional ASCII
+  length prefix is supported.
+
+Search checks all payload bytes, including content beyond the shortened table
+preview. Results show matching rows / retained rows. It updates as messages arrive
+and also works on retained traffic while paused. Enter applies immediately; Reset
+or Escape clears search settings. Direction filtering, captures and byte contents
+are unchanged. Search is per displayed message, not across unrelated receive chunks;
+use Framing when an application message spans chunks. History remains bounded to
+2000 rows / 8 MiB; searching does not load the complete lifetime recording.
