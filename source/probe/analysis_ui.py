@@ -42,11 +42,11 @@ def modal(parent,title,size="760x560",minimum=(700,500)):
 
 class TrafficPicker(tk.Toplevel,Actions):
     """One-direction, one-peer selection, with optional chunk concatenation."""
-    def __init__(self,app,callback,parent=None,many=True):
+    def __init__(self,app,callback,parent=None,many=True,direction="RX",peer=""):
         super().__init__(parent or app);self.app=app;self.callback=callback;self.many=many
         self.title("Probe · Choose traffic");self.geometry("850x560");self.minsize(760,500)
         self.configure(bg=app.colors["panel"]);self.transient((parent or app).winfo_toplevel())
-        self.feedback=tk.StringVar();self.direction=tk.StringVar(value="RX");self.peer=tk.StringVar()
+        self.feedback=tk.StringVar();self.direction=tk.StringVar(value=direction);self.peer=tk.StringVar(value=peer)
         self.rows=[dict(app.events[i]) for i in app.order if i in app.events]
         self.source_name="Traffic history"
         body=ttk.Frame(self,padding=16);body.pack(fill="both",expand=True)
@@ -97,7 +97,7 @@ class TrafficPicker(tk.Toplevel,Actions):
 
 
 class ProtocolPane(ttk.Frame,Actions):
-    MODES=("Auto","JSON","TLV (1-byte)","BER-TLV","Custom fields","Raw bytes")
+    MODES=("Auto","Raw Bytes")
     def __init__(self,parent,app,data=b"",label="No message selected"):
         super().__init__(parent,padding=12);self.app=app;self.data=data;self.source=tk.StringVar(value=label)
         self.feedback=tk.StringVar();self.mode=tk.StringVar(value="Auto");self.page=0;self.fields=()
@@ -106,12 +106,8 @@ class ProtocolPane(ttk.Frame,Actions):
         ttk.Label(self,text="Interpret the selected bytes",font=(app.ui_font,16,"bold")).pack(anchor="w")
         ttk.Label(self,textvariable=self.source,wraplength=880).pack(anchor="w",pady=4)
         bar=ttk.Frame(self);bar.pack(fill="x")
-        ttk.Button(bar,text="Choose traffic…",command=self.choose).pack(side="left",padx=(0,8))
         combo=ttk.Combobox(bar,textvariable=self.mode,values=self.MODES,state="readonly",width=17);combo.pack(side="left")
         combo.bind("<<ComboboxSelected>>",lambda e:self.refresh())
-        ttk.Button(bar,text="Custom fields…",command=self.edit_fields).pack(side="left",padx=8)
-        ttk.Button(bar,text="Load profile…",command=lambda:self.action(self.load_profile)).pack(side="right")
-        ttk.Button(bar,text="Save profile…",command=lambda:self.action(self.save_profile)).pack(side="right",padx=6)
         lower=ttk.Frame(self);lower.pack(side="bottom",fill="x")
         ttk.Label(lower,textvariable=self.feedback,wraplength=880).pack(anchor="w",pady=4)
         controls=ttk.Frame(lower);controls.pack(fill="x")
@@ -132,9 +128,9 @@ class ProtocolPane(ttk.Frame,Actions):
     def refresh(self):
         self.view.delete(*self.view.get_children());self.fields=()
         try:
-            mode,self.fields=inspect_payload(self.data,self.mode.get(),self.definitions)
+            mode,self.fields=inspect_payload(self.data,"Raw bytes" if self.mode.get()=="Raw Bytes" else self.mode.get(),self.definitions)
             for i,field in enumerate(self.fields):self.view.insert("","end",iid=str(i),values=(field.name,field.offset,field.size,field.value,field.status),tags=(field.status,))
-            note="JSON and ASCII body-length prefixes are detected automatically." if mode=="JSON" else "Choose TLV explicitly; tag/length layouts are not guessed." if mode=="Raw bytes" else "Select a field to highlight its original bytes."
+            note="JSON and ASCII body-length prefixes are detected automatically." if mode=="JSON" else "Raw byte view; no protocol is assumed." if mode=="Raw bytes" else "Select a field to highlight its original bytes."
             self.feedback.set(f"{mode} · {len(self.fields)} fields. {note}")
         except (ValueError,TypeError,KeyError,RecursionError) as exc:self.feedback.set(str(exc))
         self.render_bytes()
@@ -250,6 +246,7 @@ class ComparePane(ttk.Frame,Actions):
         super().__init__(parent,padding=12);self.app=app;self.a=a;self.b=b;self.ranges=[];self.selectors=[];self.differences=();self.page=0
         self.feedback=tk.StringVar();self.a_label=tk.StringVar(value=a_label);self.b_label=tk.StringVar(value=b_label)
         self.a_ready=bool(a) or a_label!="Choose A";self.b_ready=bool(b) or b_label!="Choose B"
+        self.direction="RX";self.peer="";self.picker_state={}
         self.show_equal=tk.BooleanVar(value=False)
         ttk.Label(self,text="Compare messages",font=(app.ui_font,16,"bold")).pack(anchor="w")
         ttk.Label(self,text="1. Choose a reference (A).   2. Choose a message to check (B).   Differences appear automatically.",wraplength=880).pack(anchor="w",pady=4)
@@ -274,7 +271,13 @@ class ComparePane(ttk.Frame,Actions):
         for kind,color in (("changed",app.colors["red"]),("added",app.colors["accent"]),("removed",app.colors["red"]),("ignored",app.colors["muted"])):self.view.tag_configure(kind,foreground=color)
         self.view.bind("<<TreeviewSelect>>",lambda e:self.show_detail());self.refresh()
 
-    def choose(self,side):return TrafficPicker(self.app,lambda data,label:self.set_data(side,data,label),self)
+    def choose(self,side):
+        state=self.picker_state.get(side,(self.direction,self.peer))
+        picker=TrafficPicker(self.app,lambda data,label:self.set_data(side,data,label),self,direction=state[0],peer=state[1])
+        def remember(event):
+            if event.widget is picker:self.picker_state[side]=(picker.direction.get(),picker.peer.get())
+        picker.bind("<Destroy>",remember,add="+")
+        return picker
 
     def set_data(self,side,data,label):
         if side=="A":self.a=data;self.a_label.set(label);self.a_ready=True
@@ -394,7 +397,7 @@ class PayloadViews:
 
     def render(self):
         start=self.page*4096;shown=self.data[start:start+4096]
-        self.app.put_text(self.decoded,visible(shown,self.encoding.get()) if shown else "Double-click a traffic row or Choose traffic to inspect a message.")
+        self.app.put_text(self.decoded,visible(shown,self.encoding.get()) if shown else "Double-click a traffic row to inspect a message.")
         self.app.put_text(self.hextext,hexdump(shown,start))
         self.byte_table.delete(*self.byte_table.get_children())
         for offset,byte in enumerate(shown,start):
@@ -412,12 +415,11 @@ class AnalysisWindow(tk.Toplevel,Actions):
         self.minsize(920,700)
         self.configure(bg=app.colors["panel"]);self.transient(app);self.bind("<Escape>",lambda e:self.destroy())
         self.bind("<Control-plus>",lambda e:app.zoom(1));self.bind("<Control-minus>",lambda e:app.zoom(-1))
-        self.feedback=tk.StringVar();self.source=tk.StringVar(value="Choose traffic to inspect; no connection is required.")
+        self.feedback=tk.StringVar();self.source=tk.StringVar(value="Double-click a message to inspect it.")
         body=ttk.Frame(self,padding=12);body.pack(fill="both",expand=True)
         ttk.Label(body,text="Analyze traffic",font=(app.ui_font,19,"bold")).pack(anchor="w")
         ttk.Label(body,textvariable=self.source,wraplength=870).pack(anchor="w",pady=(3,6))
         actions=ttk.Frame(body);actions.pack(fill="x",pady=(0,6))
-        ttk.Button(actions,text="Choose traffic…",command=lambda:TrafficPicker(app,self.set_data,self)).pack(side="left")
         ttk.Button(actions,text="Copy hex",command=lambda:self.action(self.copy_hex)).pack(side="left",padx=6)
         ttk.Button(actions,text="Save bytes…",command=lambda:self.action(self.save_bytes)).pack(side="left")
         ttk.Button(actions,text="Load into composer",command=lambda:self.action(self.load_composer)).pack(side="right")
@@ -427,6 +429,15 @@ class AnalysisWindow(tk.Toplevel,Actions):
         self.protocol=ProtocolPane(self.tabs,app);self.tabs.add(self.protocol,text="Protocol Inspector")
         self.protocol.choose=lambda:TrafficPicker(app,self.set_data,self)
         self.comparison=ComparePane(self.tabs,app,a_label="Choose A",b_label="Choose B");self.tabs.add(self.comparison,text="Capture Diff")
+        self.tabs.bind("<<NotebookTabChanged>>",self.remember_tab)
+        self.wm_protocol("WM_DELETE_WINDOW",self.withdraw)
+        self.bind("<Escape>",lambda e:self.withdraw())
+
+    def remember_tab(self,event=None):
+        if self.event_key is not None:
+            if not hasattr(self.app,"analysis_tabs"):self.app.analysis_tabs={}
+            self.app.analysis_tabs[self.event_key]=self.tabs.tab(self.tabs.select(),"text")
+            if len(self.app.analysis_tabs)>2000:self.app.analysis_tabs.pop(next(iter(self.app.analysis_tabs)))
 
     def set_data(self,data,label):
         self.data=data;self.label=label;self.source.set(label);self.payload.set_data(data);self.protocol.set_data(data,label)
@@ -459,11 +470,19 @@ def open_analysis(app,tab=None):
     if win is None or not win.winfo_exists():win=AnalysisWindow(app)
     key=app.table.selection()[0] if event else None
     if win.event_key!=key or win.data!=data:
+        win.remember_tab()
         win.set_data(data,label);win.event_key=key
+        win.comparison.direction=event.get("direction","RX") if event else "RX"
+        win.comparison.peer=event.get("peer","") if event else ""
+        win.comparison.picker_state={}
+        remembered=getattr(app,"analysis_tabs",{}).get(key)
+        if remembered:
+            for page in win.tabs.tabs():
+                if win.tabs.tab(page,"text")==remembered:win.tabs.select(page)
         if previous:win.comparison.set_data("A",previous["data"],"Previous message · "+str(previous.get("peer","")))
         else:win.comparison.a=b"";win.comparison.a_ready=False;win.comparison.a_label.set("Choose A");win.comparison.refresh()
     if tab is not None:
         names={"Protocol":win.protocol,"Compare":win.comparison,**win.payload.pages}
         if tab in names:win.tabs.select(names[tab])
-    win.lift();win.focus_set()
+    win.deiconify();win.lift();win.focus_set()
     app.analysis_window=win;return win

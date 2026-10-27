@@ -1,5 +1,12 @@
 # Changes
 
+## Focused workspace workflows
+
+* Detach/dock Terminal without two visible terminal screens.
+* Remember Analyze pages; default comparison to selected message direction.
+* Simplify protocol choices to Auto / Raw Bytes and remove global Choose traffic.
+* Add Auto/Custom plot modes for JSON paths, text columns, named values and fixed binary fields.
+
 ## Instrument identity refinement
 
 * Restore framed blue instrument panels and satin edges with mint readouts.

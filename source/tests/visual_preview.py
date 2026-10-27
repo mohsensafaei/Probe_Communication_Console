@@ -14,6 +14,11 @@ with tempfile.TemporaryDirectory() as directory, patch('probe.app.data_directory
     for _ in range(30):app.update();time.sleep(.02)
     # Real Tk rendering, not a UI mockup.
     ImageGrab.grab(bbox=(app.winfo_rootx(),app.winfo_rooty(),app.winfo_rootx()+app.winfo_width(),app.winfo_rooty()+app.winfo_height())).save('probe-preview-dark.png')
+    dialog=app.plot.configure_custom();app.update()
+    ImageGrab.grab(bbox=(dialog.winfo_rootx(),dialog.winfo_rooty(),dialog.winfo_rootx()+dialog.winfo_width(),dialog.winfo_rooty()+dialog.winfo_height())).save('probe-preview-custom.png')
+    dialog.destroy()
+    app.table.selection_set(app.order[-1]);analysis=app.analyze('Compare');app.update()
+    ImageGrab.grab(bbox=(analysis.winfo_rootx(),analysis.winfo_rooty(),analysis.winfo_rootx()+analysis.winfo_width(),analysis.winfo_rooty()+analysis.winfo_height())).save('probe-preview-analysis.png')
     app.close()
     import probe.app as module
     with patch.object(module,'DARK',LIGHT):
