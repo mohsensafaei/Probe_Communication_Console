@@ -1,0 +1,242 @@
+{
+  "platform": "Windows-2022Server-10.0.20348-SP0",
+  "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "processor": "AMD64 Family 25 Model 1 Stepping 1, AuthenticAMD",
+  "cpu_count": 4,
+  "source_commit": "a99a069bc13c11319e1a2713d20091f937537f37",
+  "scope": "Real TCP localhost sockets, Probe Engine and actual Sequence runner. No Tk UI. No physical serial hardware. Host scheduling, not hard real-time certification.",
+  "perf_counter_resolution_s": 1e-07,
+  "results": [
+    {
+      "test": "TCP receive",
+      "record": false,
+      "bytes_expected": 16777216,
+      "bytes_received": 16777216,
+      "send_chunk": 65536,
+      "stream_exact": true,
+      "capture_exact": null,
+      "elapsed_s": 0.0406452,
+      "MiB_s": 393.6504187456329
+    },
+    {
+      "test": "TCP receive",
+      "record": true,
+      "bytes_expected": 16777216,
+      "bytes_received": 16777216,
+      "send_chunk": 65536,
+      "stream_exact": true,
+      "capture_exact": true,
+      "elapsed_s": 0.1726072,
+      "MiB_s": 92.69601731561605
+    },
+    {
+      "test": "TCP receive",
+      "record": true,
+      "bytes_expected": 3200000,
+      "bytes_received": 3200000,
+      "send_chunk": 32,
+      "stream_exact": true,
+      "capture_exact": true,
+      "elapsed_s": 8.5816213,
+      "MiB_s": 0.35561553065735957
+    },
+    {
+      "test": "TCP proxy echo",
+      "record": true,
+      "bytes_each_direction": 8388608,
+      "stream_exact": true,
+      "capture_tx_exact": true,
+      "capture_rx_exact": true,
+      "elapsed_s": 0.1983051,
+      "roundtrip_payload_MiB_s": 40.341877238659016,
+      "errors": []
+    },
+    {
+      "test": "Sequence 1 ms",
+      "record": false,
+      "python_cpu_contention": false,
+      "messages_expected": 1000,
+      "messages_tx": 1000,
+      "messages_rx": 1000,
+      "stream_exact": true,
+      "scenario_complete": true,
+      "errors": [],
+      "tx_interval_us": {
+        "n": 999,
+        "min": 1302.7,
+        "median": 1384.6,
+        "p95": 1621.6,
+        "p99": 1866.5,
+        "max": 11527.6,
+        "mean": 1440.1436436436436
+      },
+      "tx_interval_error_us": {
+        "n": 999,
+        "min": 302.7,
+        "median": 384.6,
+        "p95": 621.6,
+        "p99": 866.5,
+        "max": 10527.6,
+        "mean": 440.14364364364366
+      },
+      "max_absolute_interval_error_us": 10527.6,
+      "accumulated_drift_ms": 439.7035,
+      "rx_observed_interval_us": {
+        "n": 999,
+        "min": 1128.2,
+        "median": 1379.6,
+        "p95": 1671.2,
+        "p99": 1920.0,
+        "max": 11757.2,
+        "mean": 1440.143743743744
+      },
+      "note": "TX timestamp is an application observer after writer.write; RX is application full-frame availability. Neither is a wire timestamp."
+    },
+    {
+      "test": "Sequence 1 ms",
+      "record": true,
+      "python_cpu_contention": false,
+      "messages_expected": 1000,
+      "messages_tx": 1000,
+      "messages_rx": 1000,
+      "stream_exact": true,
+      "scenario_complete": true,
+      "errors": [],
+      "tx_interval_us": {
+        "n": 999,
+        "min": 1373.4,
+        "median": 1457.9,
+        "p95": 1742.1,
+        "p99": 1957.1,
+        "max": 10426.9,
+        "mean": 1506.6432432432434
+      },
+      "tx_interval_error_us": {
+        "n": 999,
+        "min": 373.4,
+        "median": 457.9,
+        "p95": 742.1,
+        "p99": 957.1,
+        "max": 9426.9,
+        "mean": 506.6432432432432
+      },
+      "max_absolute_interval_error_us": 9426.9,
+      "accumulated_drift_ms": 506.1366,
+      "rx_observed_interval_us": {
+        "n": 999,
+        "min": 1239.3,
+        "median": 1462.6,
+        "p95": 1706.6,
+        "p99": 1943.3,
+        "max": 10330.9,
+        "mean": 1506.7444444444443
+      },
+      "note": "TX timestamp is an application observer after writer.write; RX is application full-frame availability. Neither is a wire timestamp."
+    },
+    {
+      "test": "Sequence 1 ms",
+      "record": true,
+      "python_cpu_contention": true,
+      "messages_expected": 500,
+      "messages_tx": 500,
+      "messages_rx": 500,
+      "stream_exact": true,
+      "scenario_complete": true,
+      "errors": [],
+      "tx_interval_us": {
+        "n": 499,
+        "min": 47156.0,
+        "median": 125752.8,
+        "p95": 189101.9,
+        "p99": 236937.4,
+        "max": 273500.0,
+        "mean": 125665.18977955912
+      },
+      "tx_interval_error_us": {
+        "n": 499,
+        "min": 46156.0,
+        "median": 124752.8,
+        "p95": 188101.9,
+        "p99": 235937.4,
+        "max": 272500.0,
+        "mean": 124665.18977955912
+      },
+      "max_absolute_interval_error_us": 272500.0,
+      "accumulated_drift_ms": 62207.9297,
+      "rx_observed_interval_us": {
+        "n": 499,
+        "min": 15844.2,
+        "median": 125989.2,
+        "p95": 204522.7,
+        "p99": 243939.8,
+        "max": 321256.4,
+        "mean": 125728.72665330661
+      },
+      "note": "TX timestamp is an application observer after writer.write; RX is application full-frame availability. Neither is a wire timestamp."
+    }
+  ],
+  "serial_115200_8N1": {
+    "physical_test": false,
+    "reason": "No physical UART/USB adapter connected; loop:// and PTYs do not enforce wire baud rate.",
+    "bits_per_byte": 10,
+    "max_bytes_s": 11520,
+    "byte_time_us": 86.80555555555556,
+    "sizes": [
+      {
+        "bytes": 1,
+        "min_wire_time_ms": 0.08680555555555555,
+        "max_messages_s": 11520.0,
+        "can_sustain_1000_messages_s": true
+      },
+      {
+        "bytes": 8,
+        "min_wire_time_ms": 0.6944444444444444,
+        "max_messages_s": 1440.0,
+        "can_sustain_1000_messages_s": true
+      },
+      {
+        "bytes": 11,
+        "min_wire_time_ms": 0.954861111111111,
+        "max_messages_s": 1047.2727272727273,
+        "can_sustain_1000_messages_s": true
+      },
+      {
+        "bytes": 12,
+        "min_wire_time_ms": 1.0416666666666667,
+        "max_messages_s": 960.0,
+        "can_sustain_1000_messages_s": false
+      },
+      {
+        "bytes": 16,
+        "min_wire_time_ms": 1.3888888888888888,
+        "max_messages_s": 720.0,
+        "can_sustain_1000_messages_s": false
+      },
+      {
+        "bytes": 32,
+        "min_wire_time_ms": 2.7777777777777777,
+        "max_messages_s": 360.0,
+        "can_sustain_1000_messages_s": false
+      },
+      {
+        "bytes": 64,
+        "min_wire_time_ms": 5.555555555555555,
+        "max_messages_s": 180.0,
+        "can_sustain_1000_messages_s": false
+      },
+      {
+        "bytes": 128,
+        "min_wire_time_ms": 11.11111111111111,
+        "max_messages_s": 90.0,
+        "can_sustain_1000_messages_s": false
+      },
+      {
+        "bytes": 256,
+        "min_wire_time_ms": 22.22222222222222,
+        "max_messages_s": 45.0,
+        "can_sustain_1000_messages_s": false
+      }
+    ]
+  },
+  "data_checks_passed": true
+}
