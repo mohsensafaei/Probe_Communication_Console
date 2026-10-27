@@ -18,6 +18,7 @@ from .codec import encode, hexdump, visible, Framer
 from .engine import Engine, MODES
 from .terminal_ui import TerminalPane
 from .plot_ui import LivePlotPane
+from .traffic_search import TrafficSearch, MODES as SEARCH_MODES
 from .capture import load_capture, replay_plan
 from .serial_endpoints import VirtualPair, simulator_transports
 from .typography import load_fonts, font_roles
@@ -67,7 +68,7 @@ class Probe(tk.Tk):
         self.style = ttk.Style(self); self.style.theme_use("clam")
         self.settings_path = data_directory() / "settings.json"
         self.profiles = {}; self.macros = []
-        self.events = {}; self.order = []; self.retained_bytes = 0; self.sequence = 0
+        self.events = {}; self.order = []; self.retained_bytes = 0; self.sequence = 0; self._shown_count=0
         self.queue = queue.Queue(maxsize=1024)
         self.dropped = 0; self.evicted = 0; self.pressed = False
         self.engine = None; self.active = False; self.paused = False
@@ -96,7 +97,7 @@ class Probe(tk.Tk):
                         app_peer_port="COM21", simulator_port="COM20", simulator_peer_port="COM21",
                         send_mode="Text", encoding="utf-8", ending="None", checksum="None",
                         prefix="", suffix="", interval="1000", framing="Chunks", delimiter="0A",
-                        frame_size="16", gap="50", view="Text + Hex", search="", direction="All",
+                        frame_size="16", gap="50", view="Text + Hex", search="", search_mode="Text", search_field="", direction="All",
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
                         theme="Probe Dark", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
                         sequence_advance="After interval", sequence_reply_timeout="2000", sequence_variables="{}",
@@ -263,18 +264,33 @@ class Probe(tk.Tk):
 
         self.notebook=ttk.Notebook(self.content);self.notebook.grid(row=3,column=0,sticky="nsew")
         traffic=self.bezel(self.notebook);self.traffic_tab=traffic;self.notebook.add(traffic,text="Traffic")
-        traffic.columnconfigure(0,weight=1);traffic.rowconfigure(1,weight=1)
+        traffic.columnconfigure(0,weight=1);traffic.rowconfigure(2,weight=1)
         toolbar=self.frame(traffic); toolbar.grid(row=0,column=0,sticky="ew",padx=10,pady=6)
         self.traffic_toolbar=toolbar
         self.label(toolbar,"TRAFFIC",12,True,color=c["blue"]).pack(side="left",padx=(0,14))
-        self.combo(toolbar,"direction",["All","RX","TX"],width=4,callback=self.refresh).pack(side="left",padx=(0,6))
-        search=ttk.Entry(toolbar,textvariable=self.vars["search"],width=14); search.pack(side="left",padx=(0,6))
-        self.vars["search"].trace_add("write",self.search_changed)
+        self.combo(toolbar,"direction",["All","RX","TX"],width=4,callback=lambda:self.refresh(force=True)).pack(side="left",padx=(0,6))
         ttk.Button(toolbar,text="Clear",width=5,command=self.clear).pack(side="right",padx=(4,0))
         ttk.Button(toolbar,text="Export",width=6,command=self.export).pack(side="right",padx=(4,0))
         self.pause_button=ttk.Button(toolbar,text="Pause",width=6,command=self.pause); self.pause_button.pack(side="right",padx=(4,0))
         self.record_button=ttk.Button(toolbar,text="● Record",width=10,command=self.record); self.record_button.pack(side="right")
-        tableframe=self.frame(traffic); tableframe.grid(row=1,column=0,sticky="nsew",padx=12)
+        self.searchbar=ttk.Frame(traffic);self.searchbar.grid(row=1,column=0,sticky="ew",padx=12,pady=(0,6))
+        self.searchbar.columnconfigure(3,weight=1)
+        ttk.Label(self.searchbar,text="Search").grid(row=0,column=0,padx=(0,6))
+        self.search_mode_combo=ttk.Combobox(self.searchbar,textvariable=self.vars["search_mode"],values=SEARCH_MODES,state="readonly",width=11)
+        self.search_mode_combo.grid(row=0,column=1,padx=(0,8))
+        self.search_fieldbox=ttk.Frame(self.searchbar);self.search_fieldbox.grid(row=0,column=2,padx=(0,8))
+        ttk.Label(self.search_fieldbox,text="Field").pack(side="left",padx=(0,4))
+        ttk.Entry(self.search_fieldbox,textvariable=self.vars["search_field"],width=17).pack(side="left")
+        self.search_entry=ttk.Entry(self.searchbar,textvariable=self.vars["search"],width=1)
+        self.search_entry.grid(row=0,column=3,sticky="ew")
+        self.search_entry.bind("<Return>",lambda e:self.refresh(force=True))
+        self.search_entry.bind("<Escape>",lambda e:self.clear_search())
+        ttk.Button(self.searchbar,text="Reset",width=5,command=self.clear_search).grid(row=0,column=4,padx=(8,6))
+        self.search_count=ttk.Label(self.searchbar,text="0 / 0",width=12,anchor="e");self.search_count.grid(row=0,column=5)
+        ttk.Button(self.searchbar,text="?",width=2,command=self.search_help).grid(row=0,column=6,padx=(6,0))
+        for key in ("search","search_mode","search_field"):self.vars[key].trace_add("write",self.search_changed)
+        if self.vars["search_mode"].get()!="JSON field":self.search_fieldbox.grid_remove()
+        tableframe=self.frame(traffic); tableframe.grid(row=2,column=0,sticky="nsew",padx=12)
         self.table=ttk.Treeview(tableframe,columns=("id","time","dir","peer","size","payload"),show="headings",selectmode="browse",height=5)
         for col,title,width,stretch in [("id","#",46,False),("time","TIME",110,False),("dir","FLOW",55,False),
                                         ("peer","PEER",130,False),("size","BYTES",60,False),("payload","PAYLOAD",420,True)]:
@@ -285,7 +301,7 @@ class Probe(tk.Tk):
         self.table.bind("<Double-1>",self.traffic_clicked)
         self.table.bind("<Return>",lambda e:(self.analyze(),"break")[1])
         self.table.bind("<Button-3>",self.traffic_menu)
-        options=self.frame(traffic); options.grid(row=2,column=0,sticky="ew",padx=12,pady=(3,5))
+        options=self.frame(traffic); options.grid(row=3,column=0,sticky="ew",padx=12,pady=(3,5))
         self.traffic_options=options
         self.history_label=self.label(options,"0 events",9,color=c["muted"],width=18,anchor="w"); self.history_label.pack(side="left")
         self.combo(options,"view",["Text + Hex","Text","Hex","Decimal"],width=11,callback=self.refresh).pack(side="left",padx=8)
@@ -566,6 +582,7 @@ class Probe(tk.Tk):
         suffix=f" · {self.evicted} older events evicted" if self.evicted else ""
         if self.dropped: suffix+=f" · {self.dropped} UI events dropped; use Record for full capture"
         self.history_label.configure(text=f"{len(self.order)} events"+(f" · {self.dropped} drops" if self.dropped else f" · {self.evicted} evicted" if self.evicted else ""))
+        self.search_counts()
         if changed and self.vars["autoscroll"].get() and not self.paused:
             items=self.table.get_children()
             if items: self.table.see(items[-1])
@@ -586,13 +603,24 @@ class Probe(tk.Tk):
             for data in framer.flush(): self.add_event({**self.frame_meta[key],"data":data})
         self.framers.clear();self.frame_meta.clear()
 
+    def search_filter(self):
+        key=tuple(self.vars[k].get() for k in ("search","search_mode","search_field","encoding"))
+        if getattr(self,"_search_key",None)!=key:
+            self._search_key=key;self._search_filter=TrafficSearch(*key[:3],encoding=key[3])
+        return self._search_filter
+
     def matches(self,event):
-        if self.vars["direction"].get() not in ("All",event["direction"]):return False
-        term=self.vars["search"].get().lower().strip()
-        if not term:return True
-        if term.startswith("hex:"):
-            return re.sub(r"\s","",term[4:]) in event["data"].hex()
-        return term in visible(event["data"],self.vars["encoding"].get()).lower() or term in event["peer"].lower()
+        return self.vars["direction"].get() in ("All",event["direction"]) and self.search_filter().matches(event)
+
+    def search_counts(self):
+        matcher=self.search_filter()
+        self.search_count.configure(text="Invalid search" if matcher.error else f"{self._shown_count} / {len(self.order)}",foreground=self.colors["red"] if matcher.error else self.colors["muted"])
+
+    def clear_search(self):
+        self.vars["search"].set("");self.vars["search_field"].set("");self.vars["search_mode"].set("Text");self.refresh(force=True)
+
+    def search_help(self):
+        messagebox.showinfo("Search traffic", "Text: search decoded payload text or field values (case-insensitive).\nExample: APPROVED, 10000, or a device name.\n\nHex bytes: search an exact contiguous byte sequence.\nExample: A4 FF 00 or A4FF00. Use two digits per byte.\n\nJSON field: enter a path such as data.amount or /data/amount, then a value to find within it. A blank value finds messages containing that field.\n\nSearch checks the whole retained payload, including bytes hidden in the table preview. RX/TX filtering still applies. Reset or Escape clears the search; recorded files remain unchanged.\n\n"+(self.search_filter().error or "Results: shown messages / retained messages. Search also works while paused; new live rows resume after Resume."),parent=self)
 
     def row_values(self,idx,event):
         data=event["data"]; view=self.vars["view"].get()
@@ -610,23 +638,27 @@ class Probe(tk.Tk):
         self.events[idx]=event;self.order.append(idx);self.retained_bytes+=len(event["data"])
         while len(self.order)>self.MAX_ROWS or self.retained_bytes>self.MAX_BYTES:
             old=self.order.pop(0);self.retained_bytes-=len(self.events.pop(old)["data"]);self.evicted+=1
-            if self.table.exists(old):self.table.delete(old)
+            if self.table.exists(old):self.table.delete(old);self._shown_count-=1
         if not self.paused and self.matches(event):
-            self.table.insert("","end",iid=idx,values=self.row_values(idx,event),tags=(event["direction"],))
+            self.table.insert("","end",iid=idx,values=self.row_values(idx,event),tags=(event["direction"],));self._shown_count+=1
 
     def search_changed(self,*_):
+        if self.vars["search_mode"].get()=="JSON field":self.search_fieldbox.grid()
+        else:self.search_fieldbox.grid_remove()
         if self.search_job:self.after_cancel(self.search_job)
-        self.search_job=self.after(180,self.refresh)
+        self.search_job=self.after(180,lambda:self.refresh(force=True))
 
-    def refresh(self):
+    def refresh(self,force=False):
+        if self.search_job:self.after_cancel(self.search_job)
         self.search_job=None
-        if self.paused:return
+        if self.paused and not force:return
         selected=self.table.selection()
-        self.table.delete(*self.table.get_children())
+        self.table.delete(*self.table.get_children());self._shown_count=0
         for idx in self.order:
             event=self.events[idx]
-            if self.matches(event):self.table.insert("","end",iid=idx,values=self.row_values(idx,event),tags=(event["direction"],))
+            if self.matches(event):self.table.insert("","end",iid=idx,values=self.row_values(idx,event),tags=(event["direction"],));self._shown_count+=1
         if selected and self.table.exists(selected[0]):self.table.selection_set(selected[0])
+        self.search_counts()
 
     def pause(self):
         self.paused=not self.paused;self.pause_button.configure(text="Resume" if self.paused else "Pause")
@@ -637,7 +669,8 @@ class Probe(tk.Tk):
     def clear(self):
         self.events.clear();self.order.clear();self.retained_bytes=0;self.evicted=0;self.dropped=0
         self.framers.clear();self.frame_meta.clear();self.plot.clear()
-        self.table.delete(*self.table.get_children())
+        self.table.delete(*self.table.get_children());self._shown_count=0
+        self.search_counts()
         self.set_status("Display cleared. Recorded files and session byte counters continue.")
 
     def selected(self):

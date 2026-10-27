@@ -1,5 +1,11 @@
 # Changes
 
+## Traffic search
+
+* Add visible Text, Hex bytes and JSON field filters with matching/retained counts.
+* Match full retained payloads and decoded JSON values; validate byte-aligned hex.
+* Apply search to live and paused history without changing captures.
+
 ## Plot workspace layout
 
 * Move Value source, custom configuration, RX peer and Clear into one compact footer.

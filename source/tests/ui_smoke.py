@@ -251,6 +251,27 @@ class UISmoke(unittest.TestCase):
         picker=pane.choose("A");self.assertEqual(picker.direction.get(),"RX");picker.destroy()
         self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Capture Diff")
 
+    def test_traffic_search_filters_full_bytes_values_and_live_rows(self):
+        rows=[("RX",b'{"data":{"amount":"10000"}}'),("TX",b'{"data":{"amount":"20000"}}'),("RX",b'X'*900+b'\xA4\xFF'),("RX",b'\x0A\xBC')]
+        for direction,data in rows:self.app.add_event(dict(kind="data",direction=direction,peer="device",time=time.time(),data=data))
+        self.app.vars["search_mode"].set("Hex bytes");self.app.vars["search"].set("A4FF");self.app.refresh(force=True)
+        self.assertEqual(len(self.app.table.get_children()),1);self.assertEqual(len(self.app.order),4)
+        self.app.add_event(dict(kind="data",direction="TX",peer="device",time=time.time(),data=b'\xA4\xFF'))
+        self.assertEqual(len(self.app.table.get_children()),2)
+        self.app.vars["direction"].set("RX");self.app.refresh(force=True);self.assertEqual(len(self.app.table.get_children()),1)
+        self.app.vars["direction"].set("All");self.app.vars["search_mode"].set("JSON field");self.app.vars["search_field"].set("data.amount")
+        self.app.vars["search"].set("10000");self.app.refresh(force=True)
+        self.assertEqual(self.app.table.get_children(),(self.app.order[0],))
+        self.app.pause();self.app.vars["search"].set("20000");self.app.refresh(force=True)
+        self.assertEqual(self.app.table.get_children(),(self.app.order[1],))
+        self.app.vars["search_mode"].set("Hex bytes");self.app.vars["search"].set("A");self.app.refresh(force=True)
+        self.assertEqual(len(self.app.table.get_children()),0);self.assertEqual(self.app.search_count.cget("text"),"Invalid search")
+        self.app.clear_search();self.assertEqual(len(self.app.table.get_children()),5)
+        self.assertEqual(len(self.app.events),5);self.assertFalse(hasattr(self.app,"analysis_window"))
+        self.app.vars["search_mode"].set("JSON field");self.app.geometry("1060x700");self.app.update()
+        self.assertTrue(self.app.search_fieldbox.winfo_ismapped());self.assertGreater(self.app.search_entry.winfo_width(),60)
+        self.assertLessEqual(self.app.search_count.winfo_x()+self.app.search_count.winfo_width(),self.app.searchbar.winfo_width())
+
     def test_plot_uses_available_height_and_footer_fits_small_window(self):
         self.app.geometry("1060x700");self.app.notebook.select(self.app.plot);self.app.update()
         pane=self.app.plot
