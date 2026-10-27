@@ -1,4 +1,4 @@
-# Probe transport benchmark — 2026-10-27
+# Probe 1.2.1 baseline transport benchmark — 2026-10-27
 
 **Measured outcome: byte integrity passed in these TCP tests; exact 1 ms periodic timing did not. No nanosecond timing guarantee is supported.**
 
@@ -48,7 +48,7 @@ No physical serial device was available. These are wire-capacity calculations, n
 
 At 1,000 messages/s there is room for at most 11 total bytes/message in this ideal 8N1 capacity calculation; headers, checksums and line endings count. A 32-byte message every 1 ms cannot be sustained at 115200 baud regardless of programming language. This capacity condition is not a timing guarantee.
 
-## Current implementation findings
+## Baseline 1.2.1 implementation findings
 
 * Sequence waits after sends/processing rather than following fixed absolute deadlines, allowing accumulated drift.
 * Capture writes and flushes happen on the transport path and add overhead.
@@ -59,7 +59,7 @@ Improvement candidates: absolute-deadline scheduling with explicit lateness repo
 
 ## Reproduce and inspect
 
-From `source`: `python benchmarks/transport_benchmark.py --output transport-benchmark.json`. No application timing behavior was changed for these measurements.
+These historical results used the source commits recorded in each raw JSON. For the updated scheduler and current reproduction instructions, see [1.2.2 validation](PERFORMANCE_1_2_2.md).
 
 * [Benchmark implementation](benchmarks/transport_benchmark.py)
 * [Raw Windows results](performance-results/transport-windows-2026-10-27.json)
