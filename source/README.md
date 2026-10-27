@@ -423,3 +423,5 @@ process pool so their CPU work does not occupy the transport loop/GIL. Static
 messages use no processing pool. CPU-heavy third-party threads or GUI work left
 in the main process can still delay the transport; neither Windows nor Linux
 best-effort scheduling provides a nanosecond or hard 1 ms guarantee.
+
+Measured Windows/Linux results and limitations: [1.2.2 timing validation](PERFORMANCE_1_2_2.md).
