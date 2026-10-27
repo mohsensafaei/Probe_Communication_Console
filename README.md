@@ -151,7 +151,8 @@ side remain visible on all three pages.
 
 ## Probe visual identity
 
-The interface uses an original connected-endpoint mark, flat graphite surfaces,
-teal actions and violet TX highlights. Headings and controls share Rajdhani;
-byte data stays in Share Tech Mono. Light and dark palettes preserve the same
-transport controls and message workflows. No vendor logo or proprietary skin is used.
+The interface uses an original hardware test-probe emblem, satin-edged blue
+instrument panels and mint readouts. Geometric Michroma headings, Rajdhani
+controls and Share Tech Mono data fonts are bundled with OFL notices.
+The light palette preserves the same controls and message workflows.
+No vendor logo or proprietary skin is used.

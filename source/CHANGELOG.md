@@ -1,5 +1,11 @@
 # Changes
 
+## Instrument identity refinement
+
+* Restore framed blue instrument panels and satin edges with mint readouts.
+* Original hardware test-probe emblem with insulated grip, contact tip and cable.
+* Matching application icon and geometric headings on both platforms.
+
 ## Visual identity refresh
 
 * Original connected-endpoint mark and lowercase Probe wordmark.

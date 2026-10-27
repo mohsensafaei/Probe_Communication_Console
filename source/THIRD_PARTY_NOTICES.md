@@ -17,4 +17,4 @@ Bundled fonts: Rajdhani (Indian Type Foundry), Michroma (Vernon Adams), and Shar
 * https://github.com/google/fonts/tree/main/ofl/michroma
 * https://github.com/google/fonts/tree/main/ofl/sharetechmono
 
-Probe uses an original connected-endpoint mark and independently drawn workbench interface. No third-party product branding, artwork or proprietary font is bundled. Hercules and SSCOM are referenced for workflow comparison only; their code, icons and binaries are not incorporated into Probe.
+Probe uses an original hardware test-probe emblem and independently drawn instrument workbench interface. No third-party product branding, artwork or proprietary font is bundled. Hercules and SSCOM are referenced for workflow comparison only; their code, icons and binaries are not incorporated into Probe.
