@@ -41,7 +41,7 @@ class NumericSamples:
 class LivePlotPane(ttk.Frame):
     AUTO="Auto (first numeric peer)"
     def __init__(self,parent,app):
-        super().__init__(parent,padding=12);self.app=app;self.model=NumericSamples();self.dirty=True
+        super().__init__(parent,padding=8);self.app=app;self.model=NumericSamples();self.dirty=True
         self.mode=tk.StringVar(value="Auto");self.config=None
         try:
             saved=json.loads(app.vars["plot_config"].get())
@@ -50,21 +50,26 @@ class LivePlotPane(ttk.Frame):
                 self.mode.set("Custom");self.model=NumericSamples(self.config)
         except (KeyError,ValueError,TypeError):pass
         self.peer=tk.StringVar(value=self.AUTO);self.status=tk.StringVar()
-        ttk.Label(self,text="Live numeric plot",font=(app.ui_font,16,"bold")).pack(anchor="w")
-        self.description=tk.StringVar(value="Auto: numbers / CSV, up to four channels. End each sample with LF: 12.3,45.6\\n")
-        ttk.Label(self,textvariable=self.description,wraplength=760).pack(anchor="w",pady=(4,8))
-        modes=ttk.Frame(self);modes.pack(fill="x",pady=(0,6))
-        ttk.Label(modes,text="Value source").pack(side="left",padx=(0,8))
-        selector=ttk.Combobox(modes,textvariable=self.mode,values=("Auto","Custom"),state="readonly",width=10);selector.pack(side="left")
-        selector.bind("<<ComboboxSelected>>",lambda e:self.change_mode())
-        ttk.Button(modes,text="Configure custom…",command=self.configure_custom).pack(side="left",padx=8)
-        bar=ttk.Frame(self);bar.pack(fill="x")
-        ttk.Label(bar,text="RX peer").pack(side="left",padx=(0,6))
-        self.peer_combo=ttk.Combobox(bar,textvariable=self.peer,values=(self.AUTO,),state="readonly",width=30);self.peer_combo.pack(side="left")
+        self.description=tk.StringVar()
+        self.columnconfigure(0,weight=1);self.rowconfigure(0,weight=1)
+        self.canvas=tk.Canvas(self,bg=app.colors["input"],highlightthickness=0,height=150)
+        self.canvas.grid(row=0,column=0,sticky="nsew")
+        # Keep acquisition controls in one footer row, leaving height to the graph.
+        self.controls=ttk.Frame(self);self.controls.grid(row=1,column=0,sticky="ew",pady=(6,0))
+        bar=self.controls;bar.columnconfigure(4,weight=1)
+        ttk.Label(bar,text="Value source").grid(row=0,column=0,padx=(0,6))
+        self.mode_combo=ttk.Combobox(bar,textvariable=self.mode,values=("Auto","Custom"),state="readonly",width=8)
+        self.mode_combo.grid(row=0,column=1)
+        self.mode_combo.bind("<<ComboboxSelected>>",lambda e:self.change_mode())
+        self.configure_button=ttk.Button(bar,text="Configure custom…",command=self.configure_custom)
+        self.configure_button.grid(row=0,column=2,padx=8)
+        ttk.Label(bar,text="RX peer").grid(row=0,column=3,padx=(0,6))
+        self.peer_combo=ttk.Combobox(bar,textvariable=self.peer,values=(self.AUTO,),state="readonly",width=18)
+        self.peer_combo.grid(row=0,column=4,sticky="ew")
         self.peer_combo.bind("<<ComboboxSelected>>",lambda e:self.render(force=True))
-        ttk.Button(bar,text="Clear plot",command=self.clear).pack(side="right")
-        ttk.Label(self,textvariable=self.status,wraplength=680).pack(side="bottom",anchor="w",pady=6)
-        self.canvas=tk.Canvas(self,bg=app.colors["input"],highlightthickness=0,height=150);self.canvas.pack(fill="both",expand=True,pady=(8,0))
+        self.clear_button=ttk.Button(bar,text="Clear plot",command=self.clear)
+        self.clear_button.grid(row=0,column=5,padx=(8,0))
+        ttk.Label(self,textvariable=self.status,anchor="w").grid(row=2,column=0,sticky="ew",pady=(4,0))
         self.canvas.bind("<Configure>",lambda e:self.render(force=True));self.describe();self.render(force=True)
 
     def change_mode(self):
@@ -164,7 +169,7 @@ class LivePlotPane(ttk.Frame):
             received=sum(state["received"] for state in self.model.peers.values())
             note="Waiting for numeric RX samples." if not received else f"Received {received} bytes; no complete numeric sample for this peer."
             cv.create_text(18,25,text=note,anchor="w",fill=c["text"],font=(self.app.ui_font,12,"bold"),width=max(100,w-36))
-            cv.create_text(18,68,text="Select Auto for numeric lines, or Custom to extract a JSON field, text parameter or binary value. Only RX is plotted.",anchor="nw",fill=c["muted"],font=(self.app.ui_font,11),width=max(100,w-36))
+            cv.create_text(18,68,text=self.description.get()+"\nUse the controls below to select a value source and RX peer. Only RX is plotted.",anchor="nw",fill=c["muted"],font=(self.app.ui_font,11),width=max(100,w-36))
             self.status.set(f"{connection} · {self.mode.get()} · last 300 samples per peer · unmatched / invalid messages are skipped.")
             return
         lo=min(min(row) for row in rows);hi=max(max(row) for row in rows)

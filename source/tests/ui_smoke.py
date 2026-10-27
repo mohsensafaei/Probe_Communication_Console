@@ -251,6 +251,17 @@ class UISmoke(unittest.TestCase):
         picker=pane.choose("A");self.assertEqual(picker.direction.get(),"RX");picker.destroy()
         self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Capture Diff")
 
+    def test_plot_uses_available_height_and_footer_fits_small_window(self):
+        self.app.geometry("1060x700");self.app.notebook.select(self.app.plot);self.app.update()
+        pane=self.app.plot
+        self.assertGreater(pane.canvas.winfo_height(),pane.winfo_height()-85)
+        controls=(pane.mode_combo,pane.configure_button,pane.peer_combo,pane.clear_button)
+        for widget in controls:
+            self.assertTrue(widget.winfo_ismapped())
+            self.assertLessEqual(widget.winfo_x()+widget.winfo_width(),pane.controls.winfo_width())
+        centers=[widget.winfo_y()+widget.winfo_height()/2 for widget in controls]
+        self.assertLessEqual(max(centers)-min(centers),1)
+
     def test_custom_plot_configuration_on_real_serial_rx(self):
         self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
         self.app.toggle();self.spin(lambda:self.app.engine.ready)
