@@ -34,7 +34,7 @@ class TerminalPane(ttk.Frame):
         ttk.Combobox(bar,textvariable=self.enter,values=["CR","LF","CRLF"],state="readonly",width=5).pack(side="left",padx=4)
         ttk.Label(bar,text="Backspace").pack(side="left",padx=(4,3))
         ttk.Combobox(bar,textvariable=self.backspace,values=["DEL","BS"],state="readonly",width=4).pack(side="left")
-        if not shared:ttk.Button(actions,text="Pop out",width=7,command=self.pop_out).pack(side="right",padx=4)
+        if not shared:ttk.Button(actions,text="Detach",width=7,command=self.pop_out).pack(side="right",padx=4)
         ttk.Button(actions,text="Paste",width=5,command=self.paste).pack(side="right",padx=4)
         ttk.Button(actions,text="Reset",width=5,command=self.reset).pack(side="right",padx=4)
         ttk.Label(actions,text="Scrollback").pack(side="left",padx=(0,6))
@@ -69,6 +69,18 @@ class TerminalPane(ttk.Frame):
         win.configure(bg=self.app.colors["panel"])
         pane=TerminalPane(win,self.app,shared=self);pane.pack(fill="both",expand=True,padx=12,pady=12)
         self.app.terminal_popup=win;self.app.terminal_popout_pane=pane
+        self.app.notebook.hide(self.app.terminal)
+        def dock():
+            if win.winfo_exists():win.destroy()
+        def restore(event):
+            if event.widget is not win:return
+            if not getattr(self.app,"closing",False):
+                self.app.notebook.add(self.app.terminal,text="Terminal")
+                self.app.notebook.select(self.app.terminal)
+            self.app.terminal_popup=None;self.app.terminal_popout_pane=None
+        ttk.Button(pane,text="Dock in main window",command=dock).grid(row=4,column=0,sticky="e",pady=4)
+        win.protocol("WM_DELETE_WINDOW",dock);win.bind("<Escape>",lambda e:dock())
+        win.bind("<Destroy>",restore,add="+")
 
     def reset(self):
         if self.model:self.model.reset(self.app.vars["encoding"].get())

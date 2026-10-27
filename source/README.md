@@ -340,3 +340,35 @@ Synthetic runnable examples are `examples/device-model.json`
 and `examples/test-sequence.json`; they do not claim a vendor-specific POS protocol.
 
 Capture Diff: choose Reference (A) and Message (B). Comparison is automatic; select a difference to see its hex and decoded text. Single-click selects traffic; double-click opens Analyze.
+
+## Focused analysis, detachable terminal and custom plots
+
+Terminal starts in the main workspace. **Detach** moves it into one separate
+window; **Dock in main window** or closing that window returns it, with the same
+screen and connection. There is only one visible terminal screen.
+
+Double-click a message to analyze that snapshot. Analyze remembers the selected
+page for each retained message when hidden and reopened, within the running app.
+The protocol selector offers Auto and Raw Bytes. Comparison pickers initially
+show the selected message's TX/RX direction and peer; you can change either, and
+the picker remembers your choice for that message. The comparison still permits
+capture files and ordered chunks; the global Choose traffic action was removed.
+
+Live plot **Auto** retains numeric LF-delimited lines/CSV (up to four channels).
+Choose **Custom → Configure custom** to plot one parameter per message:
+
+* JSON field: `data.temperature` or `/data/temperature`. The optional field list
+  comes from the latest complete retained RX JSON. JSON messages may span reads
+  or be concatenated, with optional ASCII decimal body-length prefixes.
+* Delimited column: choose a 1-based column and a separator (blank = whitespace).
+* Named value: e.g. `temp=25.4` or `temp: 25.4`; enter `temp`.
+* Bytes: set fixed message size, zero-based offset, integer/float type and byte
+  order. The stream must start at a frame boundary; no automatic resynchronization
+  or variable-length binary protocol detection is performed.
+
+Text formats use LF or fixed-size message boundaries. JSON also supports complete
+JSON message boundaries. Custom retains one finite numeric value per message;
+missing/non-numeric fields are skipped. Partial data is separate per peer and
+bounded to 64 KiB. Settings persist; changing them clears plotted samples, not
+traffic. Both modes use RX only, last 300 samples per peer; the horizontal axis
+is sample order, not a precise time axis.

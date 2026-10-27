@@ -220,6 +220,46 @@ class UISmoke(unittest.TestCase):
         self.assertIs(self.app.terminal_popout_pane.model,self.app.terminal.model)
         self.app.terminal_popup.destroy()
 
+    def test_terminal_detaches_and_docks_one_visible_view(self):
+        self.app.notebook.select(self.app.terminal);self.app.update()
+        self.app.terminal.pop_out();self.app.update()
+        self.assertEqual(self.app.notebook.tab(self.app.terminal,"state"),"hidden")
+        self.assertFalse(self.app.terminal.winfo_ismapped())
+        self.assertTrue(self.app.terminal_popout_pane.winfo_ismapped())
+        self.app.terminal.model.feed(b"DETACHED")
+        self.app.terminal_popup.destroy();self.app.update()
+        self.assertEqual(self.app.notebook.tab(self.app.terminal,"state"),"normal")
+        self.assertTrue(self.app.terminal.winfo_ismapped())
+        self.assertIn("DETACHED","".join(self.app.terminal.model.screen.display))
+
+    def test_analysis_remembers_tabs_and_comparison_direction(self):
+        for direction in ("TX","RX"):
+            self.app.add_event(dict(kind="data",direction=direction,peer="device",time=time.time(),data=b'{"temp":25}'))
+        self.app.table.selection_set(self.app.order[0]);win=self.app.analyze("Compare");self.app.update()
+        pane=win.comparison;picker=pane.choose("A");self.app.update()
+        self.assertEqual(picker.direction.get(),"TX")
+        picker.direction.set("RX");picker.refresh();picker.destroy();self.app.update()
+        picker=pane.choose("A");self.assertEqual(picker.direction.get(),"RX");picker.destroy()
+        win.withdraw();self.app.update();self.assertIs(self.app.analyze(),win)
+        self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Capture Diff")
+        self.assertEqual(win.protocol.MODES,("Auto","Raw Bytes"))
+        self.app.table.selection_set(self.app.order[1]);self.app.analyze();self.app.update()
+        picker=pane.choose("A");self.assertEqual(picker.direction.get(),"RX");picker.destroy()
+        win.tabs.select(win.payload.pages["Every byte"]);self.app.update();win.withdraw()
+        self.app.analyze();self.app.update();self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"Every byte")
+
+    def test_custom_plot_configuration_on_real_serial_rx(self):
+        self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        plot=self.app.plot;self.app.notebook.select(plot)
+        plot.configure_custom();plot.custom_variables["field"].set("data.temp");plot.apply_custom();self.app.update()
+        self.assertEqual(plot.mode.get(),"Custom")
+        self.app.engine.send(b'{"data":{"temp":12,"voltage":3.3}}')
+        self.spin(lambda:bool(plot.canvas.find_withtag("curve")))
+        self.assertEqual(plot.model.peers['loop://']['rows'][-1],(12,))
+        plot.clear();self.assertEqual(plot.mode.get(),"Custom");self.assertIsNotNone(plot.model.config)
+        plot.mode.set("Auto");plot.change_mode();self.assertIsNone(plot.model.config)
+
     def test_import_then_replay_exact_bytes(self):
         with tempfile.TemporaryDirectory() as d:
             path=Path(d)/"traffic.jsonl"
