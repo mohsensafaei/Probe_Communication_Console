@@ -23,15 +23,15 @@ from .serial_endpoints import VirtualPair, simulator_transports
 from .typography import load_fonts, font_roles
 from .skin import Chassis, MeterStrip, Rail
 
-# Probe's own neutral workbench palette: teal actions, violet transmitted data.
-DARK = dict(bg="#10171c", panel="#18232b", input="#101b22", border="#40535f",
-            text="#eef4f6", muted="#adbec8", accent="#63dfc3", blue="#b8b0ff",
-            red="#ff9caa", select="#304653", metal="#253640", shine="#354b58",
-            ink="#edf4f6", lcd="#142129")
-LIGHT = dict(bg="#e9eff1", panel="#f8fafb", input="#ffffff", border="#91a5af",
-             text="#172e39", muted="#48616e", accent="#006e5c", blue="#6051b1",
-             red="#ae2947", select="#d6e8e7", metal="#e0e9ed", shine="#cfdee4",
-             ink="#172e39", lcd="#eef4f5")
+# Probe instrument palette: blue enamel, satin edges and mint readouts.
+DARK = dict(bg="#111b29", panel="#203149", input="#111f32", border="#526b84",
+            text="#eef5ff", muted="#b3c6d9", accent="#a9e6bd", blue="#8bcfff",
+            red="#ff9ea5", select="#365471", metal="#b6c5d4", shine="#e5edf5",
+            ink="#203247", lcd="#101f2c")
+LIGHT = dict(bg="#ccd7e2", panel="#edf2f7", input="#ffffff", border="#8198ae",
+             text="#193049", muted="#48637b", accent="#246945", blue="#1a6197",
+             red="#b42b43", select="#c9ddeb", metal="#bdcddd", shine="#f7faff",
+             ink="#203247", lcd="#e0ede7")
 
 def data_directory():
     base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
@@ -140,7 +140,7 @@ class Probe(tk.Tk):
         s.configure("TLabel", background=c["panel"], foreground=c["text"])
         s.configure("Muted.TLabel", foreground=c["muted"])
         s.configure("TButton", background=c["metal"], foreground=c["ink"], padding=(9,3), borderwidth=1,
-                    relief="flat", font=(self.ui_font,11,"bold"))
+                    relief="raised", font=(self.ui_font,11,"bold"))
         # Clam's Button.focus element draws a dotted rectangle over the label.
         # Keep normal keyboard traversal and indicate focus with a solid border.
         s.layout("TButton", [("Button.border", {"sticky":"nswe", "border":1, "children":[
@@ -150,7 +150,7 @@ class Probe(tk.Tk):
               bordercolor=[("!disabled","focus",c["blue"])],
               lightcolor=[("!disabled","focus",c["blue"])], darkcolor=[("!disabled","focus",c["blue"])],
               relief=[("disabled","flat"),("pressed","sunken")])
-        s.configure("Accent.TButton", background=c["accent"], foreground="#ffffff" if self.vars["theme"].get()=="Light" else "#102b27", font=(self.ui_font,12,"bold"))
+        s.configure("Accent.TButton", background=c["accent"], foreground="#ffffff" if self.vars["theme"].get()=="Light" else "#153425", font=(self.ui_font,12,"bold"))
         s.map("Accent.TButton", background=[("disabled",c["panel"]),("active",c["accent"])])
         s.configure("TEntry", fieldbackground=c["input"], foreground=c["text"], padding=3, insertcolor=c["accent"])
         s.configure("TCombobox", fieldbackground=c["input"], background=c["input"], foreground=c["text"],
@@ -183,7 +183,7 @@ class Probe(tk.Tk):
 
     def bezel(self, parent, **kw):
         return self.frame(parent, highlightbackground=self.colors["border"], highlightthickness=1,
-                          bd=0, relief="flat", **kw)
+                          bd=1, relief="raised", **kw)
 
     def combo(self, parent, key, values, width=15, callback=None, readonly=True):
         w = ttk.Combobox(parent, textvariable=self.vars[key], values=values, width=width,
@@ -233,7 +233,7 @@ class Probe(tk.Tk):
                 self.config_canvas.yview_scroll(step,"units")
         self.bind_all("<MouseWheel>",wheel,add="+")
         self.bind_all("<Button-4>",wheel,add="+");self.bind_all("<Button-5>",wheel,add="+")
-        self.rail=Rail(self,self)  # Compatibility handle; no ornamental side rail.
+        self.rail=Rail(self,self);self.rail.pack(side="left",fill="y",padx=(4,0),pady=24)
         self.content=tk.Frame(self,bg=c["bg"]); self.content.pack(side="left",fill="both",expand=True,padx=12,pady=12)
         self.content.columnconfigure(0,weight=1);self.content.rowconfigure(3,weight=1)
         self.chassis=Chassis(self.content,self,bg=c["bg"]);self.chassis.grid(row=0,column=0,sticky="ew",pady=(0,10))

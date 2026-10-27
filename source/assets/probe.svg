@@ -1,1 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><title>Probe connected endpoints</title><rect width="128" height="128" rx="28" fill="#10171c"/><path d="M28 91V36H62V66H103" fill="none" stroke="#63dfc3" stroke-width="10" stroke-linejoin="round" stroke-linecap="round"/><g fill="#b8b0ff"><circle cx="28" cy="91" r="11"/><circle cx="103" cy="66" r="11"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><title>Probe hardware test probe</title><rect x="1" y="1" width="126" height="126" rx="25" fill="#111b29" stroke="#526b84" stroke-width="2"/><path d="M37 90L26 101V110L31 115L40 118L51 113" fill="none" stroke="#8bcfff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="30.72,79.36 44.8,93.44 83.2,55.04 69.12,40.96" fill="#b6c5d4"/>
+<polygon points="34.56,81.92 39.68,87.04 78.08,48.64 72.96,43.52" fill="#e5edf5"/>
+<polygon points="61.44,38.4 69.12,30.72 93.44,55.04 85.76,62.72" fill="#a9e6bd"/>
+<polygon points="78.08,35.84 84.48,42.24 107.52,19.2 101.12,12.8" fill="#b6c5d4"/>
+<polygon points="101.12,12.8 107.52,19.2 116.48,3.84" fill="#a9e6bd"/>
+<path d="M40.96 75.52L47.36 81.92" stroke="#526b84" stroke-width="3"/>
+<path d="M51.2 65.28L57.6 71.68" stroke="#526b84" stroke-width="3"/>
+<path d="M61.44 55.04L67.84 61.44" stroke="#526b84" stroke-width="3"/>
+</svg>
