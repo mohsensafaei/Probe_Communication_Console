@@ -219,7 +219,7 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
             if finished:break
         engine.last_sequence_timing=clock.summary()
         engine.event("scenario", state="complete", cycle=cycle, sent=sent, checked=checked,timing=clock.summary(),variables={key:display_value(value)[:1024] for key,value in values.items()},
-                     message=f"Sequence complete · {sent} sends · max dispatch lateness {clock.max_late_ns/1e6:.3f} ms · {clock.skipped} missed slots (all messages kept).")
+                     message=f"Sequence complete · {cycle} cycles · {sent} sends · {checked} replies checked · {time.perf_counter()-started:.2f} s · max dispatch lateness {clock.max_late_ns/1e6:.3f} ms · {clock.skipped} missed slots (all messages kept).")
     except asyncio.CancelledError:
         engine.event("scenario", state="stopped", cycle=cycle, sent=sent, checked=checked,timing=clock.summary(),
                      message=f"Sequence stopped · {sent} sends · {checked} replies checked.")
