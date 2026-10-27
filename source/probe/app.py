@@ -501,6 +501,7 @@ class Probe(tk.Tk):
             self.stat_labels["state"].configure(text="Connecting…")
             self.engine.start(cfg)
         except Exception as exc:
+            if self.engine and (not self.engine.thread or not self.engine.thread.is_alive()):self.engine.stop();self.engine.join()
             self.active=False;self._lock_config(False);self.set_status(str(exc),True)
 
     def _lock_config(self,locked):
@@ -564,6 +565,9 @@ class Probe(tk.Tk):
             elif kind in ("error","info"):
                 if kind=="error":self.last_error=event.get("message","")
                 self.set_status(event.get("message",""),kind=="error")
+            elif kind=="recording_error":
+                self.record_path=self.raw_path=None;self.record_button.configure(text="● Record")
+                self.set_status(event["message"],True)
             elif kind=="file_done":self.pressed=False;self.file_button.configure(text="Send file")
             elif kind == "scenario":
                 self.sequence_info.set(event["message"])
@@ -1144,7 +1148,12 @@ class Probe(tk.Tk):
         self.closing=True
         self.stop_repeat();self.stop_sequence();self.file_cancel.set();self.save_settings()
         self.stop_replay()
-        if self.engine:self.engine.stop();self.engine.join(3)
+        if self.engine:
+            self.set_status("Closing session and flushing queued capture data…");self.update_idletasks()
+            self.engine.stop();self.engine.join(20)
+            if self.engine.thread and self.engine.thread.is_alive():
+                self.closing=False;self.set_status("Capture/session shutdown is still pending. Please retry closing after it finishes.",True);return
+            if self.engine.recording_error_message:messagebox.showerror("Recording incomplete",self.engine.recording_error_message,parent=self)
         for timer in self.tk.call("after","info"):
             self.after_cancel(timer)
         self.destroy()

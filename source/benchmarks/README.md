@@ -10,13 +10,14 @@ OS; hosted-runner results are observations, not limits for a user's machine.
 Tests: 16 MiB receive with/without recording; 100,000 individually sent 32-byte
 frames with recording; 8 MiB proxy echo in each direction with recording; 1,000
 32-byte Sequence sends requesting 1 ms delays with/without recording; and 500 sends
-with recording plus a deliberately contending Python CPU thread. Both TX application
+with recording plus a deliberately contending Python CPU thread, and 500 with
+the CPU workload moved to a separate process. Both TX application
 observations and receiver full-frame observations are collected. Multiple frames
 in a single read share an RX observation timestamp. The benchmark does not measure
 wire launch times, actual packet spacing, GUI rendering or UI drop counters.
 
-Timing percentiles describe this run only. The runner currently waits after each
-send rather than following an absolute periodic deadline. Mean interval, P99,
+Timing percentiles describe this run only. The runner uses absolute send deadlines from 1.2.2; missed slots are reported and
+messages are preserved. Prior baseline results used relative waits after sends. Mean interval, P99,
 maximum error and cumulative drift must not be confused with a real-time guarantee.
 An early peer close must not cancel the last send before its final completion event.
 

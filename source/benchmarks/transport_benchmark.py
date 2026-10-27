@@ -61,11 +61,12 @@ def receive_test(size,chunk,record):
             barrier=threading.Event();engine.loop.call_soon_threadsafe(barrier.set)
             if not barrier.wait(10):raise RuntimeError('Capture barrier timed out')
         if record:engine.record()
+        drained=time.perf_counter_ns()
         verified=count==len(wire) and digest.hexdigest()==expected
         recorded=capture_hash(path,'RX') if record else None
         return dict(test='TCP receive',record=record,bytes_expected=len(wire),bytes_received=count,send_chunk=chunk,
                     stream_exact=verified,capture_exact=recorded==(len(wire),expected) if record else None,
-                    elapsed_s=(end-started)/1e9,MiB_s=len(wire)/((end-started)/1e9)/1048576)
+                    elapsed_s=(end-started)/1e9,capture_drained_elapsed_s=(drained-started)/1e9,MiB_s=len(wire)/((end-started)/1e9)/1048576)
 
 
 def proxy_test():
@@ -102,6 +103,12 @@ def proxy_test():
                 roundtrip_payload_MiB_s=len(wire)/elapsed/1048576,errors=errors)
 
 
+def process_load(stop,ready):
+    ready.set()
+    n=1
+    while not stop.is_set():n=(n*1664525+1013904223)&0xffffffff
+
+
 def timing_test(record=False,load=False,count=1000):
     wire=bytes(range(32));sent=[];arrivals=[];received=bytearray();stop=threading.Event();errors=[]
     with socket.socket() as listener,tempfile.TemporaryDirectory() as temp:
@@ -125,20 +132,30 @@ def timing_test(record=False,load=False,count=1000):
         with session('TCP Client',port=listener.getsockname()[1]) as (engine,events,_):
             engine.observers.add(lambda e:sent.append(time.perf_counter_ns()) if e.get('direction')=='TX' else None)
             if record:engine.record(Path(temp)/'timing.jsonl')
-            if load:loader=threading.Thread(target=busy,daemon=True);loader.start()
+            process_stop=None
+            if load=='process':
+                import multiprocessing
+                ctx=multiprocessing.get_context('spawn');process_stop=ctx.Event();process_ready=ctx.Event()
+                loader=ctx.Process(target=process_load,args=(process_stop,process_ready),daemon=True);loader.start()
+                if not process_ready.wait(10):process_stop.set();raise RuntimeError('CPU worker did not start.')
+            elif load:loader=threading.Thread(target=busy,daemon=True);loader.start()
             try:
                 engine.start_scenario((Step('1 ms',wire,delay_ms=1,repeat=count),))
                 wait_for(lambda:any(e.get('kind')=='scenario' and e.get('state') in ('complete','failed') for e in events),events,90)
-                reader.join(5)
+                stop.set();reader.join(5)
             finally:
                 stop.set()
+                if process_stop:process_stop.set()
                 if loader:loader.join(2)
             success=any(e.get('kind')=='scenario' and e.get('state')=='complete' for e in events)
         reader.join(5)
+        captured=capture_hash(Path(temp)/'timing.jsonl','TX') if record else None
     if len(sent)<2:raise RuntimeError('Too few TX samples')
     intervals=[b-a for a,b in zip(sent,sent[1:])];errors_ns=[x-1000000 for x in intervals]
-    return dict(test='Sequence 1 ms',record=record,python_cpu_contention=load,messages_expected=count,messages_tx=len(sent),messages_rx=len(arrivals),
+    return dict(test='Sequence 1 ms',record=record,python_cpu_contention=bool(load),cpu_contention_kind='separate process' if load=='process' else 'same-process Python thread' if load else 'none',messages_expected=count,messages_tx=len(sent),messages_rx=len(arrivals),
                 stream_exact=bytes(received)==wire*count,scenario_complete=success,errors=errors,
+                capture_exact=captured==(count*len(wire),hashlib.sha256(wire*count).hexdigest()) if record else None,
+                scheduler_summary=next((e.get('timing') for e in reversed(events) if e.get('state')=='complete'),None),
                 tx_interval_us=stats([x/1000 for x in intervals]),tx_interval_error_us=stats([x/1000 for x in errors_ns]),
                 max_absolute_interval_error_us=max(abs(x) for x in errors_ns)/1000,
                 accumulated_drift_ms=(sent[-1]-sent[0]-(len(sent)-1)*1000000)/1e6,
@@ -153,7 +170,7 @@ def main():
                 perf_counter_resolution_s=time.get_clock_info('perf_counter').resolution,results=[])
     for operation in (lambda:receive_test(16*1048576,65536,False),lambda:receive_test(16*1048576,65536,True),
                       lambda:receive_test(100000*32,32,True),proxy_test,
-                      lambda:timing_test(False,False),lambda:timing_test(True,False),lambda:timing_test(True,True,500)):
+                      lambda:timing_test(False,False),lambda:timing_test(True,False),lambda:timing_test(True,True,500),lambda:timing_test(True,'process',500)):
         row=operation();result['results'].append(row);print(json.dumps(row),flush=True)
         args.output.write_text(json.dumps(result,indent=2),encoding='utf-8')
     result['serial_115200_8N1']=dict(physical_test=False,reason='No physical UART/USB adapter connected; loop:// and PTYs do not enforce wire baud rate.',

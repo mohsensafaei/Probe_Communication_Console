@@ -4,6 +4,11 @@ on:
     branches: [linux, windows]
     paths:
       - 'source/benchmarks/**'
+      - 'source/probe/engine.py'
+      - 'source/probe/scenario.py'
+      - 'source/probe/timing.py'
+      - 'source/probe/recording.py'
+      - 'source/probe/processing.py'
       - '.github/workflows/transport-benchmark.yml'
   workflow_dispatch:
 permissions:

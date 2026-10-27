@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.2.1** (Windows release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.2.2** (Windows release).
 
 ### Analyze traffic without sending anything
 
@@ -392,3 +392,34 @@ or Escape clears search settings. Direction filtering, captures and byte content
 are unchanged. Search is per displayed message, not across unrelated receive chunks;
 use Framing when an application message spans chunks. History remains bounded to
 2000 rows / 8 MiB; searching does not load the complete lifetime recording.
+
+## Sequence deadlines and background recording (1.2.2)
+
+Interval mode now uses absolute `perf_counter_ns` deadlines between send starts,
+including repeats and cycles. Processing/write overhead is no longer added to
+every requested interval. If preparation misses a slot, the next future slot is
+used and the message is kept; overdue slots are counted, not replayed as a burst.
+A late OS wakeup can still cause a late send. There is no trailing interval after
+the final interval-mode send. For reply-gated steps, the reply and any explicit
+post-reply delay remain causal gates and re-anchor the following schedule. Zero
+interval remains an explicit unpaced mode.
+
+The completion status reports maximum application dispatch lateness and missed
+slots. Completion/stopped/failed scenario events include a `timing` summary.
+Outgoing data events within a sequence carry `scheduled_ns`, `monotonic_ns` and
+`dispatch_lateness_ns` in JSONL. These are application timestamps, not physical
+wire timestamps. JSONL Record keeps this metadata; CSV/readable export is a view.
+
+Capture JSON serialization, hex encoding and disk writes run in a dedicated child
+process. Data enqueue is nonblocking with a 4096-event / 64 MiB estimated-byte
+budget. The worker flushes periodically (50 ms) and Record stop/disconnect waits
+for queued writes and closes files. This does not imply fsync/power-loss durability.
+A full queue, disk error or worker failure is reported as **Recording incomplete**;
+the UI disarms recording, transport continues, and a new recording starts a new
+worker. No unlimited-memory buffer or silent loss-free guarantee is claimed.
+
+Dynamic sequence template rendering and reply-field extraction run in a separate
+process pool so their CPU work does not occupy the transport loop/GIL. Static
+messages use no processing pool. CPU-heavy third-party threads or GUI work left
+in the main process can still delay the transport; neither Windows nor Linux
+best-effort scheduling provides a nanosecond or hard 1 ms guarantee.

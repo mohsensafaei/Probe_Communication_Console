@@ -9,7 +9,8 @@ from typing import Any, TYPE_CHECKING
 from .codec import parse_hex
 from .protocol import MAX_DATA, IncompleteMessage
 from .sequence_flow import Action, Flow, SendSpec, compile_flow, display_value, initial_variables, needs_reply, send_spec
-from .timing import sleep_at_least, wait_for
+from .timing import sleep_at_least, wait_for, SequenceClock, SCHEDULED_NS
+from . import processing
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -106,6 +107,11 @@ def steps_from_capture(rows: Sequence[Mapping[str, Any]], delay_ms: int = 100,
     return result
 
 
+async def compute(engine,function,*args):
+    worker=getattr(engine,'compute',None)
+    return await worker(function,*args) if worker else function(*args)
+
+
 async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
                        target: str, side: str, variables=None) -> None:
     queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=16)
@@ -113,11 +119,13 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
     expecting = False
     sent = checked = cycle = 0
     started = time.perf_counter()
+    clock=SequenceClock()
     direction = "TX" if side == "App / downstream" else "RX"
     initial = dict(variables or {})
     values = dict(initial)
     destinations = {step.step_id: index for index, step in enumerate(steps) if step.step_id}
     finished = False
+    next_progress=0
 
     def observe(event: dict[str, Any]) -> None:
         nonlocal overflow
@@ -144,14 +152,24 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
                     while not queue.empty():
                         queue.get_nowait()
                     overflow = False
-                    expecting = needs_reply(step)
-                    payload = step.template.render(values) if step.template else step.payload
+                    gated=needs_reply(step)
+                    payload = await compute(engine,processing.render,step.template,values) if step.template else step.payload
+                    scheduled_ns=await clock.before_send()
+                    while not queue.empty():queue.get_nowait()
+                    overflow=False;expecting=gated
                     if step.flow:
                         for item in step.flow.extract:values.pop(item.name, None)
-                    engine.event("scenario", state="running", cycle=cycle, step=index, sent=sent, checked=checked,
-                                 message=f"Cycle {cycle} · step {index}/{len(steps)} · {step.name} · repeat {repetition+1}/{step.repeat}")
-                    if not await engine._send(payload, target, side):
-                        raise RuntimeError(f"Step {index}: transport rejected the payload.")
+                    now=time.perf_counter()
+                    if gated or now>=next_progress:
+                        next_progress=now+.05
+                        engine.event("scenario", state="running", cycle=cycle, step=index, sent=sent, checked=checked,
+                                     message=f"Cycle {cycle} · step {index}/{len(steps)} · {step.name} · repeat {repetition+1}/{step.repeat}")
+                    token=SCHEDULED_NS.set(scheduled_ns)
+                    try:
+                        clock.dispatched(time.perf_counter_ns())
+                        if not await engine._send(payload, target, side):
+                            raise RuntimeError(f"Step {index}: transport rejected the payload.")
+                    finally:SCHEDULED_NS.reset(token)
                     sent += 1
                     if expecting:
                         engine.event("scenario", state="running", cycle=cycle, step=index, sent=sent, checked=checked,
@@ -164,7 +182,7 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
                                 raise RuntimeError(f"Step {index}: reply capture overflow. Reduce incoming traffic.")
                             if response and (not step.expect or step.expect in response):
                                 try:
-                                    extracted = {item.name: item.read(bytes(response)) for item in step.flow.extract} if step.flow else {}
+                                    extracted = await compute(engine,processing.extract,step.flow.extract,bytes(response)) if step.flow and step.flow.extract else {}
                                 except IncompleteMessage:pass
                                 else:
                                     proposed={**values,**extracted}
@@ -193,20 +211,21 @@ async def run_scenario(engine: "Engine", steps: tuple[Step, ...], cycles: int,
                                      variables={key: display_value(value)[:1024] for key,value in values.items()},
                                      message=f"Step {index}/{len(steps)} · {step.name} · {route.action} · {len(values)} variables")
                     if route.action == "fail":raise RuntimeError(f"Step {index} · {step.name}: reply condition failed.")
-                    await sleep_at_least(step.delay_ms / 1000)
+                    await clock.after_send(step.delay_ms,reply_gated=gated)
                     if route.action != "next" or timed_out:break
                 if route.action == "stop":finished = True
                 elif route.action == "goto":position = destinations[route.target]
                 else:position += 1
             if finished:break
-        engine.event("scenario", state="complete", cycle=cycle, sent=sent, checked=checked,
-                     message=f"Sequence complete · {cycle} cycles · {sent} sends · {checked} replies checked · {time.perf_counter()-started:.2f} s")
+        engine.last_sequence_timing=clock.summary()
+        engine.event("scenario", state="complete", cycle=cycle, sent=sent, checked=checked,timing=clock.summary(),variables={key:display_value(value)[:1024] for key,value in values.items()},
+                     message=f"Sequence complete · {sent} sends · max dispatch lateness {clock.max_late_ns/1e6:.3f} ms · {clock.skipped} missed slots (all messages kept).")
     except asyncio.CancelledError:
-        engine.event("scenario", state="stopped", cycle=cycle, sent=sent, checked=checked,
+        engine.event("scenario", state="stopped", cycle=cycle, sent=sent, checked=checked,timing=clock.summary(),
                      message=f"Sequence stopped · {sent} sends · {checked} replies checked.")
         raise
     except Exception as exc:
-        engine.event("scenario", state="failed", cycle=cycle, sent=sent, checked=checked, message=str(exc))
+        engine.event("scenario", state="failed", cycle=cycle, sent=sent, checked=checked,timing=clock.summary(), message=str(exc))
     finally:
         engine.observers.discard(observe)
         engine.scenario_task = None
