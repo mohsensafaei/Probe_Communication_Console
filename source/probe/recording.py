@@ -90,6 +90,7 @@ class CaptureWriter:
             if isinstance(value,bytes):cost+=len(value)
             elif isinstance(value,str):cost+=len(value)*4
             elif isinstance(value,dict):cost+=128*len(value);stack.extend(value.values())
+            elif isinstance(value,(list,tuple)):cost+=64+8*len(value);stack.extend(value)
             else:cost+=32
         with self.lock:
             with self.pending.get_lock():
