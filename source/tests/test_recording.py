@@ -30,6 +30,14 @@ class CaptureWorkerTests(unittest.TestCase):
             finally:writer.close()
             self.assertFalse(writer.process.is_alive());self.assertFalse(writer.monitor.is_alive())
 
+    def test_nested_hid_field_lists_count_toward_capture_budget(self):
+        errors=[];writer=CaptureWriter(errors.append,max_bytes=4096)
+        try:
+            writer.enqueue(dict(kind='data',direction='RX',data=b'A',
+                                hid=dict(fields=[dict(field='X',value='123',bit=0,bits=8) for _ in range(100)])))
+            self.assertTrue(writer.failed);self.assertIn('incomplete',errors[0])
+        finally:writer.close()
+
     def test_overflow_is_explicit(self):
         errors=[];writer=CaptureWriter(errors.append,max_bytes=1)
         try:
