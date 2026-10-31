@@ -135,6 +135,13 @@ class ReconstructionTests(unittest.TestCase):
         with self.assertRaises(ValueError):engine.start_scenario(())
 
 class HelperBoundaryTests(unittest.TestCase):
+    @unittest.skipUnless(os.name=='nt','Windows source launcher')
+    def test_windows_launcher_understands_platform_marker_pins(self):
+        from windows_bootstrap import requirements
+        pins=requirements(False)
+        self.assertIn('hidapi==0.15.0',pins)
+        self.assertTrue(all(len(pin.split('=='))==2 for pin in pins))
+
     def test_framing_and_invalid_length(self):
         left,right=socket.socketpair()
         with left,right:
@@ -167,3 +174,14 @@ class HelperBoundaryTests(unittest.TestCase):
             self.assertEqual(restored['hid']['fields'][3]['value'],'-2')
             row['hid']['endpoint']=999;path.write_text(json.dumps(row)+'\n')
             with self.assertRaises(ValueError):load_capture(path)
+
+    def test_monitor_does_not_emit_reports_after_stop(self):
+        events=[];engine=Engine(events.append)
+        engine.cfg=dict(mode='HID Monitor',hid_source=r'\\.\USBPcap1:2' if os.name=='nt' else '1:2')
+        def messages(*args,**kwargs):
+            yield dict(kind='ready')
+            engine.stopping.set()
+            yield dict(kind='packet',packet={**packet(),'payload':'01FE0300'})
+        with patch('probe.hid_monitor.HelperClient') as helper:
+            helper.return_value.messages.side_effect=messages;run_monitor(engine)
+        self.assertFalse(any(event['kind']=='data' for event in events))

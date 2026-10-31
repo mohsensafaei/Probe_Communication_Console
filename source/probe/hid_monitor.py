@@ -62,12 +62,15 @@ def run_monitor(engine):
     engine.event('info',message='Waiting for HID capture permission… Probe itself stays unelevated.' if elevate else 'Opening HID capture…')
     try:
         for message in client.messages('capture',source,engine.stopping,elevate=elevate):
+            if engine.stopping.is_set():break
             kind=message.get('kind')
             if kind=='metadata':tracker=HidTracker(message.get('interfaces'),message.get('descriptors'))
             elif kind=='ready':engine._connected('HID capture active · RX: device → computer · TX: computer → device · read-only')
             elif kind=='warning':engine.event('info',message=message['message'])
             elif kind=='packet':
                 packet=message['packet'];packet['payload']=bytes.fromhex(packet['payload'])
+                if packet['status'] and packet['stage']!='submit':
+                    engine.event('info',message=f"USB transfer failed · EP {packet['endpoint']:02X} · status {packet['status']}")
                 event=tracker.consume(packet)
                 if os.name=='nt' and tracker.vid is not None and not queried:
                     queried=True
