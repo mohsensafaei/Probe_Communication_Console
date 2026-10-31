@@ -401,6 +401,7 @@ class Probe(tk.Tk):
             self.connection_button.configure(text="Start capture")
             self.composer.grid_remove()
         else:self.composer.grid()
+        self.terminal.update_hint()
         self.side_combo.configure(state="readonly" if mode in ("TCP Proxy","Serial Proxy","Serial ↔ TCP") else "disabled")
         self.vars["side"].set("Device / upstream")
 

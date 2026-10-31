@@ -132,6 +132,8 @@ class UISmoke(unittest.TestCase):
         with patch("probe.hid_helper.launch_helper") as launch:
             self.app.choose_mode("HID Monitor");self.app.update()
             self.assertFalse(self.app.composer.winfo_ismapped())
+            self.assertTrue(self.app.terminal.keyboard_check.instate(["disabled"]))
+            self.assertTrue(self.app.terminal.paste_button.instate(["disabled"]))
             self.assertEqual(self.app.connection_button.cget("text"),"Start capture")
             launch.assert_not_called()
             self.app.toggle();self.assertFalse(self.app.active);launch.assert_not_called()

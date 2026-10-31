@@ -35,7 +35,8 @@ class TerminalPane(ttk.Frame):
         ttk.Label(bar,text="Backspace").pack(side="left",padx=(4,3))
         ttk.Combobox(bar,textvariable=self.backspace,values=["DEL","BS"],state="readonly",width=4).pack(side="left")
         if not shared:ttk.Button(actions,text="Detach",width=7,command=self.pop_out).pack(side="right",padx=4)
-        ttk.Button(actions,text="Paste",width=5,command=self.paste).pack(side="right",padx=4)
+        self.paste_button=ttk.Button(actions,text="Paste",width=5,command=self.paste)
+        self.paste_button.pack(side="right",padx=4)
         ttk.Button(actions,text="Reset",width=5,command=self.reset).pack(side="right",padx=4)
         ttk.Label(actions,text="Scrollback").pack(side="left",padx=(0,6))
         ttk.Button(actions,text="↑ Older",width=8,command=lambda:self.history(-1)).pack(side="left")
@@ -92,8 +93,13 @@ class TerminalPane(ttk.Frame):
         self.update_hint()
 
     def update_hint(self):
+        monitor=self.app.vars["mode"].get()=="HID Monitor"
+        self.keyboard_check.configure(state="disabled" if monitor else "normal")
+        self.paste_button.configure(state="disabled" if monitor else "normal")
+        if monitor:self.keyboard.set(False)
         connected=self.app.engine is not None and self.app.engine.ready
         if self.error:message=self.error
+        elif monitor:message="HID Monitor is view-only. Double-click a report in Traffic to inspect its HID fields and original bytes."
         elif not connected:message="Disconnected · choose a connection and Connect. Received text stays visible; opening Terminal sends nothing."
         elif self.app.vars["mode"].get() in ("TCP Server","TCP Proxy") and not self.app.engine.clients:
             message="Listening · waiting for a TCP client. Previous received text stays visible."

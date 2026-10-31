@@ -75,6 +75,7 @@ class CaptureFormatTests(unittest.TestCase):
         for source in ('0:1','1:0','1:128','1:2;rm','/etc/shadow',r'\\.\PhysicalDrive0:1'):
             with self.assertRaises(ValueError):validate_source(source,False)
 
+    @unittest.skipUnless(os.name=="posix","sysfs interface names contain colon characters")
     def test_linux_discovery_filters_hid_without_privilege_operations(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);device=root/'1-2';device.mkdir();interface=root/'1-2:1.0';interface.mkdir()
