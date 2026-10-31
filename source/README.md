@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.2.2** (Windows release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.3.0** (Windows release).
 
 ### Analyze traffic without sending anything
 
@@ -425,3 +425,18 @@ in the main process can still delay the transport; neither Windows nor Linux
 best-effort scheduling provides a nanosecond or hard 1 ms guarantee.
 
 Measured Windows/Linux results and limitations: [1.2.2 timing validation](PERFORMANCE_1_2_2.md).
+
+## HID Monitor (1.3.0)
+
+Choose **HID Monitor → Refresh devices → Start capture** to observe USB HID
+Input, Output and Feature reports. RX is device-to-computer, TX is computer-to-device.
+Double-click a report for decoded HID fields and exact original bytes in Analyze.
+The composer is hidden because this mode only observes communication.
+
+Probe starts normally without administrator permission. Only the capture helper
+requests elevation when needed. On Windows, **Install USBPcap (offline)…** opens
+the included original installer; no on-demand download occurs. Windows may need a
+restart after setup. On Linux, the existing kernel usbmon facility is used and a
+permission prompt is shown only if your user lacks capture access. There are no
+persistent permission changes or background services. See [HID Monitor guide](HID_MONITOR.md)
+for offline prerequisites, descriptor handling, limitations and hardware validation.

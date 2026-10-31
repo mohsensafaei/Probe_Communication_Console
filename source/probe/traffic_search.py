@@ -57,6 +57,9 @@ class TrafficSearch:
                 for key in self.keys:value=value[int(key)] if isinstance(value,list) else value[key]
                 return self.term in leaf_text(value).casefold()
             except (ValueError,TypeError,KeyError,IndexError,RecursionError):return False
+        if event.get('hid'):
+            fields=event['hid'].get('fields',[])
+            if any(self.term in f"{f['field']}={f['value']}".casefold() for f in fields):return True
         text=data.decode(self.encoding,errors='replace')
         if self.term in text.casefold() or self.term in visible(data,self.encoding).casefold() or self.term in str(event.get('peer','')).casefold():return True
         # A JSON escape may hide the actual field value in the raw text.

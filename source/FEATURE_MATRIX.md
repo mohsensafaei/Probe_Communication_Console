@@ -2,7 +2,7 @@
 
 This is a workflow comparison, not a claim of byte-for-byte compatibility with all releases of either application. The requested SSCOM version was not specified. Hercules describes Serial, TCP Client/Server, UDP and HW-group configuration; SSCOM releases vary and some include terminal emulation, waveform display or STM32 ISP tools.
 
-| Feature | Probe 1.2.2 Windows | Notes |
+| Feature | Probe 1.3.0 Windows | Notes |
 | --- | --- | --- |
 | Recorded device simulator | Implemented | TCP / installed Windows virtual COM pair (POSIX PTY on Linux); exact request matching, stateful ordered replies, response timing, reset and model import/export. |
 | Protocol Inspector | Implemented | JSON/ASCII length prefix, explicit TLV/BER-TLV, byte highlighting, custom binary fields, length/checksum validation and reusable profiles. |
@@ -55,3 +55,5 @@ This is a workflow comparison, not a claim of byte-for-byte compatibility with a
 Known gaps are listed explicitly because "all features" cannot honestly be claimed for this release. Core send/receive/debugging workflows have working implementations and integration tests.
 
 Version 0.2 adds capture import/replay, exact-payload reuse, LRC8, looping command sequences, a bounded live screen and a terminal pop-out window. HW-group UDP Setup and TEA/I/O extensions still need verified protocol/SDK information and actual-device validation. Their implementation is not inferred from generic UDP support.
+
+* **HID Monitor:** read-only USB HID report capture using on-demand helper elevation; offline USBPcap installer on Windows, host usbmon on Linux; descriptor-based Analyze tab. See HID_MONITOR.md for scope and limitations.

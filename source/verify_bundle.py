@@ -30,6 +30,13 @@ def verify(archive: Path) -> None:
             if not required.is_file():
                 raise RuntimeError(f"Missing bundle input: {required.name}")
         if os.name == "nt":
+            from probe.hid_capture import INSTALLER,INSTALLER_SHA256
+            import hashlib
+            installer=root/"drivers"/"windows"/INSTALLER
+            if not installer.is_file() or hashlib.sha256(installer.read_bytes()).hexdigest()!=INSTALLER_SHA256:
+                raise RuntimeError("Missing or corrupt offline USBPcap installer")
+            for name in ("USBPcap-1.5.4.0-source.zip","GPL-2.0.txt","BSD-2-Clause.txt","README.md"):
+                if not (installer.parent/name).is_file():raise RuntimeError("Missing USBPcap redistribution input: "+name)
             with executable.open("rb") as stream:
                 if stream.read(2) != b"MZ":
                     raise RuntimeError("Windows bundle does not contain a PE executable")

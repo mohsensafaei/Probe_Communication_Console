@@ -23,7 +23,11 @@ def load_capture(path,max_events=2000,max_bytes=8*1024*1024):
             if not math.isfinite(timestamp):raise ValueError("Capture timestamp must be finite.")
             used+=len(data)
             if len(events)>=max_events or used>max_bytes:raise ValueError("Capture exceeds the import limit (2000 events / 8 MiB). Split the file first.")
-            events.append(dict(kind="data",time=timestamp,direction=direction,peer=str(row.get("peer","Imported")),data=data))
+            event=dict(kind="data",time=timestamp,direction=direction,peer=str(row.get("peer","Imported")),data=data)
+            if 'hid' in row:
+                from .hid_reports import imported_metadata
+                event['hid']=imported_metadata(row['hid'],data)
+            events.append(event)
     return events
 
 def replay_plan(events,speed=1.0,direction="TX"):

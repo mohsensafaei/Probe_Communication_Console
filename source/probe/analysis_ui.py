@@ -429,6 +429,8 @@ class AnalysisWindow(tk.Toplevel,Actions):
         self.protocol=ProtocolPane(self.tabs,app);self.tabs.add(self.protocol,text="Protocol Inspector")
         self.protocol.choose=lambda:TrafficPicker(app,self.set_data,self)
         self.comparison=ComparePane(self.tabs,app,a_label="Choose A",b_label="Choose B");self.tabs.add(self.comparison,text="Capture Diff")
+        from .hid_ui import HidReportPane
+        self.hid=HidReportPane(self.tabs,app)
         self.tabs.bind("<<NotebookTabChanged>>",self.remember_tab)
         self.wm_protocol("WM_DELETE_WINDOW",self.hide)
         self.bind("<Escape>",lambda e:self.hide())
@@ -476,9 +478,14 @@ def open_analysis(app,tab=None):
     win=getattr(app,"analysis_window",None)
     if win is None or not win.winfo_exists():win=AnalysisWindow(app)
     key=app.table.selection()[0] if event else None
+    if event and event.get("hid"):
+        if str(win.hid) not in win.tabs.tabs():win.tabs.add(win.hid,text="HID Report")
+        win.hid.set_event(event)
+    elif str(win.hid) in win.tabs.tabs():win.tabs.forget(win.hid)
     if win.event_key!=key or win.data!=data:
         win.remember_tab()
         win.set_data(data,label);win.event_key=key
+        if event and event.get("hid") and key not in getattr(app,"analysis_tabs",{}):win.tabs.select(win.hid)
         win.comparison.direction=event.get("direction","RX") if event else "RX"
         win.comparison.peer=event.get("peer","") if event else ""
         win.comparison.picker_state=dict(getattr(app,"analysis_picker_states",{}).get(key,{}))

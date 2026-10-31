@@ -18,3 +18,18 @@ Bundled fonts: Rajdhani (Indian Type Foundry), Michroma (Vernon Adams), and Shar
 * https://github.com/google/fonts/tree/main/ofl/sharetechmono
 
 Probe uses an original hardware test-probe emblem and independently drawn instrument workbench interface. No third-party product branding, artwork or proprietary font is bundled. Hercules and SSCOM are referenced for workflow comparison only; their code, icons and binaries are not incorporated into Probe.
+
+
+HID Monitor optional Windows components:
+
+* HIDAPI 0.15.0 (Python bindings and native HIDAPI code), used for HID descriptor
+  metadata only. Distributed under its BSD license option; available license
+  texts are included in portable `licenses/hidapi` resources.
+  https://github.com/trezor/cython-hidapi and https://github.com/libusb/hidapi
+* USBPcap 1.5.4.0: original installer plus corresponding source archive under
+  `drivers/windows`; GPLv2 driver and BSD 2-Clause command-line tool, by Tomasz Moń
+  and contributors. Full license texts and exact installer SHA-256 are included.
+  https://github.com/desowin/usbpcap/releases/tag/1.5.4.0
+  Probe invokes the separate installed capture executable; it does not link to
+  the driver or command-line program. The Windows driver is not installed or
+  included in Linux portable archives. Linux uses its host kernel's usbmon.

@@ -125,6 +125,38 @@ class UISmoke(unittest.TestCase):
         self.spin(lambda:not self.app.engine.clients)
         self.assertIn("ACK","".join(self.app.terminal.model.screen.display))
 
+    def test_hid_selection_is_unelevated_and_analysis_uses_existing_workspace(self):
+        from probe.hid_ui import devices_received
+        from probe.hid_reports import HidTracker
+        from test_hid import MOUSE,packet
+        with patch("probe.hid_helper.launch_helper") as launch:
+            self.app.choose_mode("HID Monitor");self.app.update()
+            self.assertFalse(self.app.composer.winfo_ismapped())
+            self.assertEqual(self.app.connection_button.cget("text"),"Start capture")
+            launch.assert_not_called()
+            self.app.toggle();self.assertFalse(self.app.active);launch.assert_not_called()
+        source=r"\\.\USBPcap1:2" if os.name=="nt" else "1:2"
+        devices_received(self.app,dict(devices=[dict(name="Lab mouse",source=source)]))
+        cfg=self.app.values();self.app.validate(cfg);self.assertEqual(cfg["hid_source"],source)
+        event=HidTracker({0:[0x81]},{0:MOUSE.hex()}).consume(packet())
+        self.app.add_event(event);self.app.table.selection_set(self.app.order[-1]);win=self.app.analyze();self.app.update()
+        self.assertEqual(win.tabs.tab(win.tabs.select(),"text"),"HID Report")
+        self.assertEqual(len(win.hid.view.get_children()),6)
+        self.app.choose_mode("TCP Client");self.app.update();self.assertTrue(self.app.composer.winfo_ismapped())
+
+    def test_hid_permission_cancel_leaves_normal_app_usable(self):
+        from probe.hid_ui import devices_received
+        self.app.choose_mode("HID Monitor")
+        source=r"\\.\USBPcap1:2" if os.name=="nt" else "1:2"
+        devices_received(self.app,dict(devices=[dict(name="Lab mouse",source=source)]))
+        with patch("probe.hid_monitor.HelperClient") as helper:
+            helper.return_value.messages.side_effect=OSError("Permission request cancelled.")
+            self.app.toggle();self.spin(lambda:not self.app.active)
+        self.assertIn("cancelled",self.app.status.cget("text"));self.assertTrue(self.app.winfo_exists())
+        self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        self.app.engine.send(b"STILL WORKS");self.spin(lambda:self.app.engine.rx==11)
+
     def test_modes_dialogs_and_small_window(self):
         for mode in MODES:
             self.app.choose_mode(mode);self.app.update()

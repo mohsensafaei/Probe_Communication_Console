@@ -14,7 +14,7 @@ from .timing import sleep_at_least, SCHEDULED_NS
 from .recording import CaptureWriter
 
 MODES = ("TCP Client", "TCP Server", "TCP Proxy", "UDP", "USB / Serial",
-         "Serial Proxy", "Serial ↔ TCP", "Device Simulator")
+         "Serial Proxy", "Serial ↔ TCP", "Device Simulator", "HID Monitor")
 
 class Engine:
     def __init__(self, emit):
@@ -174,6 +174,7 @@ class Engine:
         except RuntimeError: coro.close();return False
 
     def send(self, data, target="All clients", side="Device / upstream"):
+        if self.cfg.get("mode")=="HID Monitor":raise RuntimeError("HID Monitor is capture-only. Sending and replay are disabled.")
         if not self.ready: raise RuntimeError("Connect before sending.")
         if len(data) > 16 * 1024 * 1024: raise ValueError("A payload is limited to 16 MiB. Use Send file for larger data.")
         if not self.pending_sends.acquire(blocking=False):
@@ -201,6 +202,7 @@ class Engine:
     async def _send(self, data, target, side):
         try:
             mode = self.cfg["mode"]
+            if mode == "HID Monitor":raise RuntimeError("HID Monitor is capture-only.")
             if mode == "Device Simulator":
                 await self.simulator_send(data, target)
                 self.event("data", direction="RX", peer=target, data=data)
@@ -285,7 +287,10 @@ class Engine:
 
     async def _run(self):
         cfg = self.cfg; mode = cfg["mode"]
-        if mode == "Device Simulator":
+        if mode == "HID Monitor":
+            from .hid_monitor import run_monitor
+            await asyncio.to_thread(run_monitor,self)
+        elif mode == "Device Simulator":
             from .simulator import serve_simulator
             await serve_simulator(self)
         elif mode == "TCP Client":
@@ -393,6 +398,7 @@ class Engine:
     def start_scenario(self, steps, cycles=1, target="All clients", side="Device / upstream", variables=None):
         from .scenario import integer, run_scenario
         from .sequence_flow import needs_reply
+        if self.cfg.get("mode")=="HID Monitor":raise ValueError("HID Monitor is capture-only. Sequences cannot transmit here.")
         if not self.ready: raise RuntimeError("Connect before running a test sequence.")
         if self.cfg["mode"] == "Device Simulator":
             raise ValueError("Run sequences from an application transport; the simulator replies to its clients.")

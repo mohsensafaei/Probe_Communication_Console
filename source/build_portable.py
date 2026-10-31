@@ -38,7 +38,7 @@ licenses=folder/"licenses";licenses.mkdir(exist_ok=True)
 shutil.copy2(root/"licenses"/"pyserial-LICENSE.txt",licenses/"pyserial-LICENSE.txt")
 for path in (root/"assets"/"fonts").glob("*-OFL.txt"):
     shutil.copy2(path,licenses/path.name)
-for package in ("pyserial","pyte","wcwidth"):
+for package in ("pyserial","pyte","wcwidth") + (("hidapi",) if os.name=="nt" else ()):
     dist=distribution(package)
     for item in dist.files or []:
         if "LICENSE" in item.name.upper() or "COPYING" in item.name.upper():
@@ -50,6 +50,11 @@ thirdparty=folder/"third-party-source";thirdparty.mkdir(exist_ok=True)
 for module in (pyte,wcwidth):
     shutil.copytree(Path(module.__file__).parent,thirdparty/module.__name__,dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("__pycache__","*.pyc"))
+if os.name=="nt":
+    from probe.hid_capture import bundled_installer
+    bundled_installer()
+    shutil.copytree(root/"drivers"/"windows",folder/"drivers"/"windows",dirs_exist_ok=True)
+shutil.copy2(root/"HID_MONITOR.md",folder/"HID_MONITOR.md")
 if os.name!="nt":
     launcher=folder/"start-probe.sh"
     launcher.write_text('#!/bin/sh\ncd "$(dirname "$0")" || exit 1\nexec ./Probe "$@"\n')

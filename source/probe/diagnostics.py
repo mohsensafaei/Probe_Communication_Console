@@ -156,3 +156,17 @@ def self_test():
             engine.start_scenario(steps)
             wait_for(lambda:any(event.get("state")=="complete" for event in events),events)
     print("PASS protocol interpretation, byte comparison and reply variables over TCP")
+    from .hid_helper import HelperClient
+    import threading
+    # Exercises the actual spawned/frozen helper without UAC, kernel capture or hardware.
+    messages=list(HelperClient().messages('check','',threading.Event(),elevate=False))
+    if not any(message.get('kind')=='checked' and message.get('capture_started') is False for message in messages):
+        raise RuntimeError('HID helper handshake self-test failed')
+    from .hid_reports import ReportDescriptor
+    descriptor=ReportDescriptor(bytes.fromhex('05010930A1011581257F750895018106C0'))
+    fields,_=descriptor.decode(b'\xff')
+    if not fields or fields[0]['value']!='-1':raise RuntimeError('HID report decoder self-test failed')
+    if os.name=='nt':
+        from .hid_capture import bundled_installer
+        bundled_installer()
+    print("PASS HID signed fields and unelevated helper handshake; no USB capture started")
