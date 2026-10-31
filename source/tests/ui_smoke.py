@@ -45,6 +45,115 @@ class UISmoke(unittest.TestCase):
                 self.app.update();self.assertEqual(self.app.notebook.index(self.app.notebook.select()),wanted);return
         self.fail("Tab is not clickable: "+title)
 
+    def selection_fixture(self):
+        for index,data in enumerate((b"OLD",b"A\x00\xff",b"NOT SELECTED",b"B\x00\xfe")):
+            self.app.add_event(dict(kind="data",time=time.time()+index/100,direction="TX" if index%2 else "RX",peer="device",data=data))
+        self.app.update();return tuple(self.app.order)
+
+    @staticmethod
+    def descendants(widget):
+        for child in widget.winfo_children():
+            yield child
+            yield from UISmoke.descendants(child)
+
+    def test_ctrl_click_multiselect_and_refresh_keep_selection(self):
+        ids=self.selection_fixture();self.app.focus_force();self.app.table.focus_set()
+        def click(key,state=0):
+            x,y,w,h=self.app.table.bbox(key,"payload")
+            self.app.table.event_generate("<Button-1>",x=x+5,y=y+h//2,state=state)
+            self.app.table.event_generate("<ButtonRelease-1>",x=x+5,y=y+h//2,state=state);self.app.update()
+        click(ids[0]);click(ids[2],4);click(ids[3],4)
+        self.assertEqual(set(self.app.table.selection()),{ids[0],ids[2],ids[3]})
+        self.assertFalse(hasattr(self.app,"analysis_window"))
+        click(ids[2],4);self.assertEqual(set(self.app.table.selection()),{ids[0],ids[3]})
+        self.app.vars["view"].set("Hex");self.app.refresh();self.app.update()
+        self.assertEqual(set(self.app.table.selection()),{ids[0],ids[3]})
+        self.app.pause();self.app.pause();self.assertEqual(set(self.app.table.selection()),{ids[0],ids[3]})
+        click(ids[1]);self.assertEqual(self.app.table.selection(),(ids[1],))
+        self.assertFalse(hasattr(self.app,"analysis_window"))
+
+    def test_context_menu_preserves_multiselect_and_targets_unselected_row(self):
+        ids=self.selection_fixture();self.app.table.selection_set((ids[1],ids[3]))
+        def right_click(key):
+            x,y,w,h=self.app.table.bbox(key,"payload")
+            with patch("tkinter.Menu.tk_popup"):
+                self.app.table.event_generate("<Button-3>",x=x+5,y=y+h//2);self.app.update()
+        right_click(ids[3]);menu=self.app._traffic_popup
+        self.assertEqual(self.app.table.selection(),(ids[1],ids[3]))
+        self.assertEqual(menu.entrycget(0,"label"),"Capture Diff…")
+        self.assertEqual(menu.entrycget(1,"label"),"Export selected (2)…");self.assertEqual(menu.index("end"),1)
+        right_click(ids[2]);self.assertEqual(self.app.table.selection(),(ids[2],))
+        self.assertEqual(self.app._traffic_popup.entrycget(1,"label"),"Export selected (1)…")
+        self.assertFalse(hasattr(self.app,"analysis_window"))
+
+    def test_capture_diff_compares_exact_pair_and_keeps_main_selection(self):
+        ids=self.selection_fixture();self.app.table.selection_set((ids[3],ids[1]))
+        menu=self.app.make_traffic_menu(self.app.selected_traffic());menu.invoke(0);self.app.update()
+        window=self.app.analysis_window;pane=window.comparison
+        self.assertEqual(window.tabs.tab(window.tabs.select(),"text"),"Capture Diff")
+        self.assertEqual(pane.a,b"A\x00\xff");self.assertEqual(pane.b,b"B\x00\xfe")
+        self.assertEqual(window.data,pane.b);self.assertIn("#"+ids[1],pane.a_label.get())
+        self.assertEqual(self.app.table.selection(),(ids[1],ids[3]));self.assertIsNone(self.app.engine)
+        # Re-opening the same pair must not substitute the unselected previous RX row.
+        window.hide();menu.invoke(0);self.assertIs(self.app.analysis_window,window)
+        self.assertEqual(pane.a,b"A\x00\xff");menu.destroy()
+
+    def test_capture_diff_picker_only_offers_selected_messages(self):
+        ids=self.selection_fixture();self.app.table.selection_set((ids[0],ids[1],ids[3]))
+        picker=self.app.compare_selected();self.app.update()
+        combos=[w for w in self.descendants(picker) if isinstance(w,ttk.Combobox)]
+        values=combos[0].cget("values")
+        self.assertEqual(len(values),3);self.assertFalse(any(label.startswith("#"+ids[2]+" ·") for label in values))
+        picker.message.set(picker.reference.get());self.assertTrue(picker.confirm.instate(["disabled"]))
+        picker.message.set(values[2]);picker.confirm.invoke();self.app.update()
+        self.assertEqual(self.app.analysis_window.comparison.a,b"OLD")
+        self.assertEqual(self.app.analysis_window.comparison.b,b"B\x00\xfe")
+        self.assertEqual(len(self.app.table.selection()),3)
+
+    def test_selected_export_snapshot_formats_and_exact_binary_payloads(self):
+        import csv
+        with tempfile.TemporaryDirectory() as folder:
+            for suffix in ("jsonl","csv","txt"):
+                with self.subTest(format=suffix):
+                    self.app.MAX_ROWS=2000;self.app.clear();ids=self.selection_fixture()
+                    self.app.table.selection_set((ids[3],ids[1]))
+                    menu=self.app.make_traffic_menu(self.app.selected_traffic());menu.invoke(1)
+                    win=next(w for w in self.app.winfo_children() if isinstance(w,tk.Toplevel) and w.title()=="Export selected traffic")
+                    # Live retention/selection changes cannot expand or invalidate this export.
+                    self.app.MAX_ROWS=1
+                    self.app.add_event(dict(kind="data",time=time.time(),direction="RX",peer="new",data=b"ARRIVED LATER"))
+                    save=next(w for w in self.descendants(win) if isinstance(w,ttk.Button) and w.cget("text")=="Save…")
+                    path=Path(folder)/("selected."+suffix)
+                    with patch("probe.app.filedialog.asksaveasfilename",return_value=str(path)):save.invoke()
+                    if suffix=="jsonl":
+                        rows=[json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+                        self.assertEqual([bytes.fromhex(row["hex"]) for row in rows],[b"A\x00\xff",b"B\x00\xfe"])
+                        self.assertTrue(all("text" in row for row in rows))
+                    elif suffix=="csv":
+                        with path.open(encoding="utf-8",newline="") as f:rows=list(csv.DictReader(f))
+                        self.assertEqual([bytes.fromhex(row["hex"]) for row in rows],[b"A\x00\xff",b"B\x00\xfe"])
+                    else:
+                        text=path.read_text(encoding="utf-8")
+                        self.assertEqual(text.count("Hex:"),2);self.assertIn("41 00 FF",text);self.assertIn("42 00 FE",text)
+                        self.assertNotIn("NOT SELECTED",text);self.assertNotIn("ARRIVED LATER",text)
+                    self.assertIn("2 selected messages",self.app.status.cget("text"));menu.destroy()
+
+    def test_export_choices_still_apply_and_toolbar_export_stays_global(self):
+        ids=self.selection_fixture();self.app.table.selection_set((ids[1],ids[3]))
+        with tempfile.TemporaryDirectory() as folder:
+            win=self.app.export(rows=[row for _,row in self.app.selected_traffic()]);self.app.update()
+            checks={w.cget("text"):w for w in self.descendants(win) if isinstance(w,ttk.Checkbutton)}
+            save=next(w for w in self.descendants(win) if isinstance(w,ttk.Button) and w.cget("text")=="Save…")
+            checks["Hex"].invoke();checks["Decoded text"].invoke();self.assertTrue(save.instate(["disabled"]))
+            checks["Decoded text"].invoke();path=Path(folder)/"text.jsonl"
+            with patch("probe.app.filedialog.asksaveasfilename",return_value=str(path)):save.invoke()
+            rows=[json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(rows),2);self.assertTrue(all("text" in row and "hex" not in row for row in rows))
+            win=self.app.export();save=next(w for w in self.descendants(win) if isinstance(w,ttk.Button) and w.cget("text")=="Save…")
+            path=Path(folder)/"all.jsonl"
+            with patch("probe.app.filedialog.asksaveasfilename",return_value=str(path)):save.invoke()
+            self.assertEqual(len(path.read_text(encoding="utf-8").splitlines()),4)
+
     def test_double_click_row_opens_one_analysis_window_with_all_message_views(self):
         self.assertEqual([self.app.notebook.tab(tab,"text") for tab in self.app.notebook.tabs()],["Traffic","Live plot","Terminal"])
         for i,data in enumerate((b"FIRST\0\xff",b"SECOND\r\n")):

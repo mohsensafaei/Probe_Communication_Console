@@ -1,5 +1,13 @@
 # Changes
 
+## 1.3.1
+
+- Add native Ctrl/Shift multi-selection in Traffic while preserving single-click selection and double-click Analyze.
+- Keep selected rows across refresh/view changes and preserve multi-selection on right-click.
+- Add Capture Diff for exact selected pairs, with a selected-only A/B picker for larger selections.
+- Add snapshot Export selected for JSONL/CSV/text with existing Hex / Decoded text choices; toolbar Export keeps its full-history scope.
+- Exercise native selection, context actions, export scope during live retention and frozen selected-pair comparison.
+
 ## 1.3.0
 
 - Add USB HID Monitor with device selection, RX/TX report capture and descriptor-based Analyze fields.

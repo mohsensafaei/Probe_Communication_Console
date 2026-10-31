@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.3.0** (Linux release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.3.1** (Linux release).
 
 ### Analyze traffic without sending anything
 
@@ -393,7 +393,7 @@ are unchanged. Search is per displayed message, not across unrelated receive chu
 use Framing when an application message spans chunks. History remains bounded to
 2000 rows / 8 MiB; searching does not load the complete lifetime recording.
 
-## Sequence deadlines and background recording (1.3.0)
+## Sequence deadlines and background recording (1.3.1)
 
 Interval mode now uses absolute `perf_counter_ns` deadlines between send starts,
 including repeats and cycles. Processing/write overhead is no longer added to
@@ -424,7 +424,7 @@ messages use no processing pool. CPU-heavy third-party threads or GUI work left
 in the main process can still delay the transport; neither Windows nor Linux
 best-effort scheduling provides a nanosecond or hard 1 ms guarantee.
 
-Measured Windows/Linux results and limitations: [1.3.0 timing validation](PERFORMANCE_1_2_2.md).
+Measured Windows/Linux results and limitations: [1.3.1 timing validation](PERFORMANCE_1_2_2.md).
 
 ## HID Monitor (1.3.0)
 
@@ -440,3 +440,27 @@ restart after setup. On Linux, the existing kernel usbmon facility is used and a
 permission prompt is shown only if your user lacks capture access. There are no
 persistent permission changes or background services. See [HID Monitor guide](HID_MONITOR.md)
 for offline prerequisites, descriptor handling, limitations and hardware validation.
+
+## Select, compare and export Traffic messages (1.3.1)
+
+A single click selects one message. Hold **Ctrl** and click to add/remove messages;
+**Shift+click** selects a range. Double-click still opens Analyze for one message.
+Selection is preserved across view changes, refresh and pause/resume for rows that
+remain visible. Filtering or history eviction removes rows from the selection.
+
+Right-click a selected row to keep the selection; right-click another row to select
+that row. The compact multi-selection menu contains:
+
+- **Capture Diff…**: compare the exact two selected messages directly, with the
+  earlier message as reference A. With more than two selected messages, choose A/B
+  from only those messages; payloads are never concatenated automatically.
+- **Export selected (N)…**: save only those messages in capture order. The existing
+  Hex / Decoded text checkboxes and JSONL / CSV / text formats still apply. The
+  selection is snapshotted when the menu opens, so incoming data or eviction while
+  the save dialog is open cannot add other messages or invalidate the export.
+
+With one selected message, Capture Diff retains the existing previous/other-message
+workflow. The toolbar **Export** and Ctrl+S continue to export all retained history,
+including filtered rows; their dialog explicitly identifies this broader scope.
+Right-click export never includes unselected messages. Shift+F10 or the Menu key
+opens the context menu from the keyboard. These actions never send traffic.
