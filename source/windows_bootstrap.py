@@ -11,7 +11,7 @@ BUILDER = "pyinstaller==6.22.3"
 
 
 def requirements(build: bool) -> list[str]:
-    entries = [line.strip() for line in (ROOT / "requirements.txt").read_text().splitlines()
+    entries = [line.split(";",1)[0].strip() for line in (ROOT / "requirements.txt").read_text().splitlines()
                if line.strip() and not line.lstrip().startswith("#")]
     return entries + ([BUILDER] if build else [])
 
@@ -36,7 +36,7 @@ def main() -> int:
     check = (
         "from importlib.metadata import version; import sys; "
         "assert all(version(n)==v for n,v in (s.split('==') for s in sys.argv[1:])); "
-        "import serial, serial.tools.list_ports, pyte, wcwidth; assert hasattr(serial,'serial_for_url')"
+        "import serial, serial.tools.list_ports, pyte, wcwidth, hid; assert hasattr(serial,'serial_for_url')"
     )
     result = subprocess.run([str(python), "-c", check, *expected], capture_output=True)
     if result.returncode:

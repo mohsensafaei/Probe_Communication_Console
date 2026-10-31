@@ -92,7 +92,8 @@ trying to download it. An administrator can also grant usbmon access externally.
 This is OS-level transfer capture, not an electrical USB analyzer. Captured report
 bytes are the payload, not USB tokens/handshakes. Device unplug/replug can change
 its USB address; stop, refresh and select again. Failed USB transactions do not
-become successful report rows. Alternate HID settings/configuration changes,
+become successful report rows; their status is reported in the status line and
+recorded session information. Alternate HID settings/configuration changes,
 boot-protocol switches, unusual long HID items and complex collection layouts may
 require an externally supplied descriptor or raw-byte analysis. Descriptor limits
 and unsupported/truncated layouts are explicit; vendor protocol meanings still

@@ -165,6 +165,7 @@ class UISmoke(unittest.TestCase):
             fn();self.app.update()
             for w in self.app.winfo_children():
                 if isinstance(w,tk.Toplevel):w.destroy()
+        self.app.choose_mode("TCP Client")
         self.app.geometry("1060x740");self.app.update()
         self.assertLess(self.app.send_button.winfo_rooty()+self.app.send_button.winfo_height(),self.app.winfo_rooty()+self.app.winfo_height())
         self.assertTrue(self.app.status.winfo_ismapped())

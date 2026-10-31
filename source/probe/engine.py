@@ -289,7 +289,15 @@ class Engine:
         cfg = self.cfg; mode = cfg["mode"]
         if mode == "HID Monitor":
             from .hid_monitor import run_monitor
-            await asyncio.to_thread(run_monitor,self)
+            worker=asyncio.create_task(asyncio.to_thread(run_monitor,self))
+            try:await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                self.stopping.set()
+                # Drain the helper before recorder/session teardown. A pending OS
+                # permission dialog can outlive cancellation but emits no reports.
+                with contextlib.suppress(asyncio.TimeoutError,OSError):
+                    await asyncio.wait_for(asyncio.shield(worker),10)
+                raise
         elif mode == "Device Simulator":
             from .simulator import serve_simulator
             await serve_simulator(self)
