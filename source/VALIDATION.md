@@ -141,13 +141,13 @@ without elevation in diagnostic-only mode; it does not install a driver or start
 USB capture. The Windows bundle verifier checks the included offline USBPcap
 installer hash, corresponding source archive and licenses.
 
-- Windows runtime: `2a7994c2c7f6e469aa246d133c30486a0180f967`.
-  https://github.com/mohsensafaei/Probe_Communication_Console/actions/runs/41181472285
-- Linux runtime: `6418b8334c925a4adfc42170220481e12569d5ec`.
-  https://github.com/mohsensafaei/Probe_Communication_Console/actions/runs/41181495978
+- Windows runtime: `90f1ba304b8c3e492c9d4be908b73d82b35a33d4`.
+  https://github.com/mohsensafaei/Probe_Communication_Console/actions/runs/41181862133
+- Linux runtime: `170f845b8221dd256b77f26030c507614d417e40`.
+  https://github.com/mohsensafaei/Probe_Communication_Console/actions/runs/41181881085
 
 Tests cover capture format fixtures, signed bit fields, report IDs, keyboard
-arrays, Input/Output/Feature reconstruction, composite endpoints, metadata import,
+arrays, Input/Output/Feature reconstruction, composite endpoints, metadata import, nested-field recording memory budgets,
 unelevated helper IPC, source validation, read-only UI controls and permission
 cancellation followed by normal serial use. Synthetic HID previews are generated
 by `tests/hid_visual_preview.py`, with no device access or authentication prompt.
