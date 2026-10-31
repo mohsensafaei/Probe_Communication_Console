@@ -121,3 +121,29 @@ inputs, oversized-line recovery and bounded peers/samples. Terminal actions use
 two rows so history, Paste, Reset and Pop out remain visible on narrow windows.
 Frozen GUI diagnostics select all three workspace pages and verify plot curves,
 terminal text and the consolidated Analyze views.
+
+
+## HID Monitor 1.3.0 — 2026-10-31
+
+Native Windows and Linux backend/GUI checks passed. The Windows folder and
+single-file EXE packages, and the Linux extracted portable package, passed frozen
+self-tests and GUI smoke tests. The self-test launches the actual capture helper
+without elevation in diagnostic-only mode; it does not install a driver or start
+USB capture. The Windows bundle verifier checks the included offline USBPcap
+installer hash, corresponding source archive and licenses.
+
+- Windows runtime: `2a7994c2c7f6e469aa246d133c30486a0180f967`.
+  https://github.com/mohsensafaei/Probe_Communication_Console/actions/runs/41181472285
+- Linux runtime: `6418b8334c925a4adfc42170220481e12569d5ec`.
+  https://github.com/mohsensafaei/Probe_Communication_Console/actions/runs/41181495978
+
+Tests cover capture format fixtures, signed bit fields, report IDs, keyboard
+arrays, Input/Output/Feature reconstruction, composite endpoints, metadata import,
+unelevated helper IPC, source validation, read-only UI controls and permission
+cancellation followed by normal serial use. Synthetic HID previews are generated
+by `tests/hid_visual_preview.py`, with no device access or authentication prompt.
+
+**Physical HID capture, actual UAC/Polkit dialogs and driver installation were not
+exercised on connected lab hardware.** They require target-system validation;
+passing these automated tests is not a hardware capture or throughput guarantee.
+See HID_MONITOR.md for setup and limitations.
