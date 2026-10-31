@@ -1,5 +1,13 @@
 # Changes
 
+## 1.3.0
+
+- Add USB HID Monitor with device selection, RX/TX report capture and descriptor-based Analyze fields.
+- Keep normal startup unelevated; request permission only for HID capture/discovery or explicitly invoked offline driver setup.
+- Bundle original USBPcap 1.5.4.0 installer, corresponding source and licenses; use the running kernel usbmon on Linux without downloads.
+- Preserve report bytes and metadata in JSONL; support HID field search, descriptor import/export and read-only engine guards.
+- Add capture-format, decoder, helper, UI cancellation and portable resource checks. Live physical HID capture still requires validation on the target workstation.
+
 ## 1.2.2 — deadline scheduling and capture isolation
 
 * Use absolute interval deadlines across sequence messages/repeats/cycles; count missed slots without dropping messages or replaying an overdue burst.

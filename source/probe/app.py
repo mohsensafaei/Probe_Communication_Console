@@ -101,7 +101,7 @@ class Probe(tk.Tk):
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
                         theme="Probe Dark", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
                         sequence_advance="After interval", sequence_reply_timeout="2000", sequence_variables="{}",
-                        plot_mode="Auto", plot_config="{}", protocol_fields="[]", simulator_transport="TCP socket",
+                        hid_device="", plot_mode="Auto", plot_config="{}", protocol_fields="[]", simulator_transport="TCP socket",
                         simulator_matching="Conversation order", simulator_timing="1")
         for k,v in defaults.items(): self.vars[k] = tk.StringVar(value=v)
         self.vars["dtr"] = tk.BooleanVar(value=False); self.vars["rts"] = tk.BooleanVar(value=False)
@@ -356,6 +356,9 @@ class Probe(tk.Tk):
             field("Upstream port" if mode=="TCP Proxy" else "Remote port","port")
         if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP","Device Simulator"):
             field("Listen address","bind"); field("Listen port (0 = automatic)","listen_port")
+        if mode == "HID Monitor":
+            from .hid_ui import build_panel
+            build_panel(self,field)
         if mode == "Device Simulator":
             field("Expose device as", "simulator_transport", simulator_transports(), True)
             if os.name == "nt":
@@ -394,6 +397,10 @@ class Probe(tk.Tk):
             ttk.Checkbutton(self.config_frame,text="Reconnect on disconnect",variable=self.vars["reconnect"]).pack(anchor="w",pady=8)
         self.connection_button.configure(text="Start proxy" if "Proxy" in mode else "Listen" if mode in ("TCP Server","Serial ↔ TCP","UDP") else "Connect")
         if mode == "Device Simulator": self.connection_button.configure(text="Start simulator")
+        if mode == "HID Monitor":
+            self.connection_button.configure(text="Start capture")
+            self.composer.grid_remove()
+        else:self.composer.grid()
         self.side_combo.configure(state="readonly" if mode in ("TCP Proxy","Serial Proxy","Serial ↔ TCP") else "disabled")
         self.vars["side"].set("Device / upstream")
 
@@ -458,6 +465,12 @@ class Probe(tk.Tk):
         if "Serial" in mode:
             if not cfg["serial_port"]: raise ValueError("Choose or enter a physical serial port.")
             if int(cfg["baud"])<1: raise ValueError("Baud must be positive.")
+        if mode == "HID Monitor":
+            source=getattr(self,"hid_devices",{}).get(cfg["hid_device"])
+            if not source:raise ValueError("Refresh devices, then choose a USB device before starting HID capture.")
+            cfg["hid_source"]=source
+            from .hid_capture import validate_source
+            validate_source(source)
         self.new_framer()
 
     def new_framer(self):
@@ -492,12 +505,12 @@ class Probe(tk.Tk):
             self.manual_disconnect=False
             self.engine=Engine(self.emit)
             self.terminal.reset()
-            self.apply_auto()
+            if cfg["mode"]!="HID Monitor":self.apply_auto()
             if self.record_path:self.engine.record(self.record_path)
             if self.raw_path:self.engine.record(self.raw_path,raw=True)
             self.active=True
             self._lock_config(True)
-            self.connection_button.configure(text="Disconnect")
+            self.connection_button.configure(text="Stop capture" if cfg["mode"]=="HID Monitor" else "Disconnect")
             self.stat_labels["state"].configure(text="Connecting…")
             self.engine.start(cfg)
         except Exception as exc:
@@ -509,6 +522,8 @@ class Probe(tk.Tk):
             if locked: w.configure(state="disabled")
             elif isinstance(w,ttk.Combobox): w.configure(state="normal")
             else: w.configure(state="normal")
+        if self.vars["mode"].get()=="HID Monitor" and hasattr(self,"hid_combo"):
+            self.hid_combo.configure(state="disabled" if locked else "readonly")
         for b in self.nav: b.configure(state="disabled" if locked else "normal")
 
     def set_status(self,message,error=False):
@@ -526,6 +541,8 @@ class Probe(tk.Tk):
                 if direction=="TX": self.tx_total+=len(event["data"])
                 else:
                     self.rx_total+=len(event["data"]); self.plot.feed(event)
+                if "hid" in event:
+                    self.add_event(event);changed=True;continue
                 key=(direction,event["peer"])
                 if key not in self.framers: self.framers[key]=self.new_framer()
                 for data in self.framers[key].tick(event["time"]):
@@ -546,7 +563,7 @@ class Probe(tk.Tk):
                 else:
                     if self.vars["mode"].get() == "Device Simulator": self.simulator_info.set("Simulator stopped.")
                     self.flush_frames(); self.active=False; self._lock_config(False)
-                    self.connection_button.configure(text="Connect",state="normal")
+                    self.connection_button.configure(text="Start capture" if self.vars["mode"].get()=="HID Monitor" else "Connect",state="normal")
                     self.stop_repeat(); self.stop_sequence();self.stop_replay()
                     self.target_combo.configure(values=["All clients"]); self.vars["target"].set("All clients")
                     self.pressed=False;self.file_button.configure(text="Send file")
@@ -556,6 +573,9 @@ class Probe(tk.Tk):
                         def retry(m=mode):
                             if not self.closing and not self.active and self.vars["reconnect"].get() and not self.manual_disconnect and self.vars["mode"].get()==m:self.toggle()
                         self.after(1500,retry)
+            elif kind=="hid_devices":
+                from .hid_ui import devices_received
+                devices_received(self,event)
             elif kind=="peers":
                 peers=["All clients"]+event["peers"];self.target_combo.configure(values=peers)
                 if self.vars["target"].get() not in peers:
@@ -629,6 +649,9 @@ class Probe(tk.Tk):
     def row_values(self,idx,event):
         data=event["data"]; view=self.vars["view"].get()
         text=visible(data[:512],self.vars["encoding"].get())
+        if event.get("hid"):
+            fields=event["hid"].get("fields",[])
+            text=event["hid"].get("report_type","HID")+" · "+(" · ".join(f"{f['field']}={f['value']}" for f in fields[:12]) or "Raw report; double-click to Analyze")
         hx=data[:128].hex(" ").upper()
         if view=="Text + Hex": payload=f"{text}   ·   {hx}"
         elif view=="Hex":payload=hx
@@ -1146,6 +1169,7 @@ class Probe(tk.Tk):
 
     def close(self):
         self.closing=True
+        if hasattr(self,"hid_discovery_stop"):self.hid_discovery_stop.set()
         self.stop_repeat();self.stop_sequence();self.file_cancel.set();self.save_settings()
         self.stop_replay()
         if self.engine:
@@ -1166,7 +1190,16 @@ def main():
     parser.add_argument("--self-test",action="store_true",help="Test bundled serial, PTY, network and terminal support without a display")
     parser.add_argument("--smoke-test",action="store_true",help="Open the GUI briefly and verify all transport panels")
     parser.add_argument("--diagnostic-report",type=Path,help="Write self-test/smoke-test results as JSON (also works in windowed Windows builds)")
+    parser.add_argument("--hid-helper",action="store_true",help=argparse.SUPPRESS)
+    parser.add_argument("--hid-port",type=int,default=0,help=argparse.SUPPRESS)
+    parser.add_argument("--hid-token",default="",help=argparse.SUPPRESS)
+    parser.add_argument("--hid-action",choices=("list","capture","check"),default="capture",help=argparse.SUPPRESS)
+    parser.add_argument("--hid-source",default="",help=argparse.SUPPRESS)
     args=parser.parse_args()
+    if args.hid_helper:
+        from .hid_helper import helper_main
+        helper_main(args.hid_port,args.hid_token,args.hid_action,args.hid_source)
+        return
     def report(success, error=""):
         if args.diagnostic_report:
             args.diagnostic_report.write_text(json.dumps(dict(success=success, version=__version__,

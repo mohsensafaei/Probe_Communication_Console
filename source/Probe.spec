@@ -13,6 +13,7 @@ from pathlib import Path
 from importlib.metadata import distribution
 
 root = Path(SPECPATH).resolve()
+sys.path.insert(0,str(root))
 mode = os.environ.get("PROBE_BUNDLE_MODE", "onefile")
 if mode not in ("onefile", "folder"):
     raise ValueError("PROBE_BUNDLE_MODE must be onefile or folder")
@@ -25,12 +26,18 @@ if not windows:
     libdir = Path(sys.base_prefix) / "lib"
     for pattern in ("libtcl*.so*", "libtk*.so*"):
         tk_binaries.extend((str(path), ".") for path in sorted(libdir.glob(pattern)) if path.is_file())
-for package in ("pyserial", "pyte", "wcwidth"):
+for package in ("pyserial", "pyte", "wcwidth") + (("hidapi",) if windows else ()):
     dist = distribution(package)
     for item in dist.files or []:
         if "LICENSE" in item.name.upper() or "COPYING" in item.name.upper():
             path = dist.locate_file(item)
             if path.is_file():license_data.append((str(path), "licenses/" + package))
+
+driver_data=[]
+if windows:
+    from probe.hid_capture import bundled_installer
+    bundled_installer()  # Refuse incomplete/offline packages; no build/runtime download.
+    driver_data=[(str(root/"drivers"/"windows"),"drivers/windows")]
 
 a = Analysis(
     [str(root / "run_probe.py")],
@@ -40,16 +47,16 @@ a = Analysis(
            (str(root / "assets" / "fonts"), "assets/fonts"),
            (str(root / "LICENSE"), "licenses"),
            (str(root / "THIRD_PARTY_NOTICES.md"), "licenses"),
-           (str(root / "licenses" / "pyserial-LICENSE.txt"), "licenses/pyserial")] + license_data,
+           (str(root / "licenses" / "pyserial-LICENSE.txt"), "licenses/pyserial")] + license_data + driver_data,
     hiddenimports=["serial.tools.list_ports", "serial.urlhandler.protocol_loop",
-                   "serial.urlhandler.protocol_rfc2217", "serial.urlhandler.protocol_socket"],
+                   "serial.urlhandler.protocol_rfc2217", "serial.urlhandler.protocol_socket"] + (["hid"] if windows else []),
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     excludes=["numpy", "matplotlib", "PIL", "pytest", "IPython"],
     noarchive=False, optimize=0,
 )
 pyz = PYZ(a.pure)
 options = dict(name="Probe", debug=False, bootloader_ignore_signals=False,
-               strip=not windows, upx=False, console=False,
+               strip=not windows, upx=False, console=False, uac_admin=False, uac_uiaccess=False,
                disable_windowed_traceback=False,
                icon=str(root / "assets" / "probe.ico") if windows else None)
 if mode == "onefile":

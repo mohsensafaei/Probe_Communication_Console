@@ -1,3 +1,4 @@
 pyserial==3.5
 pyte==0.8.2
 wcwidth==0.2.13
+hidapi==0.15.0; sys_platform == "win32"
