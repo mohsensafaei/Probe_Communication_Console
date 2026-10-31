@@ -466,18 +466,19 @@ class AnalysisWindow(tk.Toplevel,Actions):
         self.app.load_payload_bytes(self.data);self.feedback.set("Loaded exact bytes into the composer. Press Send in the main window to transmit.")
 
 
-def open_analysis(app,tab=None):
-    event=app.selected();data=event["data"] if event else b""
+def open_analysis(app,tab=None,*,event=None,event_key=None):
+    event=app.selected() if event is None else event;data=event["data"] if event else b""
     label=f"{event['direction']} · {event.get('peer','')} · {len(data)} bytes" if event else "Choose traffic to begin. No connection is required."
     previous=None
     if event:
-        candidates=[app.events[i] for i in app.order if i in app.events]
-        for row in candidates:
-            if row is event:break
+        for candidate in app.order:
+            row=app.events.get(candidate)
+            if row is None:continue
+            if row is event or candidate==event_key:break
             if row.get("direction")==event.get("direction") and row.get("peer")==event.get("peer"):previous=row
     win=getattr(app,"analysis_window",None)
     if win is None or not win.winfo_exists():win=AnalysisWindow(app)
-    key=app.table.selection()[0] if event else None
+    key=event_key if event_key is not None else app.table.selection()[0] if event else None
     if event and event.get("hid"):
         if str(win.hid) not in win.tabs.tabs():win.tabs.add(win.hid,text="HID Report")
         win.hid.set_event(event)
@@ -500,3 +501,42 @@ def open_analysis(app,tab=None):
         if tab in names:win.tabs.select(names[tab])
     win.deiconify();win.lift();win.focus_set()
     app.analysis_window=win;return win
+
+
+def compare_selected(app,rows):
+    """Compare exact selected payloads. Never concatenate unrelated messages."""
+    def label(row):
+        key,event=row
+        return f"#{key} · {event['direction']} · {event.get('peer','')} · {len(event['data'])} bytes"
+
+    def show(a,b):
+        win=open_analysis(app,"Compare",event=b[1],event_key=b[0])
+        win.comparison.set_data("A",a[1]['data'],label(a))
+        win.comparison.set_data("B",b[1]['data'],label(b))
+        win.source.set(f"Selected traffic · reference #{a[0]} → message #{b[0]}")
+        return win
+
+    if len(rows)==2:return show(rows[0],rows[1])
+    win=modal(app,"Capture Diff · selected messages","760x340",(650,320))
+    body=ttk.Frame(win,padding=16);body.pack(fill="both",expand=True)
+    ttk.Label(body,text="Choose two selected messages",font=(app.ui_font,17,"bold")).pack(anchor="w")
+    ttk.Label(body,text=f"Choose a reference (A) and a message (B) from your {len(rows)} selected messages.",wraplength=700).pack(anchor="w",pady=6)
+    choices={label(row):row for row in rows}
+    win.reference=tk.StringVar(value=label(rows[0]));win.message=tk.StringVar(value=label(rows[1]))
+    fields=ttk.Frame(body);fields.pack(fill="x");fields.columnconfigure(0,weight=1)
+    reference=entry(fields,"Reference (A)",win.reference,0,values=tuple(choices),width=65)
+    message=entry(fields,"Message (B)",win.message,1,values=tuple(choices),width=65)
+    feedback=tk.StringVar();ttk.Label(body,textvariable=feedback).pack(anchor="w",pady=6)
+    controls=ttk.Frame(body);controls.pack(side="bottom",fill="x")
+    def choose():
+        a,b=choices[win.reference.get()],choices[win.message.get()]
+        if a[0]==b[0]:return
+        win.destroy();show(a,b)
+    confirm=ttk.Button(controls,text="Compare",style="Accent.TButton",command=choose);confirm.pack(side="right")
+    ttk.Button(controls,text="Cancel",command=win.destroy).pack(side="right",padx=6)
+    def changed(*_):
+        same=win.reference.get()==win.message.get();confirm.configure(state="disabled" if same else "normal")
+        feedback.set("Choose two different messages." if same else "Only your selected messages are listed; original bytes stay separate.")
+    reference.bind("<<ComboboxSelected>>",changed);message.bind("<<ComboboxSelected>>",changed)
+    win.reference.trace_add("write",changed);win.message.trace_add("write",changed);changed()
+    win.confirm=confirm;win.grab_set();return win

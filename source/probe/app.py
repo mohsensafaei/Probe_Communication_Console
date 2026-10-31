@@ -291,7 +291,7 @@ class Probe(tk.Tk):
         for key in ("search","search_mode","search_field"):self.vars[key].trace_add("write",self.search_changed)
         if self.vars["search_mode"].get()!="JSON field":self.search_fieldbox.grid_remove()
         tableframe=self.frame(traffic); tableframe.grid(row=2,column=0,sticky="nsew",padx=12)
-        self.table=ttk.Treeview(tableframe,columns=("id","time","dir","peer","size","payload"),show="headings",selectmode="browse",height=5)
+        self.table=ttk.Treeview(tableframe,columns=("id","time","dir","peer","size","payload"),show="headings",selectmode="extended",height=5)
         for col,title,width,stretch in [("id","#",46,False),("time","TIME",110,False),("dir","FLOW",55,False),
                                         ("peer","PEER",130,False),("size","BYTES",60,False),("payload","PAYLOAD",420,True)]:
             self.table.heading(col,text=title); self.table.column(col,width=width,minwidth=width if not stretch else 140,stretch=stretch)
@@ -301,11 +301,13 @@ class Probe(tk.Tk):
         self.table.bind("<Double-1>",self.traffic_clicked)
         self.table.bind("<Return>",lambda e:(self.analyze(),"break")[1])
         self.table.bind("<Button-3>",self.traffic_menu)
+        self.table.bind("<Shift-F10>",lambda e:self.traffic_menu())
+        self.table.bind("<Menu>",lambda e:self.traffic_menu())
         options=self.frame(traffic); options.grid(row=3,column=0,sticky="ew",padx=12,pady=(3,5))
         self.traffic_options=options
         self.history_label=self.label(options,"0 events",9,color=c["muted"],width=18,anchor="w"); self.history_label.pack(side="left")
         self.combo(options,"view",["Text + Hex","Text","Hex","Decimal"],width=11,callback=self.refresh).pack(side="left",padx=8)
-        ttk.Label(options,text="Double-click a row to analyze").pack(side="left",padx=4)
+        ttk.Label(options,text="Ctrl+click selects more").pack(side="left",padx=4)
         ttk.Button(options,text="Framing",command=self.framing_dialog).pack(side="right",padx=4)
         ttk.Button(options,text="Raw RX file",command=self.raw_record).pack(side="right",padx=4)
         ttk.Checkbutton(options,text="Follow",variable=self.vars["autoscroll"]).pack(side="right")
@@ -413,6 +415,7 @@ class Probe(tk.Tk):
         if self.notebook.select()==str(self.terminal) and self.terminal.keyboard.get():self.terminal.text.focus_set()
 
     def traffic_clicked(self,event):
+        if getattr(event,"state",0) & 5:return  # Ctrl/Shift extend selection; they never open Analyze.
         row=self.table.identify_row(event.y)
         if row and self.table.identify_region(event.x,event.y) in ("cell","tree"):
             self.table.selection_set(row);self.table.focus(row);self.analyze()
@@ -681,11 +684,14 @@ class Probe(tk.Tk):
         self.search_job=None
         if self.paused and not force:return
         selected=self.table.selection()
+        focused=self.table.focus()
         self.table.delete(*self.table.get_children());self._shown_count=0
         for idx in self.order:
             event=self.events[idx]
             if self.matches(event):self.table.insert("","end",iid=idx,values=self.row_values(idx,event),tags=(event["direction"],));self._shown_count+=1
-        if selected and self.table.exists(selected[0]):self.table.selection_set(selected[0])
+        remaining=[row for row in selected if self.table.exists(row)]
+        if remaining:self.table.selection_set(remaining)
+        if focused and self.table.exists(focused):self.table.focus(focused)
         self.search_counts()
 
     def pause(self):
@@ -703,6 +709,11 @@ class Probe(tk.Tk):
 
     def selected(self):
         ids=self.table.selection();return self.events.get(ids[0]) if ids else None
+
+    def selected_traffic(self):
+        """Snapshot selected visible messages in capture order, never click order."""
+        selected=set(self.table.selection())
+        return tuple((key,dict(self.events[key])) for key in self.order if key in selected and key in self.events)
 
     @staticmethod
     def put_text(widget,text):
@@ -729,24 +740,52 @@ class Probe(tk.Tk):
             target=peer
         self.engine.send(data,target,self.vars["side"].get())
 
-    def traffic_menu(self,event):
-        row=self.table.identify_row(event.y)
-        if row:self.table.selection_set(row)
-        menu=tk.Menu(self,tearoff=False,bg=self.colors["panel"],fg=self.colors["text"])
-        menu.add_command(label="Analyze message…",command=self.analyze)
-        menu.add_command(label="Protocol Inspector…",command=lambda:self.analyze("Protocol"))
-        menu.add_command(label="Compare with previous / other traffic…",command=lambda:self.analyze("Compare"))
+    def traffic_menu(self,event=None):
+        if event is not None:
+            row=self.table.identify_row(event.y)
+            if row:
+                if row not in self.table.selection():self.table.selection_set(row)
+                self.table.focus(row)
+            x,y=event.x_root,event.y_root
+        else:
+            box=self.table.bbox(self.table.focus()) if self.table.focus() else ()
+            x=self.table.winfo_rootx()+20;y=self.table.winfo_rooty()+(box[1]+box[3] if box else 20)
+        self.table.focus_set()
+        selection=self.selected_traffic()
+        old=getattr(self,"_traffic_popup",None)
+        if old and old.winfo_exists():old.destroy()
+        menu=self.make_traffic_menu(selection);self._traffic_popup=menu
+        try:menu.tk_popup(x,y)
+        finally:menu.grab_release()
+        return "break"
+
+    def make_traffic_menu(self,selection):
+        menu=tk.Menu(self,tearoff=False,bg=self.colors["panel"],fg=self.colors["text"],
+                     activebackground=self.colors["select"],activeforeground=self.colors["text"],font=(self.ui_font,11))
+        count=len(selection);state="normal" if count else "disabled"
+        menu.add_command(label="Capture Diff…",state=state,command=lambda:self.compare_selected(selection))
+        menu.add_command(label=f"Export selected ({count})…",state=state,
+                         command=lambda:self.export(rows=[event for _,event in selection]))
+        if count>1:return menu
         menu.add_separator()
-        menu.add_command(label="Load payload into composer",command=self.load_selected_payload)
-        menu.add_command(label="Copy hex",command=self.copy_hex)
-        menu.add_command(label="Save exact bytes",command=self.save_bytes)
+        menu.add_command(label="Analyze message…",state=state,command=self.analyze)
+        menu.add_command(label="Protocol Inspector…",state=state,command=lambda:self.analyze("Protocol"))
+        menu.add_command(label="Load payload into composer",state=state,command=self.load_selected_payload)
+        menu.add_command(label="Copy hex",state=state,command=self.copy_hex)
+        menu.add_command(label="Save exact bytes",state=state,command=self.save_bytes)
         menu.add_separator()
         menu.add_command(label="Import capture…",command=self.import_capture)
         menu.add_command(label="Replay captured traffic…",command=self.replay_capture)
         menu.add_command(label="Stop replay",command=self.stop_replay)
         menu.add_command(label="Reset byte counters",command=self.reset_counters)
-        try:menu.tk_popup(event.x_root,event.y_root)
-        finally:menu.grab_release()
+        return menu
+
+    def compare_selected(self,selection=None):
+        selection=self.selected_traffic() if selection is None else selection
+        if not selection:self.set_status("Select traffic messages first.",True);return
+        if len(selection)==1:return self.analyze("Compare")
+        from .analysis_ui import compare_selected
+        return compare_selected(self,selection)
 
     def analyze(self,tab=None):
         from .analysis_ui import open_analysis
@@ -918,9 +957,13 @@ class Probe(tk.Tk):
                 self.raw_path=path;self.set_status("Raw RX recording armed. Click Raw RX file again to stop.")
             except OSError as exc:self.set_status(str(exc),True)
 
-    def export(self):
-        win=self.dialog("Export traffic","470x300")
+    def export(self,rows=None):
+        snapshot=tuple(dict(row) for row in rows) if rows is not None else None
+        if snapshot is not None and not snapshot:self.set_status("Select traffic messages first.",True);return
+        win=self.dialog("Export selected traffic" if snapshot is not None else "Export traffic","470x330")
         self.label(win,"Choose what to save",17,True).pack(anchor="w",padx=20,pady=(20,12))
+        scope=f"Only {len(snapshot)} selected message{'s' if len(snapshot)!=1 else ''} will be saved." if snapshot is not None else "All retained messages, including filtered rows."
+        self.label(win,scope,10,color=self.colors["blue"],wraplength=420,justify="left").pack(anchor="w",padx=20,pady=(0,6))
         hex_option=tk.BooleanVar(value=True)
         text_option=tk.BooleanVar(value=True)
         ttk.Checkbutton(win,text="Hex",variable=hex_option).pack(anchor="w",padx=20,pady=5)
@@ -935,7 +978,7 @@ class Probe(tk.Tk):
             path=filedialog.asksaveasfilename(parent=win,defaultextension=".jsonl",filetypes=[("Session JSON Lines","*.jsonl"),("CSV","*.csv"),("Readable log","*.txt")])
             if not path:return
             try:
-                rows=[self.events[i] for i in self.order]
+                rows=snapshot if snapshot is not None else [self.events[i] for i in self.order]
                 encoding=self.vars["encoding"].get()
                 with open(path,"w",encoding="utf-8",newline="") as f:
                     if path.lower().endswith(".csv"):
@@ -961,12 +1004,13 @@ class Probe(tk.Tk):
                             if text_option.get():row["text"]=visible(e["data"],encoding)
                             f.write(json.dumps(row,ensure_ascii=False)+"\n")
                 win.destroy()
-                self.set_status(f"Exported {len(rows)} retained events (including rows hidden by the filter).")
+                self.set_status(f"Exported {len(rows)} selected messages." if snapshot is not None else f"Exported {len(rows)} retained events (including rows hidden by the filter).")
             except OSError as exc:messagebox.showerror("Export",str(exc),parent=win)
         save.configure(command=choose);save.pack(side="right")
         ttk.Button(actions,text="Cancel",command=win.destroy).pack(side="right",padx=8)
         hex_option.trace_add("write",update);text_option.trace_add("write",update)
         win.bind("<Escape>",lambda _:win.destroy())
+        return win
 
     def dialog(self,title,size="610x470"):
         win=tk.Toplevel(self);win.title(title);win.geometry(size);win.configure(bg=self.colors["panel"])
@@ -1133,19 +1177,19 @@ class Probe(tk.Tk):
         win=self.dialog("Probe · Quick guide","780x620")
         text=self.text_widget(win,height=25,wrap="word");text.pack(fill="both",expand=True,padx=16,pady=16)
         self.put_text(text,f"PROBE {__version__}\n\n"
-            "GET STARTED\nChoose a mode, enter its endpoint, then Connect. Type a payload and press Ctrl+Enter. Click a traffic row (or select it and press Enter) to open Analyze for decoded text, hex/ASCII, every byte, protocol fields and comparison. One reusable window keeps all message views together.\n\n"
+            "GET STARTED\nChoose a mode, enter its endpoint, then Connect. Type a payload and press Ctrl+Enter. Double-click a traffic row (or select it and press Enter) to open Analyze for decoded text, hex/ASCII, every byte, protocol fields and comparison. One reusable window keeps all message views together.\n\n"
             "TCP CLIENT / SERVER\nClient connects to a device. Server accepts up to 16 clients. Choose a client or All clients before sending. Bind to 0.0.0.0 to accept LAN connections.\n\n"
             "TCP PROXY\nSet Listen to 127.0.0.1:9001 and Upstream to the real server. Point the other app to 127.0.0.1:9001. TX = app to upstream; RX = upstream to app. Each client has its own upstream connection. Binary bytes and half-close are preserved. TLS traffic remains encrypted.\n\n"
-            "USB / SERIAL\nSupports COM / tty serial devices, including USB CDC and USB-to-UART adapters. Refresh lists ports. Set baud, bits, parity, stop and flow. DTR/RTS start OFF. Use loop:// for a hardware-free check; rfc2217://host:port for remote serial. Raw USB HID / bulk protocols are device-specific and not supported.\n\n"
+            "USB / SERIAL\nSupports COM / tty serial devices, including USB CDC and USB-to-UART adapters. Refresh lists ports. Set baud, bits, parity, stop and flow. DTR/RTS start OFF. Use loop:// for a hardware-free check; rfc2217://host:port for remote serial. Use HID Monitor for read-only USB HID capture; arbitrary USB bulk terminals are not supported.\n\n"
             "SERIAL PROXY\nLinux: select Auto PTY; copy the created /dev/pts/N into your other app. Windows: install a virtual COM pair; Probe opens one end, the app opens its partner. Probe also opens the physical device. The bridge forwards bytes, not virtual-port baud changes or modem lines. Configure the physical port here.\n\n"
             "SERIAL ↔ TCP\nOne TCP app at a time talks to the physical serial device. This is a raw-byte bridge, not an RFC2217 server.\n\n"
             "PAYLOADS\nText, hex, escaped text (\\r, \\n, \\xHH), decimal bytes, encoding and line ending. Tools adds prefix, checksum and suffix. Checksum covers prefix+payload, excluding suffix and line ending. CRC16 Modbus is little-endian; CCITT is big-endian, init FFFF; CRC32 is little-endian. Send file sends its original bytes, without composer transformations.\n\n"
-            "CAPTURE\nRecord streams lossless JSONL (hex+metadata) before filtering and framing. Raw RX file concatenates received bytes. Export saves the retained rolling window, including filtered rows. Display is bounded to 2000 rows / 8 MiB; the inspector pages through every byte in 4 KiB pages. Under overload, UI drops are reported; record for full capture.\n\n"
+            "CAPTURE\nRecord streams lossless JSONL (hex+metadata) before filtering and framing. Raw RX file concatenates received bytes. Toolbar Export saves the retained rolling window, including filtered rows. Ctrl+click selects multiple messages; right-click → Export selected saves only those messages. The Hex / Decoded text choices still apply. Display is bounded to 2000 rows / 8 MiB; the inspector pages through every byte in 4 KiB pages. Under overload, UI drops are reported; record for full capture.\n\n"
             "FRAMING / AUTOMATIC REPLIES\nTCP and serial are streams, not messages. Display by read chunk, delimiter, fixed length or idle gap. Framing never changes forwarding. Echo / composer reply runs once per receive chunk, not per protocol message. Do not enable echo at both ends.\n\n"
             "SHORTCUTS\nCtrl+Enter: send · Ctrl+L: clear · Ctrl+S: export · Ctrl +/-: font · F1: help\n\n"
             "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Send keyboard for direct input. Traffic, Live plot and Terminal are main workspace pages; the composer target and injection side stay visible. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Detach moves Terminal into its own window; Dock or closing that window returns it to the main workspace. One peer is displayed at a time.\n\n"
             "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to inspect it. Use Load into composer in Analyze to explicitly load exact bytes, then Send to transmit.\n\n"
-            "ANALYZE TRAFFIC\nDouble-click a traffic row to open Analyze. Decoded text, Hex + ASCII and Every byte are included there. Protocol Inspector offers Auto (JSON detection) or Raw Bytes; selecting a field highlights its bytes. Copy field path supplies a sequence selector. Analyze remembers the page you last used for that message. Capture Diff compares messages or combined same-peer/direction capture chunks, highlights changed/added/removed ranges and can ignore JSON values or byte ranges. Save comparison retains all original bytes. These tools send nothing.\n\n"
+            "ANALYZE TRAFFIC\nDouble-click a traffic row to open Analyze. Decoded text, Hex + ASCII and Every byte are included there. Protocol Inspector offers Auto (JSON detection) or Raw Bytes; selecting a field highlights its bytes. Copy field path supplies a sequence selector. Analyze remembers the page you last used for that message. Right-click selected rows → Capture Diff compares the exact two selected messages; for a larger selection, choose A/B from that selection. Capture Diff also compares messages or combined same-peer/direction capture chunks, highlights changed/added/removed ranges and can ignore JSON values or byte ranges. Save comparison retains all original bytes. These tools send nothing.\n\n"
             "LIVE PLOT\nOpen the Live plot workspace page. Receive LF/CRLF-terminated RX numbers or CSV, up to four channels: 1,2 followed by LF, then 3,4 followed by LF. Choose the RX peer or automatic selection. Auto accepts numeric lines. Custom extracts a JSON field, text column, named value or fixed binary value; configure message boundaries and the RX parameter. TX-only data is not plotted. Separate peer buffers and the last 300 samples keep plotting bounded.\n\n"
             "DYNAMIC SEQUENCES\nEdit message > Response & next step: Save reply values picks JSON/TLV/byte fields and names variables; Choose next step adds conditions and next/goto/finish/fail/timeout actions. Save rules, then Save message. Insert variable adds ${name}, ${name:json} (a JSON value without surrounding quotes) or ${name:hex}. Variables defines initial values and shows latest reply values. Outgoing frame can rebuild length/checksum after substitution. Missing values stop before sending. Version 3 exports retain rules; legacy files still load.\n\n"
             "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
@@ -1257,6 +1301,12 @@ def main():
                 if "123" not in analysis.payload.decoded.get("1.0","end"):raise RuntimeError("Analyze decoded text failed in bundle.")
                 if not analysis.payload.byte_table.get_children():raise RuntimeError("Analyze byte views failed in bundle.")
                 analysis.destroy()
+                app.table.selection_set(app.order[-2:])
+                comparison=app.compare_selected()
+                if comparison.comparison.a!=app.events[app.order[-2]]["data"] or comparison.comparison.b!=app.events[app.order[-1]]["data"]:
+                    raise RuntimeError("Selected-message Capture Diff failed in bundle.")
+                if len(app.table.selection())!=2:raise RuntimeError("Traffic multi-selection changed during comparison.")
+                comparison.destroy()
                 pane=app.sequence_panel
                 app.macros=[dict(name="Smoke template",text="${sid}",flow=dict(extract=[dict(name="sid",source="JSON",selector="sessionId")]))]
                 pane.refresh();pane.open_editor(0)

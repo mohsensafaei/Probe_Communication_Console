@@ -1,4 +1,4 @@
-# Probe for Windows 1.3.0
+# Probe for Windows 1.3.1
 
 Portable TCP, UDP and USB/COM workbench with traffic recording/replay, a live
 ANSI terminal, serial proxies, recorded device simulation and timed test sequences.
@@ -32,7 +32,7 @@ COM port and serial parameters. Close other software that already owns that COM.
 ## Hardware test lab
 
 **Test lab** is at the bottom of the control panel; **Appearance** is removed.
-The title shows version 1.3.0, and the sidebar has eight modes including
+The title shows version 1.3.1, and the sidebar has eight modes including
 **Device Simulator**.
 
 * **Device simulator:** record TX/RX with the real device, then load the capture
