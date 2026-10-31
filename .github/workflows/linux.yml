@@ -32,6 +32,7 @@ jobs:
         run: |
           .venv/bin/python -m pip install pillow==11.3.0
           xvfb-run -a -s "-screen 0 1400x1000x24" .venv/bin/python tests/visual_preview.py
+          xvfb-run -a -s "-screen 0 1400x1000x24" .venv/bin/python tests/hid_visual_preview.py
       - name: Upload UI previews
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
