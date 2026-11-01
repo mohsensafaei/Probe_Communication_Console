@@ -13,6 +13,22 @@ from ..exporting import write_export
 
 
 class TrafficWorkspace:
+    @property
+    def events(self):
+        return self.history.events
+
+    @property
+    def order(self):
+        return tuple(self.history.events)
+
+    @property
+    def retained_bytes(self):
+        return self.history.retained_bytes
+
+    @property
+    def evicted(self):
+        return self.history.evicted
+
     def search_filter(self):
         key=tuple(self.vars[k].get() for k in ("search","search_mode","search_field","encoding"))
         if getattr(self,"_search_key",None)!=key:
@@ -24,7 +40,7 @@ class TrafficWorkspace:
 
     def search_counts(self):
         matcher=self.search_filter()
-        self.search_count.configure(text="Invalid search" if matcher.error else f"{self._shown_count} / {len(self.order)}",foreground=self.colors["red"] if matcher.error else self.colors["muted"])
+        self.search_count.configure(text="Invalid search" if matcher.error else f"{self._shown_count} / {len(self.events)}",foreground=self.colors["red"] if matcher.error else self.colors["muted"])
 
     def clear_search(self):
         self.vars["search"].set("");self.vars["search_field"].set("");self.vars["search_mode"].set("Text");self.refresh(force=True)
@@ -34,26 +50,35 @@ class TrafficWorkspace:
 
     def row_values(self,idx,event,view=None,encoding=None):
         data=event["data"]; view=view if view is not None else self.vars["view"].get()
-        text=visible(data[:512],encoding if encoding is not None else self.vars["encoding"].get())
-        if event.get("hid"):
-            fields=event["hid"].get("fields",[])
-            text=event["hid"].get("report_type","HID")+" · "+(" · ".join(f"{f['field']}={f['value']}" for f in fields[:12]) or "Raw report; double-click to Analyze")
-        hx=data[:128].hex(" ").upper()
-        if view=="Text + Hex": payload=f"{text}   ·   {hx}"
-        elif view=="Hex":payload=hx
+        if view=="Hex":payload=data[:128].hex(" ").upper()
         elif view=="Decimal":payload=" ".join(str(b) for b in data[:128])
-        else:payload=text
+        else:
+            text=visible(data[:512],encoding if encoding is not None else self.vars["encoding"].get())
+            if event.get("hid"):
+                fields=event["hid"].get("fields",[])
+                text=event["hid"].get("report_type","HID")+" · "+(" · ".join(f"{f['field']}={f['value']}" for f in fields[:12]) or "Raw report; double-click to Analyze")
+            payload=f"{text}   ·   {data[:128].hex(' ').upper()}" if view=="Text + Hex" else text
         if len(data)>512:payload+=" …"
+        if event.get("display_partial"):payload+=" · [partial: "+event["display_reason"]+"]"
         return (idx,dt.datetime.fromtimestamp(event["time"]).strftime("%H:%M:%S.%f")[:-3],event["direction"],event["peer"],len(data),payload)
 
     def add_event(self,event):
-        self.sequence+=1; idx=str(self.sequence)
-        self.events[idx]=event;self.order.append(idx);self.retained_bytes+=len(event["data"])
-        while len(self.order)>self.MAX_ROWS or self.retained_bytes>self.MAX_BYTES:
-            old=self.order.pop(0);self.retained_bytes-=len(self.events.pop(old)["data"]);self.evicted+=1
-            if self.table.exists(old):self.table.delete(old);self._shown_count-=1
-        if not self.paused and self.matches(event):
-            self.table.insert("","end",iid=idx,values=self.row_values(idx,event),tags=(event["direction"],));self._shown_count+=1
+        self.add_events((event,))
+
+    def add_events(self,events):
+        self.history.max_rows,self.history.max_bytes=self.MAX_ROWS,self.MAX_BYTES
+        change=self.history.extend(events)
+        removed=tuple(key for key in change.removed if self.table.exists(key))
+        if removed:self.table.delete(*removed);self._shown_count-=len(removed)
+        if self.paused or not change.added:return change
+        matcher=self.search_filter()
+        direction=self.vars["direction"].get()
+        view,encoding=self.vars["view"].get(),self.vars["encoding"].get()
+        for idx in change.added:
+            event=self.events[idx]
+            if direction in ("All",event["direction"]) and matcher.matches(event):
+                self.table.insert("","end",iid=idx,values=self.row_values(idx,event,view,encoding),tags=(event["direction"],));self._shown_count+=1
+        return change
 
     def search_changed(self,*_):
         if self.vars["search_mode"].get()=="JSON field":self.search_fieldbox.grid()
@@ -87,8 +112,8 @@ class TrafficWorkspace:
         self.set_status("Display paused. Transport and recording continue." if self.paused else "Live display resumed.")
 
     def clear(self):
-        self.events.clear();self.order.clear();self.retained_bytes=0;self.evicted=0;self.dropped=0
-        self.framers.clear();self.frame_meta.clear();self.plot.clear()
+        self.history.clear();self.queue.reset_stats();self.dropped=0
+        self.display_framing.clear();self.plot.clear()
         self.table.delete(*self.table.get_children());self._shown_count=0
         self.search_counts()
         self.set_status("Display cleared. Recorded files and session byte counters continue.")

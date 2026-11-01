@@ -2,6 +2,8 @@ name: Windows tests and portable builds
 on:
   push:
     branches: [windows]
+  pull_request:
+    branches: [windows]
   workflow_dispatch:
 permissions:
   contents: read
@@ -37,6 +39,8 @@ jobs:
         run: .windows-venv/Scripts/python.exe benchmarks/core_benchmark.py
       - name: Native Tk GUI, Test lab and Appearance removal
         run: .windows-venv/Scripts/python.exe -m unittest discover -s tests -p ui_smoke.py -v
+      - name: Native display benchmark (informational)
+        run: .windows-venv/Scripts/python.exe benchmarks/display_benchmark.py
       - name: Capture native simulator previews
         run: |
           .windows-venv/Scripts/python.exe -m pip install pillow==11.3.0
