@@ -56,6 +56,58 @@ class UISmoke(unittest.TestCase):
             yield child
             yield from UISmoke.descendants(child)
 
+    def test_simulator_field_rule_fault_editor_and_roundtrip(self):
+        from probe.simulator_ui import ConditionEditor
+        from probe.simulation import model_from_dict, model_to_dict, RequestMatcher
+        self.app.test_lab();pane=self.app.simulator_panel
+        editor=pane.edit_rule(True)
+        editor.vars["name"].set("Payment")
+        editor.vars["match_mode"].set("Fields");editor.update_match()
+        condition=ConditionEditor(pane,lambda c:editor.conditions.append(c))
+        condition.vars["selector"].set("data.service");condition.vars["value"].set("03");condition.save_checked()
+        self.assertFalse(condition.winfo_exists())
+        editor.refresh_conditions()
+        editor.vars["reply_format"].set("Text (UTF-8)");editor.vars["reply"].set("OK")
+        editor.vars["fault"].set("No reply");editor.update_fault()
+        editor.vars["trigger"].set("Once on match N");editor.vars["nth"].set("3")
+        editor.notebook.select(1);self.app.update();editor.save_checked()
+        self.assertFalse(editor.winfo_exists())
+        model=self.app.simulator_model
+        self.assertEqual(model.framing.mode,"JSON");self.assertEqual(model.exchanges[0].fault.nth,3)
+        self.assertEqual(model_from_dict(model_to_dict(model)),model)
+        self.assertEqual(len(RequestMatcher(model).feed(b'{"data":{"service":"03","amount":9}}')),1)
+        pane.table.selection_set("0");editor=pane.edit_rule()
+        self.assertEqual(editor.vars["name"].get(),"Payment")
+        self.assertEqual(editor.vars["trigger"].get(),"Once on match N")
+        editor.save_checked();self.assertEqual(self.app.simulator_model,model)
+        framing=pane.edit_framing();self.app.update();framing.save_checked()
+        self.assertFalse(framing.winfo_exists());self.assertEqual(self.app.simulator_model,model)
+
+    def test_simulator_fault_only_edit_preserves_capture_chunks_and_delays(self):
+        from probe.simulation import DeviceModel, Exchange, Reply
+        self.app.test_lab();pane=self.app.simulator_panel
+        model=DeviceModel((Exchange(b"A",(Reply(b"B",10.000000000000009),Reply(b"C",20.123456789))),))
+        pane.install(model);pane.table.selection_set("0");editor=pane.edit_rule()
+        editor.vars["fault"].set("No reply");editor.update_fault();editor.save_checked()
+        self.assertFalse(editor.winfo_exists())
+        self.assertEqual(self.app.simulator_model.exchanges[0].replies,model.exchanges[0].replies)
+
+    def test_simulator_new_binary_rule_framing_and_fault_controls(self):
+        self.app.test_lab();pane=self.app.simulator_panel
+        frame=pane.edit_framing();frame.vars["mode"].set("Fixed length");frame.update_fields()
+        frame.vars["size"].set("3");frame.save_checked();self.assertFalse(frame.winfo_exists())
+        editor=pane.edit_rule(True)
+        editor.vars["request"].set("01 02 03");editor.vars["reply"].set("AA BB CC DD")
+        for kind in ("Delay","No reply","Error reply","Disconnect","Truncate","Corrupt byte","Duplicate","Split"):
+            editor.vars["fault"].set(kind);editor.update_fault();editor.notebook.select(1);self.app.update()
+            save=next(w for w in self.descendants(editor) if isinstance(w,ttk.Button) and w.cget("text")=="Save")
+            self.assertTrue(save.winfo_ismapped(),kind)
+            for button in (w for w in self.descendants(editor) if isinstance(w,ttk.Button) and w.winfo_ismapped()):
+                self.assertLessEqual(button.winfo_rooty()+button.winfo_height(),editor.winfo_rooty()+editor.winfo_height())
+        editor.vars["count"].set("2");editor.vars["gap"].set("5");editor.save_checked()
+        self.assertFalse(editor.winfo_exists());self.assertEqual(self.app.simulator_model.framing.size,3)
+        self.assertEqual(self.app.simulator_model.exchanges[0].fault.kind,"Split")
+
     def test_ctrl_click_multiselect_and_refresh_keep_selection(self):
         ids=self.selection_fixture();self.app.focus_force();self.app.table.focus_set()
         def click(key,state=0):

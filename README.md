@@ -1,4 +1,4 @@
-# Probe for Windows 1.3.1
+# Probe for Windows 1.4.0
 
 Portable TCP, UDP and USB/COM workbench with traffic recording/replay, a live
 ANSI terminal, serial proxies, recorded device simulation and timed test sequences.
@@ -32,7 +32,7 @@ COM port and serial parameters. Close other software that already owns that COM.
 ## Hardware test lab
 
 **Test lab** is at the bottom of the control panel; **Appearance** is removed.
-The title shows version 1.3.1, and the sidebar has eight modes including
+The title shows version 1.4.0, and the sidebar has eight modes including
 **Device Simulator**.
 
 * **Device simulator:** record TX/RX with the real device, then load the capture
@@ -40,7 +40,10 @@ The title shows version 1.3.1, and the sidebar has eight modes including
   model. Expose it as a TCP socket or an installed virtual COM pair. The other
   application receives recorded replies to exact matching requests, including
   response timing and stateful conversations. The original physical device can
-  be disconnected. Edit requests, replies and delays, or reset matching.
+  be disconnected. Double-click a rule for JSON/TLV/text/byte field matching or
+  reproducible faults (delay, timeout, error, truncation, corruption, duplicate,
+  split and disconnect). Request framing validates lengths/checksums. Models
+  remain reusable through import/export; legacy exact-byte models still load.
 * **Test sequences:** choose messages, select **After interval** or **After a reply**, then Run.
   **Choose captured messages…** opens an RX/TX picker (RX initially selected)
   with source/peer filters, previews and explicit message selection. Add the

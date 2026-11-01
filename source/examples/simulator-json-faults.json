@@ -1,0 +1,68 @@
+{
+  "format": "probe-device",
+  "version": 2,
+  "exchanges": [
+    {
+      "request": "",
+      "replies": [
+        {
+          "hex": "7B22726573706F6E7365436F6465223A22303030222C2273657276696365223A223033227D0A",
+          "delay_ms": 10
+        }
+      ],
+      "match": [
+        {
+          "source": "JSON",
+          "selector": "data.service",
+          "operator": "equals",
+          "value": "03",
+          "offset": 0,
+          "length": 1,
+          "format": "Text"
+        }
+      ],
+      "fault": {
+        "kind": "No reply",
+        "trigger": "Once on match N",
+        "nth": 3,
+        "delay_ms": 0,
+        "payload": "",
+        "count": 1,
+        "gap_ms": 0,
+        "offset": -1,
+        "xor_mask": 1
+      },
+      "name": "Payment \u00b7 no reply on third request"
+    },
+    {
+      "request": "",
+      "replies": [
+        {
+          "hex": "7B22726573706F6E7365436F6465223A22303030222C2273657276696365223A223032227D0A",
+          "delay_ms": 5
+        }
+      ],
+      "match": [
+        {
+          "source": "JSON",
+          "selector": "data.service",
+          "operator": "equals",
+          "value": "02",
+          "offset": 0,
+          "length": 1,
+          "format": "Text"
+        }
+      ],
+      "name": "Status"
+    }
+  ],
+  "framing": {
+    "mode": "JSON",
+    "delimiter": "0A",
+    "size": 16,
+    "prefix_size": 6,
+    "prefix_format": "ASCII",
+    "check": "None",
+    "check_start": 0
+  }
+}
