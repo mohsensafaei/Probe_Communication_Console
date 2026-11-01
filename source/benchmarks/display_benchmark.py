@@ -30,12 +30,19 @@ def run():
             for _ in range(3):
                 app.clear()
                 app.emit(dict(kind="data", time=time.time(), direction="RX", peer="benchmark", data=wire))
-                with patch.object(app.table, "insert", wraps=app.table.insert) as insert, patch.object(app, "after"):
+                count = 0
+                original_insert = app.table.insert
+                def counted_insert(*args, **kwargs):
+                    nonlocal count
+                    count += 1
+                    return original_insert(*args, **kwargs)
+                # Count calls without Mock's per-call recording/allocation cost.
+                with patch.object(app.table, "insert", counted_insert), patch.object(app, "after"):
                     start = time.perf_counter()
                     app.poll()
                     app.update_idletasks()
                     elapsed.append((time.perf_counter() - start) * 1000)
-                    insertions.append(insert.call_count)
+                    insertions.append(count)
                 assert len(app.events) == len(app.table.get_children()) == 2000
                 assert b"".join(app.events[key]["data"] for key in app.order) == wire[-2000:]
             return dict(python=sys.version.split()[0], tk=app.tk.call("info", "patchlevel"),

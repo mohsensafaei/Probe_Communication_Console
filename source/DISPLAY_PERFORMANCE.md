@@ -32,15 +32,18 @@ These are Linux measurements, not native Windows results.
 
 One 64 KiB RX event, fixed one-byte framing, 2,000 retained rows, three runs per
 version. Includes terminal/plot ingestion, traffic processing and Tk idle work.
+Table calls use a lightweight counter, without Mock call recording/allocation in
+the timed insertion path. Earlier instrumented timings are superseded by these
+measurements.
 
 | Metric | Before | After |
 | --- | ---: | ---: |
-| Median elapsed time | 2,011.161 ms | 236.527 ms |
+| Median elapsed time | 1,449.869 ms | 217.642 ms |
 | Table insertions per read | 65,536 | 2,000 |
 | Final retained rows | 2,000 | 2,000 |
 
-This workload improved **8.50×**. It is deliberately stressful small-frame display
-work, not a claim that every operation or transport became 8.50× faster. Timings
+This workload improved **6.66×**. It is deliberately stressful small-frame display
+work, not a claim that every operation or transport became 6.66× faster. Timings
 vary with host load. Raw samples are in `performance-results/display-1.4.2.json`.
 
 Run from `source/` with an X display on Linux (native console on Windows):
@@ -65,7 +68,7 @@ this Tk host too; reducing the adjacent field entry width makes that test pass.
 
 - The poll budget is checked between input events. A single expensive payload,
   terminal parse, JSON search or retained widget batch can exceed 8 ms. The stress
-  case above still takes about 237 ms. There is no hard real-time UI guarantee.
+  case above still takes about 218 ms. There is no hard real-time UI guarantee.
 - Search/rebuild, export and some analysis actions still execute synchronously on
   the UI thread. These need cancellation-aware workers or incremental rendering
   before very large interactive sessions can be described as fully responsive.
