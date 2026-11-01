@@ -83,6 +83,14 @@ class UISmoke(unittest.TestCase):
         framing=pane.edit_framing();self.app.update();framing.save_checked()
         self.assertFalse(framing.winfo_exists());self.assertEqual(self.app.simulator_model,model)
 
+    def test_simulator_condition_editor_closes_with_its_rule(self):
+        self.app.test_lab();pane=self.app.simulator_panel
+        editor=pane.edit_rule(True);editor.vars["match_mode"].set("Fields");editor.update_match()
+        editor.edit_condition(True);self.app.update()
+        condition=editor.condition_editor
+        self.assertTrue(condition.winfo_exists());editor.destroy();self.app.update()
+        self.assertFalse(condition.winfo_exists());self.assertIsNone(self.app.simulator_model)
+
     def test_simulator_fault_only_edit_preserves_capture_chunks_and_delays(self):
         from probe.simulation import DeviceModel, Exchange, Reply
         self.app.test_lab();pane=self.app.simulator_panel
