@@ -1,6 +1,4 @@
 """Tk desktop UI. Standard-library widgets, no browser or Qt runtime."""
-import csv
-import datetime as dt
 import json
 import math
 import os
@@ -14,11 +12,10 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
 
 from . import __version__
-from .codec import encode, hexdump, visible, Framer
+from .codec import encode, hexdump, Framer
 from .engine import Engine, MODES
-from .terminal_ui import TerminalPane
-from .plot_ui import LivePlotPane
-from .traffic_search import TrafficSearch, MODES as SEARCH_MODES
+from .ui.traffic import TrafficWorkspace
+from .ui.layout import WorkbenchLayout
 from .capture import load_capture, replay_plan
 from .serial_endpoints import VirtualPair, simulator_transports
 from .typography import load_fonts, font_roles
@@ -45,7 +42,7 @@ def data_directory():
         base = Path(os.environ.get("LOCALAPPDATA", Path.home()/".local"/"share")) / "Probe"
         base.mkdir(parents=True, exist_ok=True); return base
 
-class Probe(tk.Tk):
+class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
     MAX_ROWS = 2000
     MAX_BYTES = 8 * 1024 * 1024
 
@@ -132,214 +129,6 @@ class Probe(tk.Tk):
         self.after(40, self.poll)
         if demo: self.after(150, self.demo)
 
-    def _style(self):
-        c = self.colors
-        s = self.style
-        s.configure(".", background=c["panel"], foreground=c["text"], font=(self.ui_font,12),
-                    bordercolor=c["border"], lightcolor=c["shine"], darkcolor=c["bg"])
-        s.configure("TFrame", background=c["panel"])
-        s.configure("TLabel", background=c["panel"], foreground=c["text"])
-        s.configure("Muted.TLabel", foreground=c["muted"])
-        s.configure("TButton", background=c["metal"], foreground=c["ink"], padding=(9,3), borderwidth=1,
-                    relief="raised", font=(self.ui_font,11,"bold"))
-        # Clam's Button.focus element draws a dotted rectangle over the label.
-        # Keep normal keyboard traversal and indicate focus with a solid border.
-        s.layout("TButton", [("Button.border", {"sticky":"nswe", "border":1, "children":[
-            ("Button.padding", {"sticky":"nswe", "children":[("Button.label", {"sticky":"nswe"})]})]})])
-        s.map("TButton", background=[("disabled",c["panel"]),("active",c["shine"])],
-              foreground=[("disabled",c["muted"])],
-              bordercolor=[("!disabled","focus",c["blue"])],
-              lightcolor=[("!disabled","focus",c["blue"])], darkcolor=[("!disabled","focus",c["blue"])],
-              relief=[("disabled","flat"),("pressed","sunken")])
-        s.configure("Accent.TButton", background=c["accent"], foreground="#ffffff" if self.vars["theme"].get()=="Light" else "#153425", font=(self.ui_font,12,"bold"))
-        s.map("Accent.TButton", background=[("disabled",c["panel"]),("active",c["accent"])])
-        s.configure("TEntry", fieldbackground=c["input"], foreground=c["text"], padding=3, insertcolor=c["accent"])
-        s.configure("TCombobox", fieldbackground=c["input"], background=c["input"], foreground=c["text"],
-                    arrowcolor=c["muted"], padding=3, selectbackground=c["select"], selectforeground=c["text"])
-        s.map("TCombobox", fieldbackground=[("readonly",c["input"]),("disabled",c["panel"])],
-              foreground=[("readonly",c["text"]),("disabled",c["muted"])], selectbackground=[("readonly",c["select"])])
-        self.option_add("*TCombobox*Listbox.background", c["input"])
-        self.option_add("*TCombobox*Listbox.foreground", c["text"])
-        s.configure("TCheckbutton", background=c["panel"], foreground=c["muted"])
-        s.map("TCheckbutton", background=[("active",c["panel"])])
-        s.configure("Treeview", background=c["panel"], fieldbackground=c["panel"], foreground=c["text"],
-                    borderwidth=1, rowheight=31, font=(self.mono,self.font_size))
-        s.map("Treeview", background=[("selected",c["select"])], foreground=[("selected",c["text"])])
-        s.configure("Treeview.Heading", background=c["metal"], foreground=c["ink"], relief="flat",
-                    font=(self.ui_font,10,"bold"), padding=3)
-        s.map("Treeview.Heading", background=[("active",c["border"])])
-        s.configure("Bytes.Treeview", rowheight=25, font=(self.mono,10))
-        s.configure("TNotebook", background=c["panel"], borderwidth=0)
-        s.configure("TNotebook.Tab", background=c["panel"], foreground=c["muted"], padding=(14,4), font=(self.ui_font,11,"bold"))
-        s.map("TNotebook.Tab", background=[("selected",c["input"])], foreground=[("selected",c["accent"])])
-        s.configure("Vertical.TScrollbar", background=c["border"], troughcolor=c["panel"], borderwidth=0, arrowcolor=c["muted"])
-        s.configure("TPanedwindow", background=c["bg"])
-
-    def label(self, parent, text, size=10, bold=False, color=None, **kwargs):
-        return tk.Label(parent, text=text, bg=parent.cget("bg"), fg=color or self.colors["text"],
-                        font=(self.display_font,max(8,size-4)) if bold and size>=12 else
-                             (self.ui_font,size+1,"bold" if bold else "normal"), **kwargs)
-
-    def frame(self, parent, **kw): return tk.Frame(parent,bg=self.colors["panel"],**kw)
-
-    def bezel(self, parent, **kw):
-        return self.frame(parent, highlightbackground=self.colors["border"], highlightthickness=1,
-                          bd=1, relief="raised", **kw)
-
-    def combo(self, parent, key, values, width=15, callback=None, readonly=True):
-        w = ttk.Combobox(parent, textvariable=self.vars[key], values=values, width=width,
-                         state="readonly" if readonly else "normal")
-        if callback: w.bind("<<ComboboxSelected>>", lambda e: callback())
-        return w
-
-    def text_widget(self, parent, height=4, **kw):
-        c=self.colors
-        return tk.Text(parent,bg=c["input"], fg=c["text"], insertbackground=c["accent"],
-                       selectbackground=c["select"], relief="flat", bd=0, padx=12,pady=6,
-                       height=height, width=1, font=(self.mono,self.font_size), undo=True, **kw)
-
-    def _build(self):
-        c = self.colors
-        self.sidebar = self.bezel(self,width=252); self.sidebar.pack(side="left",fill="y",padx=(12,0),pady=12)
-        self.sidebar.pack_propagate(False)
-        brand = tk.Frame(self.sidebar,bg=c["metal"]); brand.pack(fill="x",padx=5,pady=(5,12))
-        self.label(brand,"CONNECTIONS",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(10,3))
-        self.label(brand,"Choose a transport",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,10))
-        self.nav=[]
-        for i,mode in enumerate(MODES):
-            button=tk.Button(self.sidebar,text=f"{i+1:02}    {mode}",anchor="w",relief="flat",bd=0,
-                bg=c["panel"],fg=c["muted"],activebackground=c["select"],activeforeground=c["accent"],
-                highlightthickness=0,
-                padx=13,pady=7,font=(self.ui_font,12,"bold"),cursor="hand2",command=lambda m=mode:self.choose_mode(m))
-            button.pack(fill="x",padx=12,pady=(0,4)); self.nav.append(button)
-        self.label(self.sidebar,"ENDPOINT CONFIGURATION",9,True,color=c["blue"]).pack(anchor="w",padx=16,pady=(15,8))
-        bottom=self.frame(self.sidebar); bottom.pack(side="bottom",fill="x",padx=16,pady=(0,12))
-        ttk.Button(bottom,text="Help  F1",command=self.help).pack(side="left")
-        ttk.Button(bottom,text="Test lab",command=self.test_lab).pack(side="right")
-        self.connection_button=ttk.Button(self.sidebar,text="Connect",style="Accent.TButton",command=self.toggle)
-        self.connection_button.pack(side="bottom",fill="x",padx=16,pady=(10,8))
-        config_wrap=self.frame(self.sidebar);config_wrap.pack(fill="both",expand=True,padx=16)
-        self.config_canvas=tk.Canvas(config_wrap,bg=c["panel"],highlightthickness=0,height=150)
-        self.config_canvas.pack(side="left",fill="both",expand=True)
-        config_scroll=ttk.Scrollbar(config_wrap,command=self.config_canvas.yview);config_scroll.pack(side="right",fill="y")
-        self.config_canvas.configure(yscrollcommand=config_scroll.set)
-        self.config_frame=self.frame(self.config_canvas)
-        self.config_window=self.config_canvas.create_window((0,0),window=self.config_frame,anchor="nw")
-        self.config_frame.bind("<Configure>",lambda e:self.config_canvas.configure(scrollregion=self.config_canvas.bbox("all")))
-        self.config_canvas.bind("<Configure>",lambda e:self.config_canvas.itemconfigure(self.config_window,width=e.width))
-        def wheel(event):
-            widget=self.winfo_containing(event.x_root,event.y_root)
-            if widget and str(widget).startswith(str(config_wrap)):
-                step=-1 if getattr(event,"num",0)==4 else 1 if getattr(event,"num",0)==5 else -1 if event.delta>0 else 1
-                self.config_canvas.yview_scroll(step,"units")
-        self.bind_all("<MouseWheel>",wheel,add="+")
-        self.bind_all("<Button-4>",wheel,add="+");self.bind_all("<Button-5>",wheel,add="+")
-        self.rail=Rail(self,self);self.rail.pack(side="left",fill="y",padx=(4,0),pady=24)
-        self.content=tk.Frame(self,bg=c["bg"]); self.content.pack(side="left",fill="both",expand=True,padx=12,pady=12)
-        self.content.columnconfigure(0,weight=1);self.content.rowconfigure(3,weight=1)
-        self.chassis=Chassis(self.content,self,bg=c["bg"]);self.chassis.grid(row=0,column=0,sticky="ew",pady=(0,10))
-        header=tk.Frame(self.content,bg=c["bg"]); header.grid(row=1,column=0,sticky="ew",pady=(0,10))
-        title=tk.Frame(header,bg=c["bg"]); title.pack(side="left")
-        self.hero=self.label(title,"Signal workspace",16,True);self.hero.pack(anchor="w")
-        self.subtitle=self.label(title,"Inspect the link. Keep the original bytes.",10,color=c["muted"])
-        self.subtitle.pack(anchor="w",pady=(3,0))
-        profile=tk.Frame(header,bg=c["bg"]); profile.pack(side="right")
-        self.profile_combo=self.combo(profile,"profile",list(self.profiles) or ["Default"],width=14,readonly=False)
-        self.profile_combo.pack(side="left",padx=4)
-        ttk.Button(profile,text="Load",command=self.load_profile).pack(side="left",padx=3)
-        ttk.Button(profile,text="Save",command=self.save_profile).pack(side="left",padx=3)
-        stats=tk.Frame(self.content,bg=c["bg"]); stats.grid(row=2,column=0,sticky="ew",pady=(0,10))
-        self.stat_labels={}
-        self.stat_headings=[]
-        for index,(name,heading,color) in enumerate([("state","SESSION",c["accent"]),("tx","SENT / TX",c["blue"]),
-                                   ("rx","RECEIVED / RX",c["accent"]),("uptime","UPTIME",c["muted"])]):
-            stats.columnconfigure(index,weight=1,uniform="meters")
-            card=self.bezel(stats); card.grid(row=0,column=index,sticky="nsew",padx=(0,7 if name!="uptime" else 0))
-            heading_widget=tk.Label(card,text=heading,bg=c["metal"],fg=c["ink"],anchor="w",font=(self.ui_font,10,"bold"))
-            heading_widget.pack(fill="x",padx=2,pady=(2,3),ipadx=8);self.stat_headings.append(heading_widget)
-            lcd=tk.Frame(card,bg=c["lcd"]);lcd.pack(fill="both",expand=True,padx=3,pady=(0,3))
-            self.stat_labels[name]=tk.Label(lcd,text="Disconnected" if name=="state" else "0 B" if name in ("tx","rx") else "00:00",
-                                            bg=c["lcd"],fg=color,font=(self.mono,17),anchor="w")
-            self.stat_labels[name].pack(fill="x",padx=10,pady=(4,4))
-
-        self.notebook=ttk.Notebook(self.content);self.notebook.grid(row=3,column=0,sticky="nsew")
-        traffic=self.bezel(self.notebook);self.traffic_tab=traffic;self.notebook.add(traffic,text="Traffic")
-        traffic.columnconfigure(0,weight=1);traffic.rowconfigure(2,weight=1)
-        toolbar=self.frame(traffic); toolbar.grid(row=0,column=0,sticky="ew",padx=10,pady=6)
-        self.traffic_toolbar=toolbar
-        self.label(toolbar,"TRAFFIC",12,True,color=c["blue"]).pack(side="left",padx=(0,14))
-        self.combo(toolbar,"direction",["All","RX","TX"],width=4,callback=lambda:self.refresh(force=True)).pack(side="left",padx=(0,6))
-        ttk.Button(toolbar,text="Clear",width=5,command=self.clear).pack(side="right",padx=(4,0))
-        ttk.Button(toolbar,text="Export",width=6,command=self.export).pack(side="right",padx=(4,0))
-        self.pause_button=ttk.Button(toolbar,text="Pause",width=6,command=self.pause); self.pause_button.pack(side="right",padx=(4,0))
-        self.record_button=ttk.Button(toolbar,text="● Record",width=10,command=self.record); self.record_button.pack(side="right")
-        self.searchbar=ttk.Frame(traffic);self.searchbar.grid(row=1,column=0,sticky="ew",padx=12,pady=(0,6))
-        self.searchbar.columnconfigure(3,weight=1)
-        ttk.Label(self.searchbar,text="Search").grid(row=0,column=0,padx=(0,6))
-        self.search_mode_combo=ttk.Combobox(self.searchbar,textvariable=self.vars["search_mode"],values=SEARCH_MODES,state="readonly",width=11)
-        self.search_mode_combo.grid(row=0,column=1,padx=(0,8))
-        self.search_fieldbox=ttk.Frame(self.searchbar);self.search_fieldbox.grid(row=0,column=2,padx=(0,8))
-        ttk.Label(self.search_fieldbox,text="Field").pack(side="left",padx=(0,4))
-        ttk.Entry(self.search_fieldbox,textvariable=self.vars["search_field"],width=17).pack(side="left")
-        self.search_entry=ttk.Entry(self.searchbar,textvariable=self.vars["search"],width=1)
-        self.search_entry.grid(row=0,column=3,sticky="ew")
-        self.search_entry.bind("<Return>",lambda e:self.refresh(force=True))
-        self.search_entry.bind("<Escape>",lambda e:self.clear_search())
-        ttk.Button(self.searchbar,text="Reset",width=5,command=self.clear_search).grid(row=0,column=4,padx=(8,6))
-        self.search_count=ttk.Label(self.searchbar,text="0 / 0",width=12,anchor="e");self.search_count.grid(row=0,column=5)
-        ttk.Button(self.searchbar,text="?",width=2,command=self.search_help).grid(row=0,column=6,padx=(6,0))
-        for key in ("search","search_mode","search_field"):self.vars[key].trace_add("write",self.search_changed)
-        if self.vars["search_mode"].get()!="JSON field":self.search_fieldbox.grid_remove()
-        tableframe=self.frame(traffic); tableframe.grid(row=2,column=0,sticky="nsew",padx=12)
-        self.table=ttk.Treeview(tableframe,columns=("id","time","dir","peer","size","payload"),show="headings",selectmode="extended",height=5)
-        for col,title,width,stretch in [("id","#",46,False),("time","TIME",110,False),("dir","FLOW",55,False),
-                                        ("peer","PEER",130,False),("size","BYTES",60,False),("payload","PAYLOAD",420,True)]:
-            self.table.heading(col,text=title); self.table.column(col,width=width,minwidth=width if not stretch else 140,stretch=stretch)
-        self.table.pack(side="left",fill="both",expand=True)
-        scroll=ttk.Scrollbar(tableframe,command=self.table.yview); scroll.pack(side="right",fill="y"); self.table.configure(yscrollcommand=scroll.set)
-        self.table.tag_configure("RX",foreground=c["accent"]); self.table.tag_configure("TX",foreground=c["blue"])
-        self.table.bind("<Double-1>",self.traffic_clicked)
-        self.table.bind("<Return>",lambda e:(self.analyze(),"break")[1])
-        self.table.bind("<Button-3>",self.traffic_menu)
-        self.table.bind("<Shift-F10>",lambda e:self.traffic_menu())
-        self.table.bind("<Menu>",lambda e:self.traffic_menu())
-        options=self.frame(traffic); options.grid(row=3,column=0,sticky="ew",padx=12,pady=(3,5))
-        self.traffic_options=options
-        self.history_label=self.label(options,"0 events",9,color=c["muted"],width=18,anchor="w"); self.history_label.pack(side="left")
-        self.combo(options,"view",["Text + Hex","Text","Hex","Decimal"],width=11,callback=self.refresh).pack(side="left",padx=8)
-        ttk.Label(options,text="Ctrl+click selects more").pack(side="left",padx=4)
-        ttk.Button(options,text="Framing",command=self.framing_dialog).pack(side="right",padx=4)
-        ttk.Button(options,text="Raw RX file",command=self.raw_record).pack(side="right",padx=4)
-        ttk.Checkbutton(options,text="Follow",variable=self.vars["autoscroll"]).pack(side="right")
-        self.plot=LivePlotPane(self.notebook,self);self.notebook.add(self.plot,text="Live plot")
-        self.terminal=TerminalPane(self.notebook,self);self.notebook.add(self.terminal,text="Terminal")
-        self.notebook.bind("<<NotebookTabChanged>>",self._tab_changed)
-        self._terminal_target=self.vars["target"].get()
-        self.vars["target"].trace_add("write",self.terminal_target_changed)
-        composer=self.bezel(self.content); composer.grid(row=4,column=0,sticky="ew",pady=(10,0));self.composer=composer
-        composebar=self.frame(composer); composebar.pack(fill="x",padx=12,pady=(6,6))
-        self.composebar=composebar
-        self.label(composebar,"TRANSMIT",12,True,color=c["blue"]).pack(side="left",padx=(0,14))
-        self.combo(composebar,"send_mode",["Text","Hex","Escaped","Decimal","Hercules"],width=8,callback=self.preview).pack(side="left",padx=(0,6))
-        self.combo(composebar,"encoding",["utf-8","ascii","latin-1","cp1256","gbk","utf-16-le"],width=8,callback=self.encoding_changed).pack(side="left",padx=(0,6))
-        self.combo(composebar,"ending",["None","LF","CR","CRLF"],width=5,callback=self.preview).pack(side="left")
-        ttk.Button(composebar,text="Tools",width=5,command=self.tools).pack(side="right",padx=(4,0))
-        ttk.Button(composebar,text="Sequences",width=9,command=self.macro_dialog).pack(side="right",padx=(4,0))
-        self.file_button=ttk.Button(composebar,text="Send file",width=9,command=self.send_file); self.file_button.pack(side="right")
-        payloadrow=self.frame(composer); payloadrow.pack(fill="x",padx=12)
-        self.payload=self.text_widget(payloadrow,height=2,wrap="word"); self.payload.pack(side="left",fill="x",expand=True,padx=(0,10))
-        self.payload.insert("1.0","Hello, Probe!")
-        self.payload.bind("<<Modified>>",self.payload_changed)
-        self.send_button=ttk.Button(payloadrow,text="Send  ↗\nCtrl + Enter",style="Accent.TButton",command=self.send)
-        self.send_button.pack(side="right",fill="y")
-        composefoot=self.frame(composer); composefoot.pack(fill="x",padx=12,pady=(6,6))
-        self.preview_label=self.label(composefoot,"13 bytes · no line ending",9,color=c["muted"]); self.preview_label.pack(side="bottom",anchor="w",pady=(5,0))
-        self.side_combo=self.combo(composefoot,"side",["Device / upstream","App / downstream"],width=16); self.side_combo.pack(side="right",padx=(6,0))
-        self.target_combo=self.combo(composefoot,"target",["All clients"],width=14); self.target_combo.pack(side="right",padx=(6,0))
-        ttk.Entry(composefoot,textvariable=self.vars["interval"],width=6).pack(side="right",padx=(3,0))
-        ttk.Checkbutton(composefoot,text="Repeat (ms)",variable=self.vars["repeat"],command=self.repeat).pack(side="right")
-        self.status=self.label(self.content,"Ready · TCP and Serial streams have no inherent message boundaries.",9,color=c["muted"],anchor="w")
-        self.status.grid(row=5,column=0,sticky="ew",pady=(7,0))
 
     def _mode_changed(self):
         mode=self.vars["mode"].get(); c=self.colors
@@ -631,105 +420,11 @@ class Probe(tk.Tk):
             for data in framer.flush(): self.add_event({**self.frame_meta[key],"data":data})
         self.framers.clear();self.frame_meta.clear()
 
-    def search_filter(self):
-        key=tuple(self.vars[k].get() for k in ("search","search_mode","search_field","encoding"))
-        if getattr(self,"_search_key",None)!=key:
-            self._search_key=key;self._search_filter=TrafficSearch(*key[:3],encoding=key[3])
-        return self._search_filter
-
-    def matches(self,event):
-        return self.vars["direction"].get() in ("All",event["direction"]) and self.search_filter().matches(event)
-
-    def search_counts(self):
-        matcher=self.search_filter()
-        self.search_count.configure(text="Invalid search" if matcher.error else f"{self._shown_count} / {len(self.order)}",foreground=self.colors["red"] if matcher.error else self.colors["muted"])
-
-    def clear_search(self):
-        self.vars["search"].set("");self.vars["search_field"].set("");self.vars["search_mode"].set("Text");self.refresh(force=True)
-
-    def search_help(self):
-        messagebox.showinfo("Search traffic", "Text: search decoded payload text or field values (case-insensitive).\nExample: APPROVED, 10000, or a device name.\n\nHex bytes: search an exact contiguous byte sequence.\nExample: A4 FF 00 or A4FF00. Use two digits per byte.\n\nJSON field: enter a path such as data.amount or /data/amount, then a value to find within it. A blank value finds messages containing that field.\n\nSearch checks the whole retained payload, including bytes hidden in the table preview. RX/TX filtering still applies. Reset or Escape clears the search; recorded files remain unchanged.\n\n"+(self.search_filter().error or "Results: shown messages / retained messages. Search also works while paused; new live rows resume after Resume."),parent=self)
-
-    def row_values(self,idx,event):
-        data=event["data"]; view=self.vars["view"].get()
-        text=visible(data[:512],self.vars["encoding"].get())
-        if event.get("hid"):
-            fields=event["hid"].get("fields",[])
-            text=event["hid"].get("report_type","HID")+" · "+(" · ".join(f"{f['field']}={f['value']}" for f in fields[:12]) or "Raw report; double-click to Analyze")
-        hx=data[:128].hex(" ").upper()
-        if view=="Text + Hex": payload=f"{text}   ·   {hx}"
-        elif view=="Hex":payload=hx
-        elif view=="Decimal":payload=" ".join(str(b) for b in data[:128])
-        else:payload=text
-        if len(data)>512:payload+=" …"
-        return (idx,dt.datetime.fromtimestamp(event["time"]).strftime("%H:%M:%S.%f")[:-3],event["direction"],event["peer"],len(data),payload)
-
-    def add_event(self,event):
-        self.sequence+=1; idx=str(self.sequence)
-        self.events[idx]=event;self.order.append(idx);self.retained_bytes+=len(event["data"])
-        while len(self.order)>self.MAX_ROWS or self.retained_bytes>self.MAX_BYTES:
-            old=self.order.pop(0);self.retained_bytes-=len(self.events.pop(old)["data"]);self.evicted+=1
-            if self.table.exists(old):self.table.delete(old);self._shown_count-=1
-        if not self.paused and self.matches(event):
-            self.table.insert("","end",iid=idx,values=self.row_values(idx,event),tags=(event["direction"],));self._shown_count+=1
-
-    def search_changed(self,*_):
-        if self.vars["search_mode"].get()=="JSON field":self.search_fieldbox.grid()
-        else:self.search_fieldbox.grid_remove()
-        if self.search_job:self.after_cancel(self.search_job)
-        self.search_job=self.after(180,lambda:self.refresh(force=True))
-
-    def refresh(self,force=False):
-        if self.search_job:self.after_cancel(self.search_job)
-        self.search_job=None
-        if self.paused and not force:return
-        selected=self.table.selection()
-        focused=self.table.focus()
-        self.table.delete(*self.table.get_children());self._shown_count=0
-        for idx in self.order:
-            event=self.events[idx]
-            if self.matches(event):self.table.insert("","end",iid=idx,values=self.row_values(idx,event),tags=(event["direction"],));self._shown_count+=1
-        remaining=[row for row in selected if self.table.exists(row)]
-        if remaining:self.table.selection_set(remaining)
-        if focused and self.table.exists(focused):self.table.focus(focused)
-        self.search_counts()
-
-    def pause(self):
-        self.paused=not self.paused;self.pause_button.configure(text="Resume" if self.paused else "Pause")
-        if not self.paused:self.refresh()
-        if not self.paused:self.terminal.render(force=True);self.plot.render(force=True)
-        self.set_status("Display paused. Transport and recording continue." if self.paused else "Live display resumed.")
-
-    def clear(self):
-        self.events.clear();self.order.clear();self.retained_bytes=0;self.evicted=0;self.dropped=0
-        self.framers.clear();self.frame_meta.clear();self.plot.clear()
-        self.table.delete(*self.table.get_children());self._shown_count=0
-        self.search_counts()
-        self.set_status("Display cleared. Recorded files and session byte counters continue.")
-
-    def selected(self):
-        ids=self.table.selection();return self.events.get(ids[0]) if ids else None
-
-    def selected_traffic(self):
-        """Snapshot selected visible messages in capture order, never click order."""
-        selected=set(self.table.selection())
-        return tuple((key,dict(self.events[key])) for key in self.order if key in selected and key in self.events)
 
     @staticmethod
     def put_text(widget,text):
         widget.configure(state="normal");widget.delete("1.0","end");widget.insert("1.0",text);widget.configure(state="disabled")
 
-    def copy_hex(self):
-        event=self.selected()
-        if event:self.clipboard_clear();self.clipboard_append(event["data"].hex(" ").upper());self.set_status("Selected payload copied as hex.")
-
-    def save_bytes(self):
-        event=self.selected()
-        if not event:self.set_status("Select a traffic row first.",True);return
-        path=filedialog.asksaveasfilename(parent=self,defaultextension=".bin",filetypes=[("Binary bytes","*.bin"),("All files","*")])
-        if path:
-            try:Path(path).write_bytes(event["data"]);self.set_status(f"Saved {len(event['data'])} exact bytes.")
-            except OSError as exc:self.set_status(str(exc),True)
 
     def send_terminal(self,data,peer=None):
         if not self.engine or not self.engine.ready:raise RuntimeError("Connect before sending terminal keys.")
@@ -957,60 +652,6 @@ class Probe(tk.Tk):
                 self.raw_path=path;self.set_status("Raw RX recording armed. Click Raw RX file again to stop.")
             except OSError as exc:self.set_status(str(exc),True)
 
-    def export(self,rows=None):
-        snapshot=tuple(dict(row) for row in rows) if rows is not None else None
-        if snapshot is not None and not snapshot:self.set_status("Select traffic messages first.",True);return
-        win=self.dialog("Export selected traffic" if snapshot is not None else "Export traffic","470x330")
-        self.label(win,"Choose what to save",17,True).pack(anchor="w",padx=20,pady=(20,12))
-        scope=f"Only {len(snapshot)} selected message{'s' if len(snapshot)!=1 else ''} will be saved." if snapshot is not None else "All retained messages, including filtered rows."
-        self.label(win,scope,10,color=self.colors["blue"],wraplength=420,justify="left").pack(anchor="w",padx=20,pady=(0,6))
-        hex_option=tk.BooleanVar(value=True)
-        text_option=tk.BooleanVar(value=True)
-        ttk.Checkbutton(win,text="Hex",variable=hex_option).pack(anchor="w",padx=20,pady=5)
-        ttk.Checkbutton(win,text="Decoded text",variable=text_option).pack(anchor="w",padx=20,pady=5)
-        self.label(win,"Decoded text uses the current encoding.\nInclude Hex to preserve exact bytes for replay.",10,
-                   color=self.colors["muted"],justify="left").pack(anchor="w",padx=20,pady=12)
-        actions=self.frame(win);actions.pack(fill="x",padx=20,pady=10)
-        save=ttk.Button(actions,text="Save…",style="Accent.TButton")
-        def update(*_):save.configure(state="normal" if hex_option.get() or text_option.get() else "disabled")
-        def choose():
-            if not (hex_option.get() or text_option.get()):return
-            path=filedialog.asksaveasfilename(parent=win,defaultextension=".jsonl",filetypes=[("Session JSON Lines","*.jsonl"),("CSV","*.csv"),("Readable log","*.txt")])
-            if not path:return
-            try:
-                rows=snapshot if snapshot is not None else [self.events[i] for i in self.order]
-                encoding=self.vars["encoding"].get()
-                with open(path,"w",encoding="utf-8",newline="") as f:
-                    if path.lower().endswith(".csv"):
-                        fields=["timestamp","direction","peer","byte_count"]
-                        if hex_option.get():fields.append("hex")
-                        if text_option.get():fields.append("text")
-                        writer=csv.DictWriter(f,fieldnames=fields);writer.writeheader()
-                        for e in rows:
-                            row=dict(timestamp=dt.datetime.fromtimestamp(e["time"]).isoformat(),direction=e["direction"],peer=e["peer"],byte_count=len(e["data"]))
-                            if hex_option.get():row["hex"]=e["data"].hex(" ").upper()
-                            if text_option.get():row["text"]=visible(e["data"],encoding)
-                            writer.writerow(row)
-                    elif path.lower().endswith(".txt"):
-                        for e in rows:
-                            f.write(f"{dt.datetime.fromtimestamp(e['time']).isoformat()} {e['direction']} {e['peer']} {len(e['data'])} bytes\n")
-                            if hex_option.get():f.write("Hex: "+e["data"].hex(" ").upper()+"\n")
-                            if text_option.get():f.write("Decoded text: "+visible(e["data"],encoding)+"\n")
-                            f.write("\n")
-                    else:
-                        for e in rows:
-                            row={k:v for k,v in e.items() if k not in ("data","hex","text")}
-                            if hex_option.get():row["hex"]=e["data"].hex().upper()
-                            if text_option.get():row["text"]=visible(e["data"],encoding)
-                            f.write(json.dumps(row,ensure_ascii=False)+"\n")
-                win.destroy()
-                self.set_status(f"Exported {len(rows)} selected messages." if snapshot is not None else f"Exported {len(rows)} retained events (including rows hidden by the filter).")
-            except OSError as exc:messagebox.showerror("Export",str(exc),parent=win)
-        save.configure(command=choose);save.pack(side="right")
-        ttk.Button(actions,text="Cancel",command=win.destroy).pack(side="right",padx=8)
-        hex_option.trace_add("write",update);text_option.trace_add("write",update)
-        win.bind("<Escape>",lambda _:win.destroy())
-        return win
 
     def dialog(self,title,size="610x470"):
         win=tk.Toplevel(self);win.title(title);win.geometry(size);win.configure(bg=self.colors["panel"])

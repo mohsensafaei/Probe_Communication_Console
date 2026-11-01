@@ -105,10 +105,12 @@ def encode(text, mode="Text", encoding="utf-8", ending="None", check="None",
     return body + checksum(body, check) + parse_hex(suffix) + {
         "None": b"", "LF": b"\n", "CR": b"\r", "CRLF": b"\r\n"}[ending]
 
+_VISIBLE_CONTROLS = {code: f"⟨{CONTROLS.get(code, f'{code:02X}')}⟩"
+                     for code in (*range(32), 127)}
+
+
 def visible(data, encoding="utf-8"):
-    text = data.decode(encoding, errors="replace")
-    return "".join(f"⟨{CONTROLS.get(ord(c), f'{ord(c):02X}')}⟩"
-                   if ord(c) < 32 or ord(c) == 127 else c for c in text)
+    return data.decode(encoding, errors="replace").translate(_VISIBLE_CONTROLS)
 
 def hexdump(data, base=0):
     lines = []
@@ -133,15 +135,20 @@ class Framer:
         if self.mode == "Chunks": return [data]
         self.buffer.extend(data)
         result = []
+        consumed = 0
         if self.mode == "Delimiter":
             while True:
-                idx = self.buffer.find(self.delimiter)
+                idx = self.buffer.find(self.delimiter, consumed)
                 if idx < 0: break
                 end = idx + len(self.delimiter)
-                result.append(bytes(self.buffer[:end])); del self.buffer[:end]
+                result.append(bytes(self.buffer[consumed:end]))
+                consumed = end
         elif self.mode == "Fixed length":
-            while len(self.buffer) >= self.size:
-                result.append(bytes(self.buffer[:self.size])); del self.buffer[:self.size]
+            consumed = len(self.buffer) // self.size * self.size
+            result = [bytes(self.buffer[start:start+self.size])
+                      for start in range(0, consumed, self.size)]
+        if consumed:
+            del self.buffer[:consumed]
         # Keep incomplete or hostile streams bounded; marked partial by the caller.
         if len(self.buffer) >= 65536: result.extend(self.flush())
         return result

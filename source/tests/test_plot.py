@@ -1,6 +1,6 @@
 import unittest
 
-from probe.plot_ui import NumericSamples
+from probe.plot_model import NumericSamples
 
 
 class NumericSamplesTests(unittest.TestCase):

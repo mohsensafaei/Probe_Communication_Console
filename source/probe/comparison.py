@@ -52,8 +52,14 @@ def compare_bytes(a, b, ranges=(), selectors=()):
     for begin,end in ranges:
         first=field_number(begin,"Ignored offset",MAX_COMPARE);last=field_number(end,"Ignored offset",MAX_COMPARE)
         if last<=first:raise ValueError("Ignored range end must be greater than start.")
-    left, amap = tokens(a,ranges,selectors);right,bmap = tokens(b,ranges,selectors)
-    def boundary(spans, index, size):return spans[index][0] if index < len(spans) else size
+    if not ranges and not selectors:
+        if a == b:
+            return (Difference("equal", 0, len(a), 0, len(b)),) if a else ()
+        # Byte sequences already provide integer tokens. No per-byte span tuples.
+        left, right, amap, bmap = a, b, None, None
+    else:
+        left, amap = tokens(a,ranges,selectors);right,bmap = tokens(b,ranges,selectors)
+    def boundary(spans, index, size):return min(index,size) if spans is None else spans[index][0] if index < len(spans) else size
     # Trim exact token prefixes/suffixes before aligning the changing middle.
     first = 0
     while first < min(len(left),len(right)) and left[first] == right[first]:first += 1
@@ -66,13 +72,18 @@ def compare_bytes(a, b, ranges=(), selectors=()):
     result = []
     for kind,i,j,k,l in operations:
         if kind == "equal":
-            # A masked field is one alignment token even when its length differs.
-            for ai,bi in zip(range(i,j),range(k,l)):
-                aa,az = amap[ai];ba,bz = bmap[bi]
-                label = "ignored" if isinstance(left[ai],tuple) else "equal"
-                if result and result[-1].kind == label and result[-1].a_end == aa and result[-1].b_end == ba:
-                    old = result[-1];result[-1] = Difference(label,old.a_start,az,old.b_start,bz)
-                else:result.append(Difference(label,aa,az,ba,bz))
+            if amap is None:
+                result.append(Difference("equal",i,j,k,l))
+                continue
+            # Coalesce runs before allocating Difference objects, including masks.
+            start_a, start_b = i, k
+            label = "ignored" if isinstance(left[i],tuple) else "equal"
+            for ai,bi in zip(range(i+1,j),range(k+1,l)):
+                current = "ignored" if isinstance(left[ai],tuple) else "equal"
+                if current != label:
+                    result.append(Difference(label,amap[start_a][0],amap[ai-1][1],bmap[start_b][0],bmap[bi-1][1]))
+                    start_a, start_b, label = ai, bi, current
+            result.append(Difference(label,amap[start_a][0],amap[j-1][1],bmap[start_b][0],bmap[l-1][1]))
         else:
             result.append(Difference({"replace":"changed","insert":"added","delete":"removed"}[kind],
                          boundary(amap,i,len(a)),boundary(amap,j,len(a)),boundary(bmap,k,len(b)),boundary(bmap,l,len(b))))

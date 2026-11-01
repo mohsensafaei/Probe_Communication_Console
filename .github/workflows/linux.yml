@@ -24,6 +24,8 @@ jobs:
           .venv/bin/python -m pip install -r requirements.txt pyinstaller==6.22.3
       - name: Backend and Linux PTY tests
         run: .venv/bin/python -m unittest discover -s tests -v
+      - name: Core processing benchmark (informational)
+        run: .venv/bin/python benchmarks/core_benchmark.py
       - name: Native Tk GUI
         run: xvfb-run -a .venv/bin/python -m unittest discover -s tests -p ui_smoke.py -v
       - name: Real transport diagnostics

@@ -1,5 +1,14 @@
 # Changes
 
+## 1.4.1
+
+- Separate Tk workbench construction and Traffic callbacks from application coordination.
+- Extract headless export serialization and numeric acquisition models; retain public callbacks and NumericSamples import compatibility.
+- Avoid per-byte span allocation for ordinary Capture Diff and coalesce masked equal runs before allocating results.
+- Translate control characters with a precomputed table; consume display-frame buffers once per feed.
+- Read search/view settings once per Traffic rebuild rather than per row.
+- Add reproducible core microbenchmarks and regression checks for data integrity, offsets, export metadata and headless imports.
+
 ## 1.4.0
 
 - Add semantic request rules for JSON paths, TLV/BER-TLV tags, UTF-8 text and byte ranges; AND conditions, required fields and numeric comparisons.
