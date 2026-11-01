@@ -33,6 +33,8 @@ jobs:
           call start_windows.bat --self-test
       - name: Models, transports, captures and timed sequences
         run: .windows-venv/Scripts/python.exe -m unittest discover -s tests -v
+      - name: Core processing benchmark (informational)
+        run: .windows-venv/Scripts/python.exe benchmarks/core_benchmark.py
       - name: Native Tk GUI, Test lab and Appearance removal
         run: .windows-venv/Scripts/python.exe -m unittest discover -s tests -p ui_smoke.py -v
       - name: Capture native simulator previews

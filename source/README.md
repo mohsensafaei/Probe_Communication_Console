@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.4.0** (Windows release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.4.1** (Windows release).
 
 ### Analyze traffic without sending anything
 
@@ -525,3 +525,11 @@ Try `examples/simulator-json-faults.json`: use Match requests, send service `03`
 with any amount/session fields, and observe no reply on the third match. Reset
 matching to repeat the same experiment. `simulator-binary-crc.json` demonstrates
 TLV matching, length/CRC validation and deliberately corrupting a reply byte.
+
+
+## Structure and processing performance (1.4.1)
+
+See `ARCHITECTURE.md` for module ownership and `CORE_PERFORMANCE.md` for measured
+processing improvements and their limits. Existing launch/build commands and
+capture/device-model formats are unchanged. Run `python benchmarks/core_benchmark.py`
+from this directory to measure on your own machine.

@@ -165,3 +165,12 @@ every fault type. Simulator previews are uploaded by the native workflows.
 Frozen self-tests perform a semantic JSON request and duplicated reply over real
 localhost TCP; frozen GUI smoke opens both the rule and framing editors. See the
 corresponding workflow conclusion for actual executed-platform results.
+
+
+## 1.4.1 structural and processing regression coverage
+
+Core checks additionally cover fresh-interpreter headless imports, all byte values
+and multiple display encodings, arbitrary framing boundaries, comparison offset
+partitions and all export choices with retained metadata. Native GUI and frozen
+checks exercise the extracted presentation package. Core microbenchmarks run in
+both platform workflows as informational measurements, without flaky timing gates.
