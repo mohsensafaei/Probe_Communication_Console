@@ -131,27 +131,34 @@ class Framer:
         if mode == "Fixed length" and size < 1: raise ValueError("Frame size must be positive.")
 
     def feed(self, data, now):
+        return list(self.iter_feed(data, now))
+
+    def iter_feed(self, data, now):
+        """Yield frames without materializing a potentially huge list.
+
+        Consume fully before feeding or flushing this framer again.
+        """
         self.last = now
-        if self.mode == "Chunks": return [data]
+        if self.mode == "Chunks":
+            yield data
+            return
         self.buffer.extend(data)
-        result = []
         consumed = 0
         if self.mode == "Delimiter":
             while True:
                 idx = self.buffer.find(self.delimiter, consumed)
                 if idx < 0: break
                 end = idx + len(self.delimiter)
-                result.append(bytes(self.buffer[consumed:end]))
+                yield bytes(self.buffer[consumed:end])
                 consumed = end
         elif self.mode == "Fixed length":
             consumed = len(self.buffer) // self.size * self.size
-            result = [bytes(self.buffer[start:start+self.size])
-                      for start in range(0, consumed, self.size)]
+            for start in range(0, consumed, self.size):
+                yield bytes(self.buffer[start:start+self.size])
         if consumed:
             del self.buffer[:consumed]
         # Keep incomplete or hostile streams bounded; marked partial by the caller.
-        if len(self.buffer) >= 65536: result.extend(self.flush())
-        return result
+        if len(self.buffer) >= 65536: yield from self.flush()
 
     def tick(self, now):
         return self.flush() if self.mode == "Idle gap" and now - self.last >= self.idle else []

@@ -5,6 +5,7 @@ import multiprocessing as mp
 import queue
 import threading
 import time
+from .event_buffer import event_cost
 
 
 def _writer(commands,replies,errors,pending):
@@ -84,14 +85,7 @@ class CaptureWriter:
     def enqueue(self,event):
         if self.failed:return
         if not self.process.is_alive():self.fail('Capture worker is not running.');return
-        cost=512;stack=list(event.values())
-        while stack:
-            value=stack.pop()
-            if isinstance(value,bytes):cost+=len(value)
-            elif isinstance(value,str):cost+=len(value)*4
-            elif isinstance(value,dict):cost+=128*len(value);stack.extend(value.values())
-            elif isinstance(value,(list,tuple)):cost+=64+8*len(value);stack.extend(value)
-            else:cost+=32
+        cost=event_cost(event)
         with self.lock:
             with self.pending.get_lock():
                 if self.pending.value+cost>self.max_bytes:

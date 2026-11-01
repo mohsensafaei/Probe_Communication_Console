@@ -12,6 +12,25 @@ from probe.scenario import Step
 
 
 class CaptureWorkerTests(unittest.TestCase):
+    def test_display_overflow_does_not_change_recorded_bytes_or_metadata(self):
+        from probe.engine import Engine
+        from probe.event_buffer import DisplayEventBuffer
+        buffer=DisplayEventBuffer(max_events=1)
+        engine=Engine(buffer.put_nowait)
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'capture.jsonl'
+            try:
+                engine.record(path)
+                for i in range(100):
+                    engine.event('data',direction='RX',peer='device',data=bytes([i])*1024)
+                engine.record()
+                rows=[json.loads(line) for line in path.read_text().splitlines()]
+                self.assertEqual(len(rows),100)
+                self.assertEqual([bytes.fromhex(row['hex']) for row in rows],[bytes([i])*1024 for i in range(100)])
+                self.assertTrue(all('_display_gap' not in row for row in rows))
+                self.assertEqual(buffer.stats()['dropped'],99)
+            finally:engine.join()
+
     def test_capture_and_raw_drain_in_order_and_failed_open_preserves_stream(self):
         errors=[]
         with tempfile.TemporaryDirectory() as d:

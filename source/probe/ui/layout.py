@@ -157,7 +157,7 @@ class WorkbenchLayout:
         self.search_mode_combo.grid(row=0,column=1,padx=(0,8))
         self.search_fieldbox=ttk.Frame(self.searchbar);self.search_fieldbox.grid(row=0,column=2,padx=(0,8))
         ttk.Label(self.search_fieldbox,text="Field").pack(side="left",padx=(0,4))
-        ttk.Entry(self.search_fieldbox,textvariable=self.vars["search_field"],width=17).pack(side="left")
+        ttk.Entry(self.search_fieldbox,textvariable=self.vars["search_field"],width=14).pack(side="left")
         self.search_entry=ttk.Entry(self.searchbar,textvariable=self.vars["search"],width=1)
         self.search_entry.grid(row=0,column=3,sticky="ew")
         self.search_entry.bind("<Return>",lambda e:self.refresh(force=True))

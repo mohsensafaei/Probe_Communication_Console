@@ -14,6 +14,8 @@ from tkinter import ttk, filedialog, messagebox, colorchooser
 from . import __version__
 from .codec import encode, hexdump, Framer
 from .engine import Engine, MODES
+from .event_buffer import DisplayEventBuffer
+from .traffic_model import TrafficHistory, DisplayFraming
 from .ui.traffic import TrafficWorkspace
 from .ui.layout import WorkbenchLayout
 from .capture import load_capture, replay_plan
@@ -65,9 +67,10 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
         self.style = ttk.Style(self); self.style.theme_use("clam")
         self.settings_path = data_directory() / "settings.json"
         self.profiles = {}; self.macros = []
-        self.events = {}; self.order = []; self.retained_bytes = 0; self.sequence = 0; self._shown_count=0
-        self.queue = queue.Queue(maxsize=1024)
-        self.dropped = 0; self.evicted = 0; self.pressed = False
+        self.history = TrafficHistory(self.MAX_ROWS, self.MAX_BYTES)
+        self._shown_count=0
+        self.queue = DisplayEventBuffer()
+        self.dropped = 0; self.pressed = False
         self.engine = None; self.active = False; self.paused = False
         self.repeat_job = None; self.sequence_job = None
         self.replay_job=None
@@ -81,7 +84,7 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
         self.terminal_popout_pane=None
         self.file_cancel = threading.Event()
         self.started = 0; self.rx_total = self.tx_total = 0
-        self.framers = {}; self.frame_meta = {}
+        self.display_framing = DisplayFraming(self.new_framer)
         self.record_path = None; self.raw_path = None
         self.search_job = None
         self.last_error = ""
@@ -272,14 +275,7 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
                       int(self.vars["frame_size"].get()),max(1,int(self.vars["gap"].get()))/1000)
 
     def emit(self,event):
-        try: self.queue.put_nowait(event)
-        except queue.Full:
-            # UI capture is a bounded rolling window. Recording happens before this queue.
-            try: self.queue.get_nowait()
-            except queue.Empty: pass
-            self.dropped+=1
-            try: self.queue.put_nowait(event)
-            except queue.Full: self.dropped+=1
+        self.queue.put_nowait(event)
 
     def toggle(self):
         if self.active:
@@ -324,25 +320,27 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
 
     def poll(self):
         changed=False
+        deadline=time.perf_counter()+.008
         for _ in range(180):
+            if time.perf_counter()>=deadline:break
             try: event=self.queue.get_nowait()
             except queue.Empty: break
             kind=event["kind"]
             if kind=="data":
+                if event.get("_display_gap"):
+                    # Never join bytes across a known display loss. The recorder
+                    # receives the original stream before the display queue.
+                    self.flush_frames("display data lost")
+                    self.terminal.reset();self.plot.clear()
+                    event={key:value for key,value in event.items() if key!="_display_gap"}
                 self.terminal.feed(event)
                 direction=event["direction"]
                 if direction=="TX": self.tx_total+=len(event["data"])
                 else:
                     self.rx_total+=len(event["data"]); self.plot.feed(event)
-                if "hid" in event:
-                    self.add_event(event);changed=True;continue
-                key=(direction,event["peer"])
-                if key not in self.framers: self.framers[key]=self.new_framer()
-                for data in self.framers[key].tick(event["time"]):
-                    self.add_event({**self.frame_meta[key],"data":data});changed=True
-                self.frame_meta[key]=event
-                for data in self.framers[key].feed(event["data"],event["time"]):
-                    self.add_event({**event,"data":data});changed=True
+                ready=self.display_framing.feed(event)
+                change=self.add_events(ready)
+                changed=changed or bool(change.added)
             elif kind=="state":
                 state=event["state"]; self.stat_labels["state"].configure(text=state)
                 if state=="Connected":
@@ -390,15 +388,19 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
                 self.simulator_info.set(self.simulator_endpoint + " · " + event["message"])
                 self.set_status(event["message"], event["state"] == "unmatched")
         now=time.monotonic()
-        for key,framer in self.framers.items():
-            for data in framer.tick(time.time()): self.add_event({**self.frame_meta[key],"data":data});changed=True
+        # A UI backlog is not a wire idle gap: queued timestamps must be consumed
+        # before using the wall clock to flush an incomplete display frame.
+        if self.queue.empty():
+            ready=self.display_framing.tick()
+            self.add_events(ready);changed=changed or bool(ready)
         self.stat_labels["tx"].configure(text=self.format_bytes(self.engine.tx if self.engine else self.tx_total))
         self.stat_labels["rx"].configure(text=self.format_bytes(self.engine.rx if self.engine else self.rx_total))
         if self.active:
             sec=int(now-self.started);self.stat_labels["uptime"].configure(text=f"{sec//60:02}:{sec%60:02}")
-        suffix=f" · {self.evicted} older events evicted" if self.evicted else ""
-        if self.dropped: suffix+=f" · {self.dropped} UI events dropped; use Record for full capture"
-        self.history_label.configure(text=f"{len(self.order)} events"+(f" · {self.dropped} drops" if self.dropped else f" · {self.evicted} evicted" if self.evicted else ""))
+        stats=self.queue.stats();self.dropped=stats["dropped"]
+        suffix=f" · {self.dropped} display drops" if self.dropped else f" · {self.evicted} evicted" if self.evicted else ""
+        if stats["dropped_controls"]:suffix+=f" · {stats['dropped_controls']} status drops"
+        self.history_label.configure(text=f"{len(self.events)} events"+suffix)
         self.search_counts()
         if changed and self.vars["autoscroll"].get() and not self.paused:
             items=self.table.get_children()
@@ -407,7 +409,7 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
         self.terminal.update_hint()
         if self.notebook.select()==str(self.terminal):self.terminal.render()
         if self.terminal_popup and self.terminal_popup.winfo_exists():self.terminal_popout_pane.update_hint();self.terminal_popout_pane.render()
-        self.after(40,self.poll)
+        self.after(5 if not self.queue.empty() else 40,self.poll)
 
     @staticmethod
     def format_bytes(n):
@@ -415,10 +417,8 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
         if n<1048576:return f"{n/1024:.1f} KiB"
         return f"{n/1048576:.1f} MiB"
 
-    def flush_frames(self):
-        for key,framer in self.framers.items():
-            for data in framer.flush(): self.add_event({**self.frame_meta[key],"data":data})
-        self.framers.clear();self.frame_meta.clear()
+    def flush_frames(self,reason="session ended"):
+        self.add_events(self.display_framing.flush(reason))
 
 
     @staticmethod
