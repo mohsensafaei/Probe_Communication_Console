@@ -3,17 +3,17 @@
   "host": "Linux, Xvfb 1400x1000x24",
   "baseline_windows_commit": "5764c81f728ead847addc1cc0da97c6f065d16cd",
   "baseline_linux_commit": "2c51623f95bde0055b3b6d228e3009a8ec5423ea",
-  "baseline_note": "Windows and Linux display code at these heads is identical; source ran on Linux. No native Windows timing claim.",
+  "baseline_note": "Measured baseline Linux source. Display code is also identical at the listed Windows head; no native Windows timing claim.",
   "before": {
     "python": "3.12.14",
     "tk": "9.0.4",
     "workload": "64 KiB -> 65,536 one-byte display frames; 2,000 retained",
     "milliseconds": [
-      2050.744,
-      2011.161,
-      1980.979
+      1658.052,
+      1449.869,
+      1443.215
     ],
-    "median_ms": 2011.161,
+    "median_ms": 1449.869,
     "table_insertions": [
       65536,
       65536,
@@ -25,16 +25,17 @@
     "tk": "9.0.4",
     "workload": "64 KiB -> 65,536 one-byte display frames; 2,000 retained",
     "milliseconds": [
-      239.336,
-      236.527,
-      234.963
+      243.335,
+      217.642,
+      195.485
     ],
-    "median_ms": 236.527,
+    "median_ms": 217.642,
     "table_insertions": [
       2000,
       2000,
       2000
     ]
   },
-  "speedup": 8.5
+  "speedup": 6.66,
+  "instrumentation": "Lightweight insertion counter; no Mock call recording in the timed row-insertion path."
 }
