@@ -1,0 +1,47 @@
+{
+  "format": "probe-device",
+  "version": 2,
+  "exchanges": [
+    {
+      "request": "",
+      "replies": [
+        {
+          "hex": "060001024F4BD446",
+          "delay_ms": 5
+        }
+      ],
+      "match": [
+        {
+          "source": "TLV",
+          "selector": "01",
+          "operator": "equals",
+          "value": "AB",
+          "offset": 0,
+          "length": 1,
+          "format": "Text"
+        }
+      ],
+      "fault": {
+        "kind": "Corrupt byte",
+        "trigger": "Every Nth match",
+        "nth": 3,
+        "delay_ms": 0,
+        "payload": "",
+        "count": 1,
+        "gap_ms": 0,
+        "offset": -1,
+        "xor_mask": 1
+      },
+      "name": "Corrupt CRC on every third match"
+    }
+  ],
+  "framing": {
+    "mode": "Length prefix",
+    "delimiter": "0A",
+    "size": 16,
+    "prefix_size": 2,
+    "prefix_format": "Unsigned LE",
+    "check": "CRC16 Modbus",
+    "check_start": 0
+  }
+}

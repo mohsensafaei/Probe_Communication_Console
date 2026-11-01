@@ -156,3 +156,21 @@ by `tests/hid_visual_preview.py`, with no device access or authentication prompt
 exercised on connected lab hardware.** They require target-system validation;
 passing these automated tests is not a hardware capture or throughput guarantee.
 See HID_MONITOR.md for setup and limitations.
+
+
+## 1.4 simulator rules and recovery coverage
+
+The platform gates exercise complete-message request matching with fragmented and
+coalesced JSON, length prefixes, TLV/BER-TLV, text and byte ranges; missing fields,
+malformed lengths/checksums and ambiguous rules. Fault checks cover all response
+transformations, independent per-client Nth-match triggers, TCP reconnection and
+Reset/Stop cancellation. POSIX additionally exercises semantic matching and
+faults through a real PTY at 115200 baud configuration. This is a virtual byte
+stream test, not a physical UART timing measurement.
+
+Native Tk checks create/save/reopen field rules and fault settings, configure
+binary framing, retain original capture chunk delays and keep Save visible on
+every fault type. Simulator previews are uploaded by the native workflows.
+Frozen self-tests perform a semantic JSON request and duplicated reply over real
+localhost TCP; frozen GUI smoke opens both the rule and framing editors. See the
+corresponding workflow conclusion for actual executed-platform results.

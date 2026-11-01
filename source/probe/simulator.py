@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .simulation import DeviceModel, RequestMatcher, MAX_DELAY_MS
 from .serial_endpoints import VirtualPair
+from .simulator_rules import reply_plan
 from .timing import sleep_at_least, wait_for
 
 if TYPE_CHECKING:
@@ -22,6 +23,10 @@ async def serve_simulator(engine: "Engine") -> None:
     if not 0 <= scale <= 10 or any(r.delay_ms * scale > MAX_DELAY_MS for e in model.exchanges for r in e.replies):
         raise ValueError("Reply timing multiplier must be 0–10 and each delay at most one hour.")
     RequestMatcher(model, ordered, repeat)  # Validate policies before opening an endpoint.
+    for item in model.exchanges:
+        plan = reply_plan(item, item.fault.nth if item.fault else 1)
+        if any(delay * scale > MAX_DELAY_MS for _, delay in plan.chunks):
+            raise ValueError("Scaled fault delay exceeds one hour.")
     matchers: dict[str, RequestMatcher] = {}
     writers: dict[str, asyncio.StreamWriter] = {}
     matches = 0
@@ -33,14 +38,12 @@ async def serve_simulator(engine: "Engine") -> None:
         reset_signal = asyncio.Event()
         matches = 0
         for matcher in matchers.values():
-            matcher.index = 0
-            matcher.buffer.clear()
-            matcher.discarded = 0
+            matcher.reset()
         engine.event("simulator", state="ready", message="Device conversations reset to the first request.")
 
     engine.simulator_reset = reset
 
-    async def process(data: bytes, peer: str, write) -> None:
+    async def process(data: bytes, peer: str, write) -> bool:
         nonlocal matches
         matcher = matchers[peer]
         signal = reset_signal
@@ -49,19 +52,28 @@ async def serve_simulator(engine: "Engine") -> None:
         exchanges = matcher.feed(data)
         if matcher.discarded > previous:
             engine.event("simulator", state="unmatched", message=f"Unmatched request bytes from {peer}: {matcher.discarded-previous} ignored.")
-        for exchange in exchanges:
-            for reply in exchange.replies:
-                delay = reply.delay_ms * scale / 1000
+        for reason in matcher.errors:
+            engine.event("simulator", state="unmatched", message=f"{peer}: {reason}")
+        for exchange, (rule, hit) in zip(exchanges, matcher.details):
+            plan = reply_plan(exchange, hit)
+            if plan.description:
+                engine.event("simulator", state="fault", message=f"{exchange.name or 'Rule '+str(rule+1)} · {plan.description} · {peer}")
+            for payload, delay_ms in plan.chunks:
+                delay = delay_ms * scale / 1000
                 if delay:
                     try: await wait_for(signal.wait(), delay)
                     except TimeoutError: pass
                 else: await asyncio.sleep(0)
-                if signal.is_set(): return
-                await write(reply.data)
-                engine.event("data", direction="RX", peer=peer, data=reply.data)
+                if signal.is_set(): return False
+                if payload:
+                    await write(payload)
+                    engine.event("data", direction="RX", peer=peer, data=payload)
+            if signal.is_set(): return False
             matches += 1
             engine.event("simulator", state="matched", matches=matches,
-                         message=f"Device simulator · {matches} requests matched · {peer}")
+                         message=f"Device simulator · {matches} requests matched · {exchange.name or 'Rule '+str(rule+1)} / hit {hit} · {plan.description or 'Normal reply'} · {peer}")
+            if plan.disconnect: return True
+        return False
 
     transport = engine.cfg.get("simulator_transport", "TCP socket")
     if transport == "Virtual serial (PTY)":
@@ -83,7 +95,7 @@ async def serve_simulator(engine: "Engine") -> None:
             except BlockingIOError:
                 data = b""
             if data:
-                await process(data, peer, engine._app_write)
+                if await process(data, peer, engine._app_write): return
             await sleep_at_least(.001)
     elif transport == "Virtual COM pair":
         pair = VirtualPair(engine.cfg.get("simulator_port", ""), engine.cfg.get("simulator_peer_port", ""))
@@ -101,7 +113,7 @@ async def serve_simulator(engine: "Engine") -> None:
         while True:
             data = engine._serial_read(port)
             if data:
-                await process(data, peer, write)
+                if await process(data, peer, write): return
             await sleep_at_least(.001)
     elif transport == "TCP socket":
         async def connection(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -121,7 +133,7 @@ async def serve_simulator(engine: "Engine") -> None:
                 engine.clients[peer] = (writer,)
                 engine.event("peers", peers=list(writers))
                 while data := await reader.read(65536):
-                    await process(data, peer, lambda payload: engine._write(writer, payload))
+                    if await process(data, peer, lambda payload: engine._write(writer, payload)): break
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

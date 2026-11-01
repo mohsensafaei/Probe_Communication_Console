@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.3.1** (Linux release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.4.0** (Linux release).
 
 ### Analyze traffic without sending anything
 
@@ -270,7 +270,8 @@ independent commands in any order and rejects conflicting replies/prefixes.
 Unmatched bytes are ignored and reported. Reset matching cancels pending delayed
 replies and resets conversations. Stop closes endpoints and pending tasks.
 
-Models use exact bytes. A capture alone does not infer variable transaction IDs,
+Recorded models initially use exact bytes. Edit a rule to match declared fields instead.
+A capture alone does not infer variable transaction IDs,
 checksums over changed fields, encrypted sessions or a complete hardware state
 machine. Startup RX chatter is excluded and reported. Linux PTYs represent serial
 bytes, not a USB device identity or modem-line emulation. Model size is bounded to
@@ -464,3 +465,63 @@ workflow. The toolbar **Export** and Ctrl+S continue to export all retained hist
 including filtered rows; their dialog explicitly identifies this broader scope.
 Right-click export never includes unselected messages. Shift+F10 or the Menu key
 opens the context menu from the keyboard. These actions never send traffic.
+
+
+## Semantic device rules and fault injection (1.4)
+
+Open **Test lab → Device simulator → New rule…**, or double-click an existing
+rule. The **Request & reply** tab starts with exact request bytes. Choose
+**Fields → Add condition…** to match JSON paths (`data.service`, `/data/service`),
+TLV / BER-TLV tags, UTF-8 text or a selected payload byte range. All conditions
+must match. Use **exists** for required fields, or numeric comparisons for ranges.
+Changing unrelated fields such as transaction IDs no longer prevents a match.
+Replies remain explicitly configured static bytes; this release does not infer
+state machines or generate dynamic fields/checksums in replies.
+
+A new all-JSON field model automatically uses JSON request framing. For binary,
+TLV or text protocols, choose **Request framing…** before adding rules. Boundaries
+can be JSON object/array, delimiter, fixed byte count or length prefix (ASCII /
+unsigned little-endian / unsigned big-endian). JSON also accepts an optional ASCII
+body-length prefix and checks its value. Other length prefixes count all bytes
+**after the prefix**, including a trailing checksum. Optional SUM8, XOR8, LRC8,
+CRC16 Modbus, CRC16 CCITT or CRC32 validation rejects damaged requests before
+matching. Checksum coverage starts at the configured zero-based **wire offset**
+and ends before the trailing checksum; delimiters are excluded. Field/byte
+conditions read the payload without its framing prefix, delimiter or checksum.
+Choose framing that cannot occur inside your payload; escaping is not inferred.
+
+Requests are assembled across stream reads. In **Match requests**, overlapping
+rules are rejected for that request and reported as ambiguous; make the rules
+more specific. **Conversation order** tests only the next rule. Validation and
+mismatch explanations appear in simulator status. Models retain the 64 KiB
+request / 8 MiB model limits; at most 16 conditions per rule, 2000 rules and 2000
+recorded reply chunks. Request framing is independent of Traffic display framing.
+
+The **Fault injection** tab is optional. Choose a fault and a trigger:
+**Every match**, **Once on match N** or **Every Nth match**. Counts are per rule,
+per connected app. **Reset matching** clears counters and cancels pending replies.
+
+| Fault | Behavior |
+| --- | --- |
+| Delay | Adds delay before the first reply chunk. |
+| No reply | Accepts the request and advances without replying. |
+| Error reply | Replaces the response with your complete error payload. |
+| Disconnect | Sends the first N bytes, then closes this TCP client / serial endpoint. Use 0 for immediate disconnect. |
+| Truncate | Sends only the first N reply bytes and keeps the connection open. |
+| Corrupt byte | XORs one response byte; -1 selects the last byte. Select the CRC offset to corrupt a checksum. |
+| Duplicate | Sends 2–16 copies with a configurable gap. |
+| Split | Sends fixed-size chunks with a configurable gap. |
+
+TCP can combine separate writes into different read chunks. Closing Probe's end
+of a virtual COM pair does not necessarily emulate unplugging the app-side port.
+Timing uses the OS scheduler, with no hard real-time guarantee; **Reply timing ×**
+scales both captured and injected delays/gaps. Reset/Stop cancel pending fault
+sends. A TCP disconnect fault leaves the simulator listening for other clients.
+
+Save model writes format **v2** when rules, framing, names or faults are present.
+Legacy v1 exact-byte models still load and retain v1 on save. Editing only a rule's
+matching/fault settings retains captured multi-chunk replies and their timing.
+Try `examples/simulator-json-faults.json`: use Match requests, send service `03`
+with any amount/session fields, and observe no reply on the third match. Reset
+matching to repeat the same experiment. `simulator-binary-crc.json` demonstrates
+TLV matching, length/CRC validation and deliberately corrupting a reply byte.

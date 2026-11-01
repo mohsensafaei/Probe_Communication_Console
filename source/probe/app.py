@@ -1307,6 +1307,12 @@ def main():
                     raise RuntimeError("Selected-message Capture Diff failed in bundle.")
                 if len(app.table.selection())!=2:raise RuntimeError("Traffic multi-selection changed during comparison.")
                 comparison.destroy()
+                simulator=app.simulator_panel
+                rule=simulator.edit_rule(True)
+                rule.vars["match_mode"].set("Fields");rule.update_match()
+                rule.vars["fault"].set("Split");rule.update_fault()
+                rule.notebook.select(1);app.update_idletasks();rule.destroy()
+                framing=simulator.edit_framing();app.update_idletasks();framing.destroy()
                 pane=app.sequence_panel
                 app.macros=[dict(name="Smoke template",text="${sid}",flow=dict(extract=[dict(name="sid",source="JSON",selector="sessionId")]))]
                 pane.refresh();pane.open_editor(0)

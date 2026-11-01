@@ -1,4 +1,4 @@
-# Probe for Linux 1.3.1
+# Probe for Linux 1.4.0
 
 TCP, UDP and USB/serial communications console with an ANSI terminal, binary
 inspector, capture/replay, serial proxy and Serial-to-TCP bridge.
@@ -116,3 +116,12 @@ instrument panels and mint readouts. Geometric Michroma headings, Rajdhani
 controls and Share Tech Mono data fonts are bundled with OFL notices.
 The light palette preserves the same controls and message workflows.
 No vendor logo or proprietary skin is used.
+
+
+## Simulator rules and faults (1.4)
+
+Double-click a simulator rule to match JSON/TLV/text/byte fields and configure
+repeatable faults. Request framing validates complete messages and checksums.
+Use the Request & reply tab for normal behavior and Fault injection for recovery
+tests. See `source/README.md` and `source/examples/simulator-*.json`. Legacy
+exact-byte models still load.

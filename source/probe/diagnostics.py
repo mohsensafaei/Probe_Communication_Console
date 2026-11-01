@@ -139,6 +139,16 @@ def self_test():
                 app.write(b"PING\r\n")
                 expect_equal(app.read(6), b"PONG\r\n")
     print("PASS device simulator (TCP; PTY on POSIX) and timed reply-checked sequences")
+    from .simulator_rules import FrameSpec, Condition, Fault
+    from .simulation import model_from_dict, model_to_dict
+    fields=DeviceModel((Exchange(b"",(Reply(b"OK"),),(Condition(selector="data.service",value="03"),),
+                                Fault("Duplicate",count=2,gap_ms=1),"Payment"),),framing=FrameSpec())
+    fields=model_from_dict(model_to_dict(fields))
+    with session("Device Simulator",simulator_model=fields) as (_,events,ready):
+        with socket.create_connection(ready["address"][:2],timeout=5) as app:
+            app.sendall(b'{"data":{"service":"03","amount":1234}}')
+            expect_equal(app.makefile("rb").read(4),b"OKOK")
+    print("PASS semantic simulator rules, v2 model and deterministic fault injection")
     from .protocol import json_value
     from .comparison import compare_bytes
     from .scenario import compile_steps

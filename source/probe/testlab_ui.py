@@ -93,7 +93,7 @@ class SimulatorPane(Pane):
         tablebox = ttk.Frame(self)
         tablebox.pack(fill="both", expand=True, pady=6)
         self.table = ttk.Treeview(tablebox, columns=("request", "reply", "delay"), show="headings", height=2, selectmode="browse")
-        for name, title, width in (("request", "Expected request (hex)", 280), ("reply", "Recorded reply (hex)", 380), ("delay", "Reply delay / chunks", 160)):
+        for name, title, width in (("request", "Request rule", 280), ("reply", "Recorded reply (hex)", 380), ("delay", "Timing / fault", 160)):
             self.table.heading(name, text=title)
             self.table.column(name, width=width)
         self.table.pack(side="left", fill="both", expand=True)
@@ -101,15 +101,12 @@ class SimulatorPane(Pane):
         scrollbar.pack(side="right", fill="y")
         self.table.configure(yscrollcommand=scrollbar.set)
         self.table.bind("<<TreeviewSelect>>", lambda event: self.action(self.select))
-        edit = ttk.Frame(self)
-        edit.pack(fill="x")
-        edit.columnconfigure(0, weight=1)
-        edit.columnconfigure(1, weight=1)
-        self.field(edit, "Request bytes (hex)", self.request, 0, width=32)
-        self.field(edit, "Reply bytes (hex)", self.reply, 1, width=32)
-        self.field(edit, "Reply delay (ms)", self.delay, 2, width=12)
-        self.buttons(self, [("Add exchange", self.add), ("Update selected", self.update_selected),
-                            ("Remove", self.remove), ("↑", lambda: self.move(-1)), ("↓", lambda: self.move(1))])
+        self.table.bind("<Double-1>", lambda event: self.action(self.edit_rule))
+        self.buttons(self, [("New rule…", lambda: self.edit_rule(True)), ("Edit rule…", self.edit_rule),
+                            ("Remove", self.remove), ("↑", lambda: self.move(-1)), ("↓", lambda: self.move(1)),
+                            ("Request framing…", self.edit_framing)])
+        self.framing_info = tk.StringVar()
+        ttk.Label(self, textvariable=self.framing_info, wraplength=950).pack(anchor="w")
         ttk.Label(self, text="2. Expose the simulated device", font=(app.ui_font, 16, "bold")).pack(anchor="w", pady=(8, 4))
         settings = ttk.Frame(self)
         settings.pack(fill="x")
@@ -136,8 +133,20 @@ class SimulatorPane(Pane):
         ttk.Button(row, text="Reset matching", command=self.reset).pack(side="right")
         ttk.Label(self, textvariable=app.simulator_info, wraplength=950).pack(anchor="w", pady=2)
         ttk.Label(self, textvariable=self.feedback, wraplength=950).pack(anchor="w", pady=2)
-        ttk.Label(self, text="Exact recorded bytes are matched across stream reads. Unmatched bytes are ignored and reported. Startup RX is excluded.", wraplength=950).pack(anchor="w")
+        ttk.Label(self, text="Double-click a rule to edit matching or inject faults. Field rules require complete request framing. Startup RX is excluded.", wraplength=950).pack(anchor="w")
         self.refresh()
+
+    def edit_rule(self, new=False):
+        self.ensure_editable()
+        from .simulator_ui import RuleEditor
+        self.rule_editor = RuleEditor(self, None if new else self.selected_index())
+        return self.rule_editor
+
+    def edit_framing(self):
+        self.ensure_editable()
+        from .simulator_ui import FrameEditor
+        self.frame_editor = FrameEditor(self)
+        return self.frame_editor
 
     def com_settings(self):
         if self.app.active:
@@ -165,11 +174,13 @@ class SimulatorPane(Pane):
     def refresh(self):
         self.table.delete(*self.table.get_children())
         model = self.app.simulator_model
+        framing = model.framing if model else getattr(self, "pending_framing", None)
+        self.framing_info.set("Request framing: " + (framing.mode if framing else "Exact stream · legacy byte matching"))
         if model:
             for index, item in enumerate(model.exchanges):
                 reply = b"".join(r.data for r in item.replies)
-                self.table.insert("", "end", iid=str(index), values=(item.request[:36].hex(" ").upper(), reply[:48].hex(" ").upper(),
-                                  f"{sum(r.delay_ms for r in item.replies):g} ms / {len(item.replies)}"))
+                self.table.insert("", "end", iid=str(index), values=((item.name+" · " if item.name else "") + (" AND ".join(f"{c.source} {c.selector or c.offset} {c.operator} {c.value}" for c in item.match) if item.match else item.request[:36].hex(" ").upper()), reply[:48].hex(" ").upper(),
+                                  item.fault.kind + (f" / N={item.fault.nth}" if item.fault.trigger!="Every match" else "") if item.fault else f"{sum(r.delay_ms for r in item.replies):g} ms / {len(item.replies)}"))
 
     def capture_rows(self, rows):
         self.ensure_editable()
@@ -243,7 +254,7 @@ class SimulatorPane(Pane):
             self.refresh()
             self.feedback.set("No exchanges. Load a capture or add the first request/reply pair.")
             return
-        self.install(model_from_dict(model_to_dict(DeviceModel(tuple(items)))))
+        self.install(model_from_dict(model_to_dict(DeviceModel(tuple(items), framing=self.app.simulator_model.framing if self.app.simulator_model else None))))
 
     def add(self):
         items = list(self.app.simulator_model.exchanges) if self.app.simulator_model else []

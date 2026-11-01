@@ -1,5 +1,14 @@
 # Changes
 
+## 1.4.0
+
+- Add semantic request rules for JSON paths, TLV/BER-TLV tags, UTF-8 text and byte ranges; AND conditions, required fields and numeric comparisons.
+- Assemble complete requests independently of socket/serial read chunks, with explicit JSON/delimiter/fixed/length-prefix framing and optional trailing checksum validation.
+- Add deterministic per-rule/per-client fault triggers: delay, no reply, error payload, disconnect, truncation, byte corruption, duplicate and split writes.
+- Replace inline simulator editing with a focused Request & reply editor and optional Fault injection tab; retain recorded chunk timing unless edited.
+- Save advanced models as v2 while preserving v1 compatibility; include JSON and binary CRC examples.
+- Exercise real TCP/PTY, per-client counters, ambiguity, malformed requests, Reset/Stop cancellation, native editors and frozen semantic/fault diagnostics.
+
 ## 1.3.1
 
 - Add native Ctrl/Shift multi-selection in Traffic while preserving single-click selection and double-click Analyze.
