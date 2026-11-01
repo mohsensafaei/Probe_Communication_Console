@@ -54,6 +54,8 @@ async def serve_simulator(engine: "Engine") -> None:
             engine.event("simulator", state="unmatched", message=f"Unmatched request bytes from {peer}: {matcher.discarded-previous} ignored.")
         for reason in matcher.errors:
             engine.event("simulator", state="unmatched", message=f"{peer}: {reason}")
+        if not exchanges and matcher.buffer and not matcher.errors:
+            engine.event("simulator", state="waiting", message=f"Waiting for a complete request from {peer} · {len(matcher.buffer)} bytes buffered.")
         for exchange, (rule, hit) in zip(exchanges, matcher.details):
             plan = reply_plan(exchange, hit)
             if plan.description:

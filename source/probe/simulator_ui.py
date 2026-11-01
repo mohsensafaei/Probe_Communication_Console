@@ -10,14 +10,14 @@ from .simulator_rules import (FrameSpec, Condition, Fault, FRAME_MODES, SOURCES,
 
 
 class Editor(tk.Toplevel):
-    def __init__(self, pane, title, geometry):
-        super().__init__(pane)
+    def __init__(self, pane, title, geometry, owner=None):
+        super().__init__(owner or pane)
         self.pane = pane
         self.title('Probe · '+title)
         self.geometry(geometry)
         self.minsize(*map(int, geometry.split('x')))
         self.configure(bg=pane.app.colors['panel'])
-        self.transient(pane.winfo_toplevel())
+        self.transient((owner or pane).winfo_toplevel())
         self.body = ttk.Frame(self, padding=16)
         self.feedback = tk.StringVar(self)
         bottom = ttk.Frame(self, padding=(16, 8, 16, 16)); bottom.pack(side='bottom', fill='x')
@@ -84,8 +84,8 @@ class FrameEditor(Editor):
 
 
 class ConditionEditor(Editor):
-    def __init__(self, pane, callback, condition=None):
-        super().__init__(pane,'Request field','640x440')
+    def __init__(self, pane, callback, condition=None, owner=None):
+        super().__init__(pane,'Request field','640x440',owner)
         self.callback=callback;self.condition=condition or Condition(selector='data.service')
         c=self.condition
         self.field(self.body,'source','Read from',c.source,SOURCES).bind('<<ComboboxSelected>>',self.update_fields)
@@ -176,7 +176,7 @@ class RuleEditor(Editor):
             if index is None:self.conditions.append(c)
             else:self.conditions[index]=c
             self.refresh_conditions()
-        self.condition_editor=ConditionEditor(self.pane,accept,None if index is None else self.conditions[index])
+        self.condition_editor=ConditionEditor(self.pane,accept,None if index is None else self.conditions[index],owner=self)
 
     def remove_condition(self):
         selected=self.table.selection()
