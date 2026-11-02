@@ -7,7 +7,9 @@ remain here so existing offline workflows keep working. Run tests from this dire
 | --- | --- |
 | `probe/app.py` | Application lifecycle, connection coordination, settings and callbacks |
 | `probe/ui/layout.py` | Workbench widgets, styling and layout |
-| `probe/ui/traffic.py` | Traffic rendering/filtering, retention and export dialog |
+| `probe/ui/traffic.py` | Traffic rendering/filtering and export dialog |
+| `probe/event_buffer.py` | Thread-safe display handoff and shared queue cost estimation |
+| `probe/traffic_model.py` | Headless retained history and bounded per-stream display framing |
 | `probe/exporting.py` | Pure CSV, JSONL and readable-text serialization |
 | `probe/plot_model.py` | Bounded numeric acquisition, independent of Tk |
 | `probe/plot_ui.py` | Plot controls and drawing; re-exports NumericSamples for compatibility |
@@ -32,3 +34,26 @@ This is an incremental separation, not a claim that every class now has one smal
 responsibility. Application connection/settings code and sequence UI are still large.
 A further split should preserve their ownership and cancellation behavior, backed by
 native GUI tests; moving files alone would not establish those boundaries.
+
+## Display ownership in 1.4.2
+
+Engine records original events before handing them to `DisplayEventBuffer`. Data
+uses a 1,024-event / 8 MiB estimated-memory rolling budget; controls have their own
+128-event FIFO so data cannot evict a disconnect or recording error. The dequeue
+operation merges their sequence numbers to preserve arrival order. Control-only
+overflow is also counted. These budgets are display limits, not recording limits.
+
+Only the UI thread owns `TrafficHistory` and `DisplayFraming`. History has one
+ordered mapping, O(1) oldest-row eviction and a batch delta for widgets. `order`
+is a compatibility snapshot for selection/export consumers, not a second mutable
+source of truth. A frame batch is consumed lazily and trimmed before widgets are
+created. Framing retains at most 64 streams; metadata never retains the original
+read's payload. Stream-limit flushes and display-loss flushes are visibly partial.
+
+A dropped data ordinal resets display framing, terminal and plot state before
+the next retained read; the queue does not mutate shared recorder/observer events.
+Monotonic acquisition timestamps drive idle gaps for live Engine events. Wall-time
+fallback preserves imported/demo events without monotonic timestamps. Idle checks
+are deferred while the queue is behind. The 8 ms poll budget is cooperative between
+events: one expensive payload or widget batch can exceed it. It is not a real-time
+latency guarantee. See `DISPLAY_PERFORMANCE.md` for measurements and remaining work.

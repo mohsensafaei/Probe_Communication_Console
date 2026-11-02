@@ -13,6 +13,52 @@ from probe.app import Probe
 from probe.engine import MODES
 
 class UISmoke(unittest.TestCase):
+    def test_frame_burst_formats_only_retained_rows(self):
+        self.app.vars["framing"].set("Fixed length")
+        self.app.vars["frame_size"].set("1")
+        wire=bytes(range(256))*256
+        with patch.object(self.app.table,"insert",wraps=self.app.table.insert) as insert:
+            self.app.emit(dict(kind="data",time=time.time(),direction="RX",peer="device",data=wire))
+            self.spin(lambda:self.app.queue.empty())
+            self.assertEqual(insert.call_count,2000)
+        self.assertEqual(len(self.app.table.get_children()),2000)
+        self.assertEqual(self.app.evicted,65536-2000)
+        self.assertEqual(b"".join(row["data"] for row in self.app.events.values()),wire[-2000:])
+
+    def test_oversize_history_row_is_not_inserted_into_table(self):
+        self.app.MAX_BYTES=2
+        self.app.add_event(dict(kind="data",time=time.time(),direction="RX",peer="device",data=b"ABC"))
+        self.assertEqual(self.app.table.get_children(),())
+        self.assertFalse(self.app.events)
+        self.assertEqual(self.app._shown_count,0)
+
+    def test_display_gap_and_disconnect_are_processed_after_data_flood(self):
+        from probe.event_buffer import DisplayEventBuffer
+        self.app.vars["framing"].set("Fixed length");self.app.vars["frame_size"].set("4")
+        self.app.queue=DisplayEventBuffer(max_events=1)
+        make=lambda data:dict(kind="data",time=time.time(),direction="RX",peer="device",data=data)
+        self.app.emit(make(b"AB"));self.spin(lambda:self.app.queue.empty())
+        self.app.emit(make(b"MISSING"));self.app.emit(make(b"CD"))
+        self.app.emit(dict(kind="state",state="Disconnected"))
+        self.spin(lambda:self.app.queue.empty())
+        self.assertEqual([r["data"] for r in self.app.events.values()],[b"AB",b"CD"])
+        self.assertTrue(all(r["display_partial"] for r in self.app.events.values()))
+        self.assertIn("partial",self.app.table.item(self.app.order[0],"values")[-1])
+        self.assertEqual(self.app.stat_labels["state"].cget("text"),"Disconnected")
+        self.assertEqual(self.app.dropped,1)
+
+    def test_poll_yields_with_backlog_without_flushing_wire_idle_gap(self):
+        self.app.vars["framing"].set("Idle gap");self.app.vars["gap"].set("50")
+        for data in (b"A",b"B"):
+            self.app.emit(dict(kind="data",time=time.time()-1,direction="TX",peer="device",data=data))
+        # One event in this poll, despite both acquisition times being in the past.
+        with patch("probe.app.time.perf_counter",side_effect=[0,0,.02]), patch.object(self.app,"after") as after:
+            self.app.poll()
+            after.assert_called_once_with(5,self.app.poll)
+        self.assertFalse(self.app.events)
+        self.spin(lambda:self.app.queue.empty())
+        self.assertEqual([r["data"] for r in self.app.events.values()],[b"AB"])
+
     def setUp(self):
         directory=tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

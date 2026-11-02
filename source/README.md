@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.4.1** (Linux release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.4.2** (Linux release).
 
 ### Analyze traffic without sending anything
 
@@ -533,3 +533,10 @@ See `ARCHITECTURE.md` for module ownership and `CORE_PERFORMANCE.md` for measure
 processing improvements and their limits. Existing launch/build commands and
 capture/device-model formats are unchanged. Run `python benchmarks/core_benchmark.py`
 from this directory to measure on your own machine.
+
+## Display pipeline (1.4.2)
+
+Bounded event handoff, history and framing are independent of Tk. Under display
+overload, gaps and partial frames are explicit; original recording runs upstream.
+See [DISPLAY_PERFORMANCE.md](DISPLAY_PERFORMANCE.md) for native Tk measurements,
+limits and commands, and [ARCHITECTURE.md](ARCHITECTURE.md) for ownership.

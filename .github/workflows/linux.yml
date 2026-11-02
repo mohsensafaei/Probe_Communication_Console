@@ -2,6 +2,8 @@ name: Linux tests and portable build
 on:
   push:
     branches: [linux]
+  pull_request:
+    branches: [linux]
   workflow_dispatch:
 permissions:
   contents: read
@@ -28,6 +30,8 @@ jobs:
         run: .venv/bin/python benchmarks/core_benchmark.py
       - name: Native Tk GUI
         run: xvfb-run -a .venv/bin/python -m unittest discover -s tests -p ui_smoke.py -v
+      - name: Native display benchmark (informational)
+        run: xvfb-run -a .venv/bin/python benchmarks/display_benchmark.py
       - name: Real transport diagnostics
         run: .venv/bin/python run_probe.py --self-test
       - name: Capture native UI previews
