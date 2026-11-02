@@ -1,5 +1,16 @@
 # Changes
 
+## 1.4.2
+
+- Extract bounded display handoff, retained history and per-stream framing into headless models.
+- Keep connection/recording status separate from data pressure; budget queued payloads and HID metadata and expose loss counts.
+- Reset incomplete display parsers across dropped data; mark partial frames instead of joining bytes across a known gap.
+- Stream frame generation and apply retention before creating table rows; format only retained rows and the selected view.
+- Bound framing state to 64 streams, use acquisition monotonic timestamps for idle gaps, and avoid idle flushing while the UI is behind.
+- Cooperatively yield between input events and schedule earlier follow-up polls while backlogged.
+- Keep the JSON search value field usable at the minimum window width.
+- Add headless regression tests, native Tk overflow/burst tests and a reproducible display benchmark; run native workflows on pull requests.
+
 ## 1.4.1
 
 - Separate Tk workbench construction and Traffic callbacks from application coordination.
