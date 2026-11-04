@@ -174,3 +174,16 @@ and multiple display encodings, arbitrary framing boundaries, comparison offset
 partitions and all export choices with retained metadata. Native GUI and frozen
 checks exercise the extracted presentation package. Core microbenchmarks run in
 both platform workflows as informational measurements, without flaky timing gates.
+
+
+## 1.5 concurrent probe coverage
+
+Native GUI tests additionally exercise independent settings/history/terminal
+models, three simultaneous TCP/TCP/serial-loopback endpoints, recording while
+hidden, active shortcut routing, isolated connection/timer shutdown, reopening
+slot preferences, owned popup destruction and garbage collection after repeated
+open/close. The frozen smoke test opens two independent serial loopbacks and
+checks that closing one leaves the other connected. No physical serial/HID
+hardware timing claim is made. The informational 1/2/4-probe benchmark checks
+hidden table insertion counts and separates Python allocation instrumentation
+from elapsed-time measurements.
