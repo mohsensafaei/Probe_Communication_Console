@@ -109,8 +109,7 @@ class WorkbenchLayout:
             if widget and str(widget).startswith(str(config_wrap)):
                 step=-1 if getattr(event,"num",0)==4 else 1 if getattr(event,"num",0)==5 else -1 if event.delta>0 else 1
                 self.config_canvas.yview_scroll(step,"units")
-        self.bind_all("<MouseWheel>",wheel,add="+")
-        self.bind_all("<Button-4>",wheel,add="+");self.bind_all("<Button-5>",wheel,add="+")
+        self._config_wheel = wheel
         self.rail=Rail(self,self);self.rail.pack(side="left",fill="y",padx=(4,0),pady=24)
         self.content=tk.Frame(self,bg=c["bg"]); self.content.pack(side="left",fill="both",expand=True,padx=12,pady=12)
         self.content.columnconfigure(0,weight=1);self.content.rowconfigure(3,weight=1)

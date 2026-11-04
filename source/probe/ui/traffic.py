@@ -70,7 +70,7 @@ class TrafficWorkspace:
         change=self.history.extend(events)
         removed=tuple(key for key in change.removed if self.table.exists(key))
         if removed:self.table.delete(*removed);self._shown_count-=len(removed)
-        if self.paused or not change.added:return change
+        if self.paused or not self.winfo_ismapped() or not change.added:return change
         matcher=self.search_filter()
         direction=self.vars["direction"].get()
         view,encoding=self.vars["view"].get(),self.vars["encoding"].get()

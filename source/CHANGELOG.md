@@ -1,5 +1,14 @@
 # Changes
 
+## 1.5.0
+
+- Add up to eight independent, named Probe workspaces with a + button; each owns its endpoints, traffic, analysis, sequences, recording, plot and terminal.
+- Keep acquisition running in background tabs while deferring hidden traffic widget creation and drawing.
+- Share one Tk interpreter, font load and global shortcut/wheel dispatch; isolate callbacks and shutdown per probe.
+- Save endpoint/profile/sequence preferences separately by probe slot and restore them when that slot is reopened.
+- Exercise simultaneous TCP and serial loopback, hidden recording, close isolation, timer cleanup and frozen multi-probe connections.
+- Add a native 1/2/4-probe CPU/Python-allocation benchmark.
+
 ## 1.4.2
 
 - Extract bounded display handoff, retained history and per-stream framing into headless models.

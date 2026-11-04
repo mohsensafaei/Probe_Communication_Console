@@ -1,4 +1,4 @@
-# Probe for Windows 1.4.2
+# Probe for Windows 1.5.0
 
 Portable TCP, UDP and USB/COM workbench with traffic recording/replay, a live
 ANSI terminal, serial proxies, recorded device simulation and timed test sequences.

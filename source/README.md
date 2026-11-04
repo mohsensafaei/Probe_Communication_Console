@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.4.2** (Windows release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.5.0** (Windows release).
 
 ### Analyze traffic without sending anything
 
@@ -540,3 +540,37 @@ Bounded event handoff, history and framing are independent of Tk. Under display
 overload, gaps and partial frames are explicit; original recording runs upstream.
 See [DISPLAY_PERFORMANCE.md](DISPLAY_PERFORMANCE.md) for native Tk measurements,
 limits and commands, and [ARCHITECTURE.md](ARCHITECTURE.md) for ownership.
+
+
+## Multiple probes (1.5)
+
+Click **+** at the top to add an independent connection workspace. Each probe has
+its own endpoint controls, Traffic, Live plot, Terminal, capture/export, analysis
+and test sequences. Other probes keep receiving and recording when you change
+tabs. **Rename…** (or double-click a probe tab) identifies the position in your
+software path, for example **App → Service** and **Service → POS**. The tab shows
+the transport and a connected indicator. Keyboard shortcuts target the active
+probe. **Close probe** stops only that probe and closes its owned dialogs; closing
+the main window stops every connection and drains each recorder.
+
+For two applications plus a device, configure the first probe as TCP Proxy between
+the apps, and the second as Serial Proxy or Serial ↔ TCP before the device. Point
+each application at the corresponding proxy endpoint. Every listener needs a
+different TCP port; each serial device can be owned by only one probe. A failure
+to bind/open an endpoint is reported in that probe. HID elevation remains on demand.
+
+Up to eight probes share one Tk interpreter and font load. Every probe retains
+its existing bounded display queue/history; this multiplies the total memory
+budget by the number of probes. Hidden tabs keep the acquisition models updated
+and rebuild the retained table when selected, without formatting/inserting each
+hidden row or drawing hidden plots. Terminal pop-outs keep their own live view.
+This is simultaneous acquisition, not a combined timeline or automatic comparison
+between different probes. Timestamps use the same host clock; hardware timing
+and ordering between independent endpoints are not guaranteed.
+
+Preferences use `settings.json` for Probe 1 and `settings-probe-N.json` for other
+slots. Reopening a slot restores its saved connection/profile/sequence settings,
+without reconnecting automatically. Traffic and tab names are session-local.
+Run `python benchmarks/multi_probe_benchmark.py` from this directory with a native
+display to measure 1/2/4 probes. It reports elapsed batch time, Tk insertions and
+tracemalloc Python allocations (not whole-process RAM or transport jitter).

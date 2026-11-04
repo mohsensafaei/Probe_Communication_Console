@@ -44,28 +44,22 @@ def data_directory():
         base = Path(os.environ.get("LOCALAPPDATA", Path.home()/".local"/"share")) / "Probe"
         base.mkdir(parents=True, exist_ok=True); return base
 
-class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
+class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
     MAX_ROWS = 2000
     MAX_BYTES = 8 * 1024 * 1024
 
-    def __init__(self, demo=False):
-        load_fonts()
-        super().__init__()
-        self.title(f"Probe {__version__} · Communications workbench")
-        icon_base=Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parent.parent))
-        try:
-            self.icon_image=tk.PhotoImage(file=str(icon_base/"assets"/"probe.png"))
-            self.iconphoto(True,self.icon_image)
-        except tk.TclError:pass
-        self.geometry(f"{min(1360,max(1060,self.winfo_screenwidth()-80))}x{min(900,max(700,self.winfo_screenheight()-80))}")
-        self.minsize(1060,700)
+    def __init__(self, master, slot=1, demo=False):
+        super().__init__(master)
+        self.window = master.winfo_toplevel()
+        self.slot = slot
+        self._jobs = set()
         self.colors = dict(DARK)
-        self.ui_font, self.display_font, self.mono = font_roles(self)
+        self.ui_font, self.display_font, self.mono = self.window.fonts
         self.font_size = 11
         self.configure(bg=self.colors["bg"])
         self.option_add("*Font", (self.ui_font, 12))
-        self.style = ttk.Style(self); self.style.theme_use("clam")
-        self.settings_path = data_directory() / "settings.json"
+        self.style = self.window.style
+        self.settings_path = data_directory() / ("settings.json" if slot == 1 else f"settings-probe-{slot}.json")
         self.profiles = {}; self.macros = []
         self.history = TrafficHistory(self.MAX_ROWS, self.MAX_BYTES)
         self._shown_count=0
@@ -77,8 +71,8 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
         self.last_capture=[]
         self.simulator_model = None
         self.simulator_endpoint = ""
-        self.simulator_info = tk.StringVar(value="Simulator stopped. Build or load a device model to start.")
-        self.sequence_info = tk.StringVar(value="Sequence idle. Connect a transport, add steps, then Run sequence.")
+        self.simulator_info = tk.StringVar(self, value="Simulator stopped. Build or load a device model to start.")
+        self.sequence_info = tk.StringVar(self, value="Sequence idle. Connect a transport, add steps, then Run sequence.")
         self.sequence_values = {}
         self.terminal_popup=None
         self.terminal_popout_pane=None
@@ -103,13 +97,13 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
                         sequence_advance="After interval", sequence_reply_timeout="2000", sequence_variables="{}",
                         hid_device="", plot_mode="Auto", plot_config="{}", protocol_fields="[]", simulator_transport="TCP socket",
                         simulator_matching="Conversation order", simulator_timing="1")
-        for k,v in defaults.items(): self.vars[k] = tk.StringVar(value=v)
-        self.vars["dtr"] = tk.BooleanVar(value=False); self.vars["rts"] = tk.BooleanVar(value=False)
-        self.vars["autoscroll"] = tk.BooleanVar(value=True)
-        self.vars["repeat"] = tk.BooleanVar(value=False)
-        self.vars["reconnect"] = tk.BooleanVar(value=False)
-        self.vars["sequence_loop"] = tk.BooleanVar(value=False)
-        self.vars["simulator_repeat"] = tk.BooleanVar(value=True)
+        for k,v in defaults.items(): self.vars[k] = tk.StringVar(self, value=v)
+        self.vars["dtr"] = tk.BooleanVar(self, value=False); self.vars["rts"] = tk.BooleanVar(self, value=False)
+        self.vars["autoscroll"] = tk.BooleanVar(self, value=True)
+        self.vars["repeat"] = tk.BooleanVar(self, value=False)
+        self.vars["reconnect"] = tk.BooleanVar(self, value=False)
+        self.vars["sequence_loop"] = tk.BooleanVar(self, value=False)
+        self.vars["simulator_repeat"] = tk.BooleanVar(self, value=True)
         self._load_settings()
         if self.vars["simulator_transport"].get() not in simulator_transports():
             self.vars["simulator_transport"].set("TCP socket")
@@ -117,20 +111,31 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
             self.vars["app_port"].set("COM20")
         if self.vars["theme"].get() in ("Midnight","Probe II"): self.vars["theme"].set("Probe Dark")
         if self.vars["theme"].get() == "Light": self.colors = dict(LIGHT)
-        self._style()
+        if self.window.probes:
+            self.vars["theme"].set(self.window.probes[0].vars["theme"].get())
+            self.colors = dict(self.window.probes[0].colors)
+        else:
+            self._style()
         self._build()
         self.compact=False
         self.bind("<Configure>",self.resized,add="+")
         self._mode_changed()
-        self.protocol("WM_DELETE_WINDOW", self.close)
-        self.bind("<Control-Return>", lambda e: self.send())
-        self.bind("<Control-l>", lambda e: self.clear())
-        self.bind("<Control-s>", lambda e: self.export())
-        self.bind("<F1>", lambda e: self.help())
-        self.bind("<Control-plus>", lambda e: self.zoom(1))
-        self.bind("<Control-minus>", lambda e: self.zoom(-1))
         self.after(40, self.poll)
         if demo: self.after(150, self.demo)
+
+    def after(self, ms, func=None, *args):
+        if func is None:return super().after(ms)
+        def run():
+            self._jobs.discard(job)
+            if not self.closing:func(*args)
+        job = super().after(ms, run)
+        self._jobs.add(job)
+        return job
+
+    def after_cancel(self, job):
+        self._jobs.discard(job)
+        return super().after_cancel(job)
+
 
 
     def _mode_changed(self):
@@ -343,6 +348,7 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
                 changed=changed or bool(change.added)
             elif kind=="state":
                 state=event["state"]; self.stat_labels["state"].configure(text=state)
+                self.window.update_probe_title(self, state)
                 if state=="Connected":
                     self.set_status(event.get("message","Connected"))
                     if self.vars["mode"].get() == "Device Simulator":
@@ -405,9 +411,10 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
         if changed and self.vars["autoscroll"].get() and not self.paused:
             items=self.table.get_children()
             if items: self.table.see(items[-1])
-        if self.notebook.select()==str(self.plot):self.plot.render()
+        visible = self.winfo_ismapped()
+        if visible and self.notebook.select()==str(self.plot):self.plot.render()
         self.terminal.update_hint()
-        if self.notebook.select()==str(self.terminal):self.terminal.render()
+        if visible and self.notebook.select()==str(self.terminal):self.terminal.render()
         if self.terminal_popup and self.terminal_popup.winfo_exists():self.terminal_popout_pane.update_hint();self.terminal_popout_pane.render()
         self.after(5 if not self.queue.empty() else 40,self.poll)
 
@@ -518,7 +525,7 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
         if not rows:self.set_status("Import a capture or collect traffic first.",True);return
         win=self.dialog("Replay captured traffic","440x260")
         self.label(win,"Replay exact bytes",17,True).pack(anchor="w",padx=20,pady=20)
-        direction=tk.StringVar(value="TX");speed=tk.StringVar(value="1.0")
+        direction=tk.StringVar(self, value="TX");speed=tk.StringVar(self, value="1.0")
         form=self.frame(win);form.pack(fill="x",padx=20)
         self.label(form,"Captured direction").pack(anchor="w")
         ttk.Combobox(form,textvariable=direction,values=["TX","RX"],width=12,state="readonly").pack(anchor="w",pady=4)
@@ -655,7 +662,7 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
 
     def dialog(self,title,size="610x470"):
         win=tk.Toplevel(self);win.title(title);win.geometry(size);win.configure(bg=self.colors["panel"])
-        win.transient(self);win.grab_set();return win
+        win.transient(self.winfo_toplevel());win.grab_set();return win
 
     def tools(self):
         win=self.dialog("Payload tools & session tools","620x630")
@@ -853,7 +860,8 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
         self.vars["send_mode"].set("Hex");self.payload.delete("1.0","end");self.payload.insert("1.0","02 A4 04 50 43 30 31 B0 06 00 00 00 01 25 00 03")
         self.set_status("DEMO PREVIEW · synthetic sample traffic; no network or hardware connection is open.")
 
-    def close(self):
+    def shutdown(self):
+        if self.closing:return True
         self.closing=True
         if hasattr(self,"hid_discovery_stop"):self.hid_discovery_stop.set()
         self.stop_repeat();self.stop_sequence();self.file_cancel.set();self.save_settings()
@@ -862,11 +870,23 @@ class Probe(WorkbenchLayout, TrafficWorkspace, tk.Tk):
             self.set_status("Closing session and flushing queued capture data…");self.update_idletasks()
             self.engine.stop();self.engine.join(20)
             if self.engine.thread and self.engine.thread.is_alive():
-                self.closing=False;self.set_status("Capture/session shutdown is still pending. Please retry closing after it finishes.",True);return
+                self.closing=False;self.set_status("Capture/session shutdown is still pending. Please retry closing after it finishes.",True);return False
             if self.engine.recording_error_message:messagebox.showerror("Recording incomplete",self.engine.recording_error_message,parent=self)
-        for timer in self.tk.call("after","info"):
-            self.after_cancel(timer)
-        self.destroy()
+        for timer in tuple(self._jobs):self.after_cancel(timer)
+        return True
+
+    def close(self):
+        return self.window.close_probe(self)
+
+
+from .workspaces import WorkspaceWindow
+
+
+class Probe(WorkspaceWindow):
+    def __init__(self, demo=False):
+        load_fonts()
+        super().__init__(ProbeWorkspace, demo)
+
 
 def main():
     import argparse
@@ -914,7 +934,7 @@ def main():
         report(False, str(exc))
         raise SystemExit(1)
     if args.smoke_test:
-        app.save_settings=lambda: None
+        app.current_probe.save_settings=lambda: None
         def check():
             try:
                 for mode in MODES:
@@ -955,11 +975,23 @@ def main():
                 rule.notebook.select(1);app.update_idletasks();rule.destroy()
                 framing=simulator.edit_framing();app.update_idletasks();framing.destroy()
                 pane=app.sequence_panel
-                app.macros=[dict(name="Smoke template",text="${sid}",flow=dict(extract=[dict(name="sid",source="JSON",selector="sessionId")]))]
+                app.current_probe.macros=[dict(name="Smoke template",text="${sid}",flow=dict(extract=[dict(name="sid",source="JSON",selector="sessionId")]))]
                 pane.refresh();pane.open_editor(0)
                 rules=pane.response_rules();rules.tabs.select(1);app.update_idletasks();rules.destroy();pane.editor.destroy()
                 variables=pane.variables_dialog();app.update_idletasks();variables.destroy()
                 if app.terminal.error: raise RuntimeError(app.terminal.error)
+                from .diagnostics import wait_for
+                primary=app.current_probe
+                secondary=app.new_probe();secondary.save_settings=lambda:None
+                for probe in (primary,secondary):
+                    probe.choose_mode("USB / Serial");probe.vars["serial_port"].set("loop://");probe.toggle()
+                wait_for(lambda:all(p.engine.ready for p in (primary,secondary)))
+                primary.engine.send(b"PRIMARY");secondary.engine.send(b"SECONDARY")
+                wait_for(lambda:primary.engine.rx==7 and secondary.engine.rx==9)
+                app.update()
+                app.close_probe(secondary)
+                if not primary.engine.ready:raise RuntimeError("Closing one probe stopped another connection.")
+
             except Exception as exc:
                 report(False, str(exc))
                 app.close()

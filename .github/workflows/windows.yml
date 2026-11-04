@@ -38,18 +38,21 @@ jobs:
       - name: Core processing benchmark (informational)
         run: .windows-venv/Scripts/python.exe benchmarks/core_benchmark.py
       - name: Native Tk GUI, Test lab and Appearance removal
-        run: .windows-venv/Scripts/python.exe -m unittest discover -s tests -p ui_smoke.py -v
+        run: .windows-venv/Scripts/python.exe -m unittest discover -s tests -p "ui_*.py" -v
       - name: Native display benchmark (informational)
         run: .windows-venv/Scripts/python.exe benchmarks/display_benchmark.py
+      - name: Multi-probe efficiency benchmark
+        run: .windows-venv/Scripts/python.exe benchmarks/multi_probe_benchmark.py
       - name: Capture native simulator previews
         run: |
           .windows-venv/Scripts/python.exe -m pip install pillow==11.3.0
           .windows-venv/Scripts/python.exe tests/simulator_visual_preview.py
+          .windows-venv/Scripts/python.exe tests/multi_probe_preview.py
       - name: Upload native simulator previews
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: Probe-windows-simulator-previews
-          path: source/probe-preview-simulator-*.png
+          path: source/probe-preview-*.png
           if-no-files-found: error
       - name: Build folder bundle
         shell: cmd
