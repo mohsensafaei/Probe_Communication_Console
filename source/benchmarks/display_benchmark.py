@@ -22,7 +22,8 @@ def run():
     insertions = []
     wire = bytes(range(256)) * 256
     with tempfile.TemporaryDirectory() as directory, patch("probe.app.data_directory", return_value=Path(directory)):
-        app = Probe()
+        window = Probe()
+        app = window.current_probe if hasattr(window,"current_probe") else window
         try:
             app.vars["framing"].set("Fixed length")
             app.vars["frame_size"].set("1")
@@ -50,7 +51,7 @@ def run():
                         milliseconds=[round(v, 3) for v in elapsed],
                         median_ms=round(statistics.median(elapsed), 3), table_insertions=insertions)
         finally:
-            app.close()
+            window.close()
 
 
 if __name__ == "__main__":

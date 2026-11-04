@@ -413,7 +413,7 @@ class AnalysisWindow(tk.Toplevel,Actions):
         self.title("Probe · Analyze traffic")
         self.geometry(f"{min(1000,max(920,app.winfo_screenwidth()-80))}x{min(760,max(700,app.winfo_screenheight()-90))}")
         self.minsize(920,700)
-        self.configure(bg=app.colors["panel"]);self.transient(app);self.bind("<Escape>",lambda e:self.destroy())
+        self.configure(bg=app.colors["panel"]);self.transient(app.winfo_toplevel());self.bind("<Escape>",lambda e:self.destroy())
         self.bind("<Control-plus>",lambda e:app.zoom(1));self.bind("<Control-minus>",lambda e:app.zoom(-1))
         self.feedback=tk.StringVar();self.source=tk.StringVar(value="Double-click a message to inspect it.")
         body=ttk.Frame(self,padding=12);body.pack(fill="both",expand=True)

@@ -57,3 +57,16 @@ fallback preserves imported/demo events without monotonic timestamps. Idle check
 are deferred while the queue is behind. The 8 ms poll budget is cooperative between
 events: one expensive payload or widget batch can exceed it. It is not a real-time
 latency guarantee. See `DISPLAY_PERFORMANCE.md` for measurements and remaining work.
+
+
+## Multiple connection workspaces
+
+`WorkspaceWindow` in `workspaces.py` owns the root interpreter, probe tabs, shared
+fonts/styles and global key/wheel dispatch. `ProbeWorkspace` is a Frame with its
+own Engine, queue, history, settings file, dialogs and tracked timer callbacks.
+Closing a Frame cancels only its timers and destroys its descendants; it never
+cancels all Tcl timers. Variable traces are released after owned dialogs finish
+their destruction cleanup. The `Probe` entry point remains a root window and
+forwards legacy read/callback access to the selected workspace; new code uses
+`current_probe` explicitly. Hidden workspaces keep bounded models current and
+materialize their table on selection. Runtime dependencies are unchanged.

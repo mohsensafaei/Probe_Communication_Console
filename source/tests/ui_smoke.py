@@ -64,12 +64,12 @@ class UISmoke(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         patcher=patch("probe.app.data_directory",return_value=Path(directory.name))
         patcher.start();self.addCleanup(patcher.stop)
-        self.app=Probe();self.errors=[]
-        self.app.report_callback_exception=lambda *e:self.errors.append(e)
+        self.window=Probe();self.app=self.window.current_probe;self.errors=[]
+        self.window.report_callback_exception=lambda *e:self.errors.append(e)
         self.app.update()
 
     def tearDown(self):
-        self.app.close();self.assertEqual(self.errors,[],self.errors)
+        self.window.close();self.assertEqual(self.errors,[],self.errors)
 
     def spin(self,condition,timeout=4):
         end=time.monotonic()+timeout
@@ -383,7 +383,7 @@ class UISmoke(unittest.TestCase):
             for w in self.app.winfo_children():
                 if isinstance(w,tk.Toplevel):w.destroy()
         self.app.choose_mode("TCP Client")
-        self.app.geometry("1060x740");self.app.update()
+        self.window.geometry("1060x740");self.app.update()
         self.assertLess(self.app.send_button.winfo_rooty()+self.app.send_button.winfo_height(),self.app.winfo_rooty()+self.app.winfo_height())
         self.assertTrue(self.app.status.winfo_ismapped())
         self.assertGreaterEqual(self.app.table.winfo_height(),85)
@@ -518,12 +518,12 @@ class UISmoke(unittest.TestCase):
         self.assertEqual(len(self.app.table.get_children()),0);self.assertEqual(self.app.search_count.cget("text"),"Invalid search")
         self.app.clear_search();self.assertEqual(len(self.app.table.get_children()),5)
         self.assertEqual(len(self.app.events),5);self.assertFalse(hasattr(self.app,"analysis_window"))
-        self.app.vars["search_mode"].set("JSON field");self.app.geometry("1060x700");self.app.update()
+        self.app.vars["search_mode"].set("JSON field");self.window.geometry("1060x700");self.app.update()
         self.assertTrue(self.app.search_fieldbox.winfo_ismapped());self.assertGreater(self.app.search_entry.winfo_width(),60)
         self.assertLessEqual(self.app.search_count.winfo_x()+self.app.search_count.winfo_width(),self.app.searchbar.winfo_width())
 
     def test_plot_uses_available_height_and_footer_fits_small_window(self):
-        self.app.geometry("1060x700");self.app.notebook.select(self.app.plot);self.app.update()
+        self.window.geometry("1060x700");self.app.notebook.select(self.app.plot);self.app.update()
         pane=self.app.plot
         self.assertGreater(pane.canvas.winfo_height(),pane.winfo_height()-85)
         controls=(pane.mode_combo,pane.configure_button,pane.peer_combo,pane.clear_button)

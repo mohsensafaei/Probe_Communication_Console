@@ -29,9 +29,11 @@ jobs:
       - name: Core processing benchmark (informational)
         run: .venv/bin/python benchmarks/core_benchmark.py
       - name: Native Tk GUI
-        run: xvfb-run -a .venv/bin/python -m unittest discover -s tests -p ui_smoke.py -v
+        run: xvfb-run -a .venv/bin/python -m unittest discover -s tests -p "ui_*.py" -v
       - name: Native display benchmark (informational)
         run: xvfb-run -a .venv/bin/python benchmarks/display_benchmark.py
+      - name: Multi-probe efficiency benchmark
+        run: xvfb-run -a .venv/bin/python benchmarks/multi_probe_benchmark.py
       - name: Real transport diagnostics
         run: .venv/bin/python run_probe.py --self-test
       - name: Capture native UI previews
@@ -40,6 +42,7 @@ jobs:
           xvfb-run -a -s "-screen 0 1400x1000x24" .venv/bin/python tests/visual_preview.py
           xvfb-run -a -s "-screen 0 1400x1000x24" .venv/bin/python tests/hid_visual_preview.py
           xvfb-run -a -s "-screen 0 1400x1000x24" .venv/bin/python tests/simulator_visual_preview.py
+          xvfb-run -a -s "-screen 0 1400x1000x24" .venv/bin/python tests/multi_probe_preview.py
       - name: Upload UI previews
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
