@@ -31,7 +31,9 @@ class TrafficSearchTests(unittest.TestCase):
         self.assertTrue(TrafficSearch('7','JSON field','/data/a.b').matches(wire))
         self.assertTrue(TrafficSearch('','JSON field','data.amount').matches(wire))
         self.assertFalse(TrafficSearch('','JSON field','data.unknown').matches(wire))
-        self.assertTrue(TrafficSearch('','JSON field','').error)
+        for mode in ('Text','Hex bytes','JSON field'):
+            idle=TrafficSearch('',mode)
+            self.assertFalse(idle.error);self.assertTrue(idle.matches(event(b'\xff not JSON')))
         self.assertFalse(TrafficSearch('1','JSON field','data.amount').matches(event(b'\xff')))
         self.assertTrue(TrafficSearch('').matches(event(b'any bytes\0')))
         self.assertTrue(TrafficSearch('A'*4097).error)

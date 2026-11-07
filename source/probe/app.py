@@ -80,7 +80,9 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         self.started = 0; self.rx_total = self.tx_total = 0
         self.display_framing = DisplayFraming(self.new_framer)
         self.record_path = None; self.raw_path = None
-        self.search_job = None
+        self._applied_search = ('','Text','')
+        self._search_mode = 'Text'
+        self._search_error = ''
         self.last_error = ""
         self.manual_disconnect=False
         self.closing=False
@@ -470,6 +472,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                          command=lambda:self.export(rows=[event for _,event in selection]))
         if count>1:return menu
         menu.add_separator()
+        menu.add_command(label="Follow across probes…",state=state,command=lambda:self.window.trace_path(self))
         menu.add_command(label="Analyze message…",state=state,command=self.analyze)
         menu.add_command(label="Protocol Inspector…",state=state,command=lambda:self.analyze("Protocol"))
         menu.add_command(label="Load payload into composer",state=state,command=self.load_selected_payload)
@@ -838,6 +841,8 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Send keyboard for direct input. Traffic, Live plot and Terminal are main workspace pages; the composer target and injection side stay visible. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Detach moves Terminal into its own window; Dock or closing that window returns it to the main workspace. One peer is displayed at a time.\n\n"
             "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to inspect it. Use Load into composer in Analyze to explicitly load exact bytes, then Send to transmit.\n\n"
             "ANALYZE TRAFFIC\nDouble-click a traffic row to open Analyze. Decoded text, Hex + ASCII and Every byte are included there. Protocol Inspector offers Auto (JSON detection) or Raw Bytes; selecting a field highlights its bytes. Copy field path supplies a sequence selector. Analyze remembers the page you last used for that message. Right-click selected rows → Capture Diff compares the exact two selected messages; for a larger selection, choose A/B from that selection. Capture Diff also compares messages or combined same-peer/direction capture chunks, highlights changed/added/removed ranges and can ignore JSON values or byte ranges. Save comparison retains all original bytes. These tools send nothing.\n\n"
+            "TRACE PATH\nUse Trace path at the top or right-click one message > Follow across probes. Choose a second probe, then match exact stream bytes or an optional JSON identifier. Repeated matches require selection. Compare selected reuses Capture Diff. Refresh takes a new read-only snapshot; observed intervals are not device latency. Nothing is sent.\n\n"
+            "SEARCH\nChoose Text, Hex bytes or JSON field, then press Search or Enter. Changing the type resets the applied filter; editing alone never hides rows. Invalid input preserves previous results. Reset or Escape clears the search.\n\n"
             "LIVE PLOT\nOpen the Live plot workspace page. Receive LF/CRLF-terminated RX numbers or CSV, up to four channels: 1,2 followed by LF, then 3,4 followed by LF. Choose the RX peer or automatic selection. Auto accepts numeric lines. Custom extracts a JSON field, text column, named value or fixed binary value; configure message boundaries and the RX parameter. TX-only data is not plotted. Separate peer buffers and the last 300 samples keep plotting bounded.\n\n"
             "DYNAMIC SEQUENCES\nEdit message > Response & next step: Save reply values picks JSON/TLV/byte fields and names variables; Choose next step adds conditions and next/goto/finish/fail/timeout actions. Save rules, then Save message. Insert variable adds ${name}, ${name:json} (a JSON value without surrounding quotes) or ${name:hex}. Variables defines initial values and shows latest reply values. Outgoing frame can rebuild length/checksum after substitution. Missing values stop before sending. Version 3 exports retain rules; legacy files still load.\n\n"
             "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
@@ -989,6 +994,17 @@ def main():
                 primary.engine.send(b"PRIMARY");secondary.engine.send(b"SECONDARY")
                 wait_for(lambda:primary.engine.rx==7 and secondary.engine.rx==9)
                 app.update()
+                for probe,amount in ((primary,100000),(secondary,10000)):
+                    probe.add_event(dict(kind='data',direction='TX',peer='trace-smoke',time=time.time(),
+                        data=json.dumps(dict(sid='trace-smoke',amount=amount)).encode()))
+                trace=app.trace_path(primary);trace.reference.set(next(reversed(trace.references)))
+                trace.field.set('sid');trace.match();app.update_idletasks()
+                if len(trace.matches)!=1:raise RuntimeError('Trace identifier match failed in bundle.')
+                diff=trace.compare().comparison
+                if not any(d.kind in ('changed','removed','added') for d in diff.differences):raise RuntimeError('Trace Capture Diff failed in bundle.')
+                trace.destroy()
+                primary.clear_search();primary.vars['search_mode'].set('JSON field')
+                if len(primary.table.get_children())!=len(primary.events):raise RuntimeError('Search type hid traffic before Search in bundle.')
                 app.close_probe(secondary)
                 if not primary.engine.ready:raise RuntimeError("Closing one probe stopped another connection.")
 

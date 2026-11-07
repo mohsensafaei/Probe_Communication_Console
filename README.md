@@ -1,10 +1,10 @@
-# Probe for Windows 1.5.0
+# Probe for Windows 1.6.0
 
 Portable TCP, UDP and USB/COM workbench with traffic recording/replay, a live
 ANSI terminal, serial proxies, recorded device simulation and timed test sequences.
 
 Version 1.2 adds **Protocol Inspector**, **Capture Diff**, and **sequence variables
-and conditions**. Click a traffic row to open Analyze, or use its right-click menu. Advanced sequence rules stay inside the message editor.
+and conditions**. Double-click a traffic row to open Analyze, or use its right-click menu. Advanced sequence rules stay inside the message editor.
 
 ## Run
 
@@ -32,7 +32,7 @@ COM port and serial parameters. Close other software that already owns that COM.
 ## Hardware test lab
 
 **Test lab** is at the bottom of the control panel; **Appearance** is removed.
-The title shows version 1.4.2, and the sidebar has eight modes including
+The title shows version 1.6.0, and the sidebar has eight modes including
 **Device Simulator**.
 
 * **Device simulator:** record TX/RX with the real device, then load the capture
@@ -140,7 +140,7 @@ and [validation scope](source/VALIDATION.md).
 ## Traffic, live plot and terminal
 
 The main workspace has three pages: **Traffic**, **Live plot** and **Terminal**.
-Click a traffic row (or select it and press Enter) to open one reusable Analyze
+Double-click a traffic row (or select it and press Enter) to open one reusable Analyze
 window with **Decoded text**, **Hex + ASCII**, **Every byte**, Protocol Inspector
 and Capture Diff. The separate Analyze button and lower byte-inspector panel
 are removed. Receiving, filtering or following traffic does not open windows.
@@ -159,3 +159,15 @@ instrument panels and mint readouts. Geometric Michroma headings, Rajdhani
 controls and Share Tech Mono data fonts are bundled with OFL notices.
 The light palette preserves the same controls and message workflows.
 No vendor logo or proprietary skin is used.
+
+## Follow a message across probes
+
+Use **Trace path…** at the top, or right-click a message → **Follow across probes…**.
+Choose a target probe; compare matching stream bytes or enter an optional JSON ID
+like `sessionId` and press **Find matches**. **Compare selected…** reuses Capture
+Diff. Repeated matches require selection; manual same-flow chunk selection is also
+available. **Refresh traffic** takes a new read-only snapshot. No traffic is sent.
+
+Traffic search applies only with **Search** or **Enter**. Changing the search type
+resets the applied filter; typing alone never hides rows. Invalid input preserves
+the previous results. **Reset** clears the search; RX/TX filtering still applies.

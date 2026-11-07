@@ -70,3 +70,10 @@ their destruction cleanup. The `Probe` entry point remains a root window and
 forwards legacy read/callback access to the selected workspace; new code uses
 `current_probe` explicitly. Hidden workspaces keep bounded models current and
 materialize their table on selection. Runtime dependencies are unchanged.
+
+Trace matching lives in the headless `trace_path.py`; `trace_ui.py` snapshots two
+bounded histories only on request and reuses ComparePane. It adds no acquisition
+hooks or polling. Exact stream matching joins each flow once and caps results at
+100; byte payloads in matches share the reference bytes. Trace windows are released
+when closed or when a listed probe closes. Search draft variables are separate
+from the applied filter; only Search/Enter replaces that filter.

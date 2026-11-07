@@ -29,6 +29,7 @@ class WorkspaceWindow(tk.Tk):
         self.add_button=ttk.Button(bar,text='+',width=3,command=self.new_probe)
         self.add_button.pack(side='left')
         ttk.Label(bar,text='Add probe · connections keep running in every tab').pack(side='left',padx=8)
+        ttk.Button(bar,text='Trace path…',command=self.trace_path).pack(side='left',padx=6)
         ttk.Button(bar,text='Close probe',command=self.close_probe).pack(side='right')
         ttk.Button(bar,text='Rename…',command=self.rename_probe).pack(side='right',padx=6)
         self.probe_tabs=ttk.Notebook(self);self.probe_tabs.pack(fill='both',expand=True)
@@ -93,9 +94,18 @@ class WorkspaceWindow(tk.Tk):
         if name and name.strip():
             self.names[probe]=name.strip()[:40];self.update_probe_title(probe)
 
+    def trace_path(self,source=None):
+        from .trace_ui import TraceWindow
+        previous=self.__dict__.get('trace_window')
+        if previous and previous.winfo_exists():previous.destroy()
+        self.trace_window=TraceWindow(self,source or self.current_probe)
+        return self.trace_window
+
     def close_probe(self,probe=None):
         probe=probe or self.current_probe
         if probe is None or not probe.shutdown():return False
+        trace=self.__dict__.get('trace_window')
+        if trace and trace.winfo_exists() and probe in trace.probes:trace.destroy();self.trace_window=None
         self.probe_tabs.forget(probe);self.probes.remove(probe)
         self.names.pop(probe,None);self.states.pop(probe,None);probe.destroy()
         for variable in probe.vars.values():
