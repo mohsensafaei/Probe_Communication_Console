@@ -30,6 +30,12 @@ class TracePathTests(unittest.TestCase):
         self.assertEqual(matches[0]['span'],'#1:0 → #1:1')
         self.assertEqual(find_matches({'data':b''},rows),[])
 
+    def test_large_repeated_payload_has_only_nonoverlapping_spans(self):
+        needle=b"A"*1048576
+        matches=find_matches({"data":needle},[row(1,needle*8)])
+        self.assertEqual(len(matches),8)
+        self.assertTrue(all(match["data"] is needle for match in matches))
+
     def test_scalar_id_finds_changed_payload_and_preserves_types(self):
         reference={'data':b'000040{"data":{"sid":0,"amount":100000}}'}
         rows=[row(1,b'{"data":{"sid":0,"amount":10000}}'),row(2,b'{"data":{"sid":"0"}}'),row(3,b'{"data":{"sid":false}}'),row(4,b'\xff')]
