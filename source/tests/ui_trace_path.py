@@ -9,6 +9,7 @@ from probe.app import Probe
 
 class TraceUITests(unittest.TestCase):
     def setUp(self):
+        gc.collect()
         self.directory=tempfile.TemporaryDirectory()
         self.patch=patch('probe.app.data_directory',return_value=Path(self.directory.name));self.patch.start()
         self.window=Probe();self.errors=[]
