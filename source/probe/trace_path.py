@@ -46,7 +46,7 @@ def find_matches(reference, rows, field='', limit=100):
             selected=stream[first:last+1]
             span=f'#{selected[0][0]}:{start-offsets[first]} → #{selected[-1][0]}:{end-offsets[last]}'
             result.append(message((key for key,_ in selected),selected[0][1],needle,'Matching bytes in stream',span))
-            start+=1
+            start=end
         if len(result)>=limit:break
     return sorted(result,key=lambda event:event['time'])
 
