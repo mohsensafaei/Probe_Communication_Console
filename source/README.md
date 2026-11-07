@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.6.1** (Linux release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.6.2** (Linux release).
 
 ### Analyze traffic without sending anything
 

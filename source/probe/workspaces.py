@@ -97,7 +97,6 @@ class WorkspaceWindow(tk.Tk):
     def _selected(self,event=None):
         probe=self.current_probe
         if probe:
-            probe.refresh(force=True)
             probe.plot.dirty=True
             probe.terminal.dirty=True
 

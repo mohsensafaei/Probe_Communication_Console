@@ -84,6 +84,49 @@ class MultiProbeTests(unittest.TestCase):
         self.window.close_probe(first);self.spin(lambda:bool(called))
         self.assertTrue(second.engine.ready)
 
+    def test_traffic_received_before_first_map_is_visible(self):
+        self.window.withdraw();self.window.update()
+        probe=self.window.new_probe()
+        self.assertFalse(probe.winfo_ismapped())
+        rows=[dict(kind='data',time=time.time(),direction=d,peer='startup',data=d.encode()) for d in ('TX','RX')]
+        probe.add_events(rows)
+        self.assertEqual(probe.table.get_children(),())
+        self.window.deiconify();self.window.update()
+        self.assertEqual(probe.vars['direction'].get(),'All')
+        self.assertEqual(probe.table.get_children(),probe.order)
+
+    def test_hidden_window_tcp_capture_is_visible_on_restore_without_more_data(self):
+        probe=self.window.current_probe;self.connect(probe,'TCP Server')
+        address=probe.engine.server.sockets[0].getsockname()[:2]
+        with socket.create_connection(address,timeout=3) as client:
+            self.window.withdraw();self.window.update()
+            with patch.object(probe.table,'insert',wraps=probe.table.insert) as insert:
+                client.sendall(b'FIRST TRANSACTION')
+                self.spin(lambda:probe.rx_total==17)
+                self.assertEqual(insert.call_count,0)
+            self.assertTrue(probe.events)
+            self.window.deiconify()
+            self.spin(lambda:probe.table.get_children()==probe.order)
+            self.assertEqual(probe.vars['direction'].get(),'All')
+            client.sendall(b'NEXT')
+            self.spin(lambda:probe.rx_total==21)
+            self.assertEqual(probe.table.get_children(),probe.order)
+
+    def test_traffic_remap_preserves_search_direction_and_pause(self):
+        probe=self.window.current_probe
+        probe.vars['direction'].set('RX');probe.vars['search'].set('KEEP');probe.apply_search()
+        rows=[dict(kind='data',time=time.time(),direction=d,peer='device',data=data)
+              for d,data in (('RX',b'KEEP 1'),('TX',b'KEEP 2'),('RX',b'OTHER'))]
+        self.window.withdraw();self.window.update();probe.add_events(rows)
+        self.window.deiconify();self.window.update()
+        self.assertEqual(probe.table.get_children(),(probe.order[0],))
+        probe.pause();self.window.withdraw();self.window.update()
+        probe.add_event(dict(rows[0],data=b'KEEP 3'))
+        self.window.deiconify();self.window.update()
+        self.assertEqual(probe.table.get_children(),(probe.order[0],))
+        probe.pause()
+        self.assertEqual(probe.table.get_children(),(probe.order[0],probe.order[-1]))
+
     def test_reopen_reuses_saved_settings_and_closes_owned_windows(self):
         second=self.window.new_probe();second.vars['port'].set('4567')
         popup=second.dialog('Owned window');self.window.update()

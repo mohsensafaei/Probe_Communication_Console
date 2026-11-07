@@ -1,5 +1,10 @@
 # Changes
 
+## 1.6.2
+
+- Restore retained Traffic rows when a probe becomes visible, including first display and restoring a hidden window; preserve active filters and Pause without rendering background probes.
+- Cover initial visibility, real TCP reception while hidden and filter/pause restoration in native GUI tests.
+
 ## 1.6.1
 
 - Replace the separate Close probe button with a stable-width tab close icon shown on hover; close the clicked probe without selecting it, and cancel on drag-off.
