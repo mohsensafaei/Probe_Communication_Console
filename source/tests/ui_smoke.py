@@ -1,5 +1,6 @@
 """Run with an X display. Captures previews and verifies end-to-end GUI behavior."""
 import json
+import gc
 import os
 from pathlib import Path
 import tempfile
@@ -60,6 +61,7 @@ class UISmoke(unittest.TestCase):
         self.assertEqual([r["data"] for r in self.app.events.values()],[b"AB"])
 
     def setUp(self):
+        gc.collect()
         directory=tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         patcher=patch("probe.app.data_directory",return_value=Path(directory.name))
