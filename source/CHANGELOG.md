@@ -1,5 +1,9 @@
 # Changes
 
+## Unreleased
+
+- Replace the separate Close probe button with a stable-width tab close icon shown on hover; close the clicked probe without selecting it, and cancel on drag-off.
+
 ## 1.6.0
 
 - Add an on-demand two-probe Trace path: reference selection, exact byte spans across split/coalesced reads, optional scalar JSON identifier and explicit manual matching.

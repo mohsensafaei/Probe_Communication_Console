@@ -552,7 +552,7 @@ and test sequences. Other probes keep receiving and recording when you change
 tabs. **Rename…** (or double-click a probe tab) identifies the position in your
 software path, for example **App → Service** and **Service → POS**. The tab shows
 the transport and a connected indicator. Keyboard shortcuts target the active
-probe. **Close probe** stops only that probe and closes its owned dialogs; closing
+probe. Hover a probe tab to reveal its **×**; click it to stop only that probe and close its owned dialogs. Closing
 the main window stops every connection and drains each recorder.
 
 For two applications plus a device, configure the first probe as TCP Proxy between
