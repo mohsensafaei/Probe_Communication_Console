@@ -121,6 +121,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         self._build()
         self.compact=False
         self.bind("<Configure>",self.resized,add="+")
+        self.bind("<Map>",lambda event:self.refresh(),add="+")
         self._mode_changed()
         self.after(40, self.poll)
         if demo: self.after(150, self.demo)
