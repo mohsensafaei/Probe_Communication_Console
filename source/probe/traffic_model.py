@@ -36,9 +36,11 @@ class TrafficHistory:
             self.events[key] = event
             added.append(key)
             self.retained_bytes += len(event["data"])
+            if 'original_hex' in event:self.retained_bytes+=len(event['original_hex'])//2
             while len(self.events) > self.max_rows or self.retained_bytes > self.max_bytes:
                 old, discarded = self.events.popitem(last=False)
                 self.retained_bytes -= len(discarded["data"])
+                if 'original_hex' in discarded:self.retained_bytes-=len(discarded['original_hex'])//2
                 self.evicted += 1
                 if int(old) <= boundary:
                     removed.append(old)

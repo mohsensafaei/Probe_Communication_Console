@@ -1,5 +1,29 @@
 # Probe 1.2.1 Windows validation
 
+## Plugin API 1 validation (1.7.0)
+
+Local CPython 3.12.14 / Linux checks cover plugin metadata without execution,
+per-flow/session state, relative helper imports, RX/TX permissions, ordered and
+framed transforms, timeout/import/close failures, analysis priority, binary/JSON
+examples, real TCP proxy transformations, blocked sends and original RX recording.
+Native Tk checks cover installation, live fields, editing/rebuild/action previews,
+manual-analysis plot isolation, named plot sources and missing-plugin recovery.
+The shared implementation passes 183 backend checks (8 environment-dependent skips)
+and 67 GUI checks. Both branch source trees were exercised on Linux; native Windows
+execution remains a separate CI gate after publication.
+
+The Linux PyInstaller folder build executes a newly written external Python plugin
+with bundled hashlib/hmac/struct, transforms serial loopback data, checks preserved
+original bytes and runs the existing transport/HID-helper diagnostics. The extracted
+bundle verifier additionally checks the guide/examples and GUI without PYTHONPATH.
+
+`benchmarks/plugin_benchmark.py` measures warm 1 KiB RPC overhead and worker throughput.
+One local run measured 0.071 ms median / 0.451 ms p99 for a trivial transform and
+13,359 analyses/second; this excludes startup and is not a real-time guarantee.
+A before/after disabled-plugin GUI comparison retained zero background table
+insertions and roughly 34.6 MiB of Python allocations with four probes. Synthetic
+batch times varied by approximately 3–7%; measure on the laboratory host.
+
 ## Native Windows gate
 
 The `Windows tests and portable builds` workflow on the `windows` branch uses

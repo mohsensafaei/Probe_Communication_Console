@@ -69,6 +69,7 @@ class TrafficWorkspace:
             payload=f"{text}   ·   {data[:128].hex(' ').upper()}" if view=="Text + Hex" else text
         if len(data)>512:payload+=" …"
         if event.get("display_partial"):payload+=" · [partial: "+event["display_reason"]+"]"
+        if "original_hex" in event:payload=("[Blocked] " if event.get('plugin_error') else "[Modified] ")+payload
         return (idx,dt.datetime.fromtimestamp(event["time"]).strftime("%H:%M:%S.%f")[:-3],event["direction"],event["peer"],len(data),payload)
 
     def add_event(self,event):
@@ -77,6 +78,8 @@ class TrafficWorkspace:
     def add_events(self,events):
         self.history.max_rows,self.history.max_bytes=self.MAX_ROWS,self.MAX_BYTES
         change=self.history.extend(events)
+        if self.plugins.worker:
+            for key in change.added:self.plugins.analyze(key,self.events[key])
         removed=tuple(key for key in change.removed if self.table.exists(key))
         if removed:self.table.delete(*removed);self._shown_count-=len(removed)
         if self.paused or not self.winfo_ismapped() or not change.added:return change
@@ -124,6 +127,7 @@ class TrafficWorkspace:
 
     def clear(self):
         self.history.clear();self.queue.reset_stats();self.dropped=0
+        self.plugins.results.clear();self.plugins.bytes=0
         self.display_framing.clear();self.plot.clear()
         self.table.delete(*self.table.get_children());self._shown_count=0
         self.search_counts()

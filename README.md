@@ -1,4 +1,6 @@
-# Probe for Windows 1.6.2
+# Probe for Windows 1.7.0
+
+User Python plugins: **Traffic → Plugins…**, with results in Analyze / Live plot and explicit opt-in message transforms. See [the plugin guide](source/PLUGINS.md).
 
 Portable TCP, UDP and USB/COM workbench with traffic recording/replay, a live
 ANSI terminal, serial proxies, recorded device simulation and timed test sequences.
@@ -32,7 +34,7 @@ COM port and serial parameters. Close other software that already owns that COM.
 ## Hardware test lab
 
 **Test lab** is at the bottom of the control panel; **Appearance** is removed.
-The title shows version 1.6.2, and the sidebar has eight modes including
+The title shows version 1.7.0, and the sidebar has eight modes including
 **Device Simulator**.
 
 * **Device simulator:** record TX/RX with the real device, then load the capture

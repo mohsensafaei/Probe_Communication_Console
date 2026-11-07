@@ -145,6 +145,8 @@ class WorkbenchLayout:
         self.traffic_toolbar=toolbar
         self.label(toolbar,"TRAFFIC",12,True,color=c["blue"]).pack(side="left",padx=(0,14))
         self.combo(toolbar,"direction",["All","RX","TX"],width=4,callback=lambda:self.refresh(force=True)).pack(side="left",padx=(0,6))
+        self.plugins_button=ttk.Button(toolbar,text="Plugins…",command=lambda:self.plugins.open())
+        self.plugins_button.pack(side="left",padx=(0,6))
         ttk.Button(toolbar,text="Clear",width=5,command=self.clear).pack(side="right",padx=(4,0))
         ttk.Button(toolbar,text="Export",width=6,command=self.export).pack(side="right",padx=(4,0))
         self.pause_button=ttk.Button(toolbar,text="Pause",width=6,command=self.pause); self.pause_button.pack(side="right",padx=(4,0))

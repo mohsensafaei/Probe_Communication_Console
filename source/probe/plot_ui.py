@@ -1,5 +1,6 @@
 """Small, bounded numeric RX plot. No acquisition/plotting dependencies."""
 import json
+from collections import OrderedDict
 from .plot_extract import KINDS, TYPES, validate
 from .plot_model import NumericSamples
 from .protocol import json_frame
@@ -11,6 +12,7 @@ class LivePlotPane(ttk.Frame):
     AUTO="Auto (first numeric peer)"
     def __init__(self,parent,app):
         super().__init__(parent,padding=8);self.app=app;self.model=NumericSamples();self.dirty=True
+        self.plugin_models=OrderedDict();self.empty_plugins=NumericSamples()
         self.mode=tk.StringVar(value="Auto");self.config=None
         try:
             saved=json.loads(app.vars["plot_config"].get())
@@ -27,12 +29,12 @@ class LivePlotPane(ttk.Frame):
         self.controls=ttk.Frame(self);self.controls.grid(row=1,column=0,sticky="ew",pady=(6,0))
         bar=self.controls;bar.columnconfigure(4,weight=1)
         ttk.Label(bar,text="Value source").grid(row=0,column=0,padx=(0,6))
-        self.mode_combo=ttk.Combobox(bar,textvariable=self.mode,values=("Auto","Custom"),state="readonly",width=8)
+        self.mode_combo=ttk.Combobox(bar,textvariable=self.mode,values=("Auto","Custom"),state="readonly",width=18)
         self.mode_combo.grid(row=0,column=1)
         self.mode_combo.bind("<<ComboboxSelected>>",lambda e:self.change_mode())
         self.configure_button=ttk.Button(bar,text="Configure custom…",command=self.configure_custom)
         self.configure_button.grid(row=0,column=2,padx=8)
-        ttk.Label(bar,text="RX peer").grid(row=0,column=3,padx=(0,6))
+        ttk.Label(bar,text="Peer").grid(row=0,column=3,padx=(0,6))
         self.peer_combo=ttk.Combobox(bar,textvariable=self.peer,values=(self.AUTO,),state="readonly",width=18)
         self.peer_combo.grid(row=0,column=4,sticky="ew")
         self.peer_combo.bind("<<ComboboxSelected>>",lambda e:self.render(force=True))
@@ -42,10 +44,12 @@ class LivePlotPane(ttk.Frame):
         self.canvas.bind("<Configure>",lambda e:self.render(force=True));self.describe();self.render(force=True)
 
     def change_mode(self):
+        if self.mode.get().startswith('Plugin: '):
+            self.peer.set(self.AUTO);self.describe();self.render(force=True);return
         if self.mode.get()=="Custom" and self.config is None:
             self.configure_custom()
             return
-        self.clear()
+        self.clear(plugins=False)
         self.describe();self.save_config()
 
     def save_config(self):
@@ -55,6 +59,7 @@ class LivePlotPane(ttk.Frame):
 
     def describe(self):
         if self.mode.get()=="Auto":self.description.set("Auto: numbers / CSV, up to four channels. Each sample ends with LF.")
+        elif self.mode.get().startswith('Plugin: '):self.description.set(self.mode.get()+" · select a direction / peer below. Plugin analysis does not change original bytes.")
         elif self.config:
             c=self.config
             value=c["field"] if c["kind"] in ("JSON field","Named value") else f"column {c['column']}" if c["kind"]=="Delimited column" else f"offset {c['offset']} · {c['type']} · {c['endian']} endian"
@@ -120,10 +125,25 @@ class LivePlotPane(ttk.Frame):
     def feed(self,event):
         if event.get("direction")!="RX":return
         self.model.feed(str(event.get("peer","")),event["data"]);self.dirty=True
-        values=(self.AUTO,)+tuple(self.model.peers)
-        if tuple(self.peer_combo.cget("values"))!=values:self.peer_combo.configure(values=values)
+        if not self.mode.get().startswith('Plugin: '):
+            values=(self.AUTO,)+tuple(self.model.peers)
+            if tuple(self.peer_combo.cget("values"))!=values:self.peer_combo.configure(values=values)
 
-    def clear(self):
+    def feed_plugins(self,event):
+        for row in event['value']:
+            for name,sample in row.get('result',{}).get('values',{}).items():
+                value=sample.get('value') if isinstance(sample,dict) else sample
+                unit=sample.get('unit','') if isinstance(sample,dict) else ''
+                source=f"Plugin: {row['name']} / {name}"+(f" ({unit})" if unit else '')
+                if source not in self.plugin_models:
+                    if len(self.plugin_models)>=16:self.plugin_models.popitem(last=False)
+                    self.plugin_models[source]=NumericSamples()
+                self.plugin_models.move_to_end(source)
+                self.plugin_models[source].feed(f"{event['direction']} · {event['peer']}",f'{value}\n'.encode())
+        self.mode_combo.configure(values=('Auto','Custom',*self.plugin_models));self.dirty=True
+
+    def clear(self,plugins=True):
+        if plugins:self.plugin_models.clear();self.mode_combo.configure(values=('Auto','Custom'))
         self.model=NumericSamples(self.config if self.mode.get()=="Custom" else None);self.peer.set(self.AUTO);self.peer_combo.configure(values=(self.AUTO,));self.render(force=True)
 
     def render(self,force=False):
@@ -131,14 +151,16 @@ class LivePlotPane(ttk.Frame):
         connection="Connected" if connected else "Disconnected"
         if not force and (self.app.paused or not self.dirty and getattr(self,"connection",None)==connection):return
         self.connection=connection;self.dirty=False;cv=self.canvas;c=self.app.colors;cv.delete("all")
-        peer=self.model.first if self.peer.get()==self.AUTO else self.peer.get()
-        state=self.model.peers.get(peer);rows=list(state["rows"]) if state else []
+        model=self.plugin_models.get(self.mode.get(),self.empty_plugins) if self.mode.get().startswith('Plugin: ') else self.model
+        self.peer_combo.configure(values=(self.AUTO,*model.peers))
+        peer=model.first if self.peer.get()==self.AUTO else self.peer.get()
+        state=model.peers.get(peer);rows=list(state["rows"]) if state else []
         w=max(120,cv.winfo_width());h=max(100,cv.winfo_height())
         if not rows:
-            received=sum(state["received"] for state in self.model.peers.values())
+            received=sum(state["received"] for state in model.peers.values())
             note="Waiting for numeric RX samples." if not received else f"Received {received} bytes; no complete numeric sample for this peer."
             cv.create_text(18,25,text=note,anchor="w",fill=c["text"],font=(self.app.ui_font,12,"bold"),width=max(100,w-36))
-            cv.create_text(18,68,text=self.description.get()+"\nUse the controls below to select a value source and RX peer. Only RX is plotted.",anchor="nw",fill=c["muted"],font=(self.app.ui_font,11),width=max(100,w-36))
+            cv.create_text(18,68,text=self.description.get()+"\nUse the controls below to select a value source and peer. Auto / Custom plot RX; plugin sources follow their configured directions.",anchor="nw",fill=c["muted"],font=(self.app.ui_font,11),width=max(100,w-36))
             self.status.set(f"{connection} · {self.mode.get()} · last 300 samples per peer · unmatched / invalid messages are skipped.")
             return
         lo=min(min(row) for row in rows);hi=max(max(row) for row in rows)

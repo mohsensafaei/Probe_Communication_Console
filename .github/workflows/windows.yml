@@ -36,7 +36,9 @@ jobs:
       - name: Models, transports, captures and timed sequences
         run: .windows-venv/Scripts/python.exe -m unittest discover -s tests -v
       - name: Core processing benchmark (informational)
-        run: .windows-venv/Scripts/python.exe benchmarks/core_benchmark.py
+        run: |
+          .windows-venv/Scripts/python.exe benchmarks/core_benchmark.py
+          .windows-venv/Scripts/python.exe benchmarks/plugin_benchmark.py
       - name: Native Tk GUI, Test lab and Appearance removal
         run: .windows-venv/Scripts/python.exe -m unittest discover -s tests -p "ui_*.py" -v
       - name: Native display benchmark (informational)

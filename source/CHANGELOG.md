@@ -1,5 +1,13 @@
 # Changes
 
+## 1.7.0
+
+- Add per-probe Python plugins with a one-function process API and optional rebuild, action and opt-in transform hooks.
+- Reuse Analyze fields, Capture Diff previews and named Live plot sources; keep original bytes and explicit sending.
+- Isolate user code in one lazy reusable worker per probe with bounded queues/results, timeouts and connection state; report analysis loss and block failed transforms.
+- Support direction filters, portable plugin folders, complete-frame transforms, original RX recording and offline examples / authoring guide.
+- Exercise real TCP proxy/serial behavior, native UI workflows, worker performance and frozen plugin execution.
+
 ## 1.6.2
 
 - Restore retained Traffic rows when a probe becomes visible, including first display and restoring a hidden window; preserve active filters and Pause without rendering background probes.
