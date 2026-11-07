@@ -45,6 +45,7 @@ class TraceWindow(tk.Toplevel,Actions):
         self.view.bind('<Double-1>',lambda _:self.action(self.compare))
         self.view.tag_configure('Changed',foreground=source.colors['red'])
         self.snapshot()
+        self.deiconify();self.lift();self.focus_set()
 
     def destroy(self):
         if self.window.__dict__.get('trace_window') is self:self.window.trace_window=None
