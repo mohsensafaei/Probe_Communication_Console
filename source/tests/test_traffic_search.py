@@ -1,5 +1,5 @@
 import unittest
-from probe.traffic_search import TrafficSearch
+from probe.traffic_search import MODES, TrafficSearch
 
 
 def event(data,peer='COM34'):
@@ -23,17 +23,12 @@ class TrafficSearchTests(unittest.TestCase):
         self.assertTrue(TrafficSearch('STRASSE').matches(event('Straße'.encode())))
         self.assertFalse(TrafficSearch('missing').matches(event(b'APPROVED')))
 
-    def test_json_field_path_value_and_exists(self):
-        wire=event(b'000075{"data":{"amount":"10000","other":"20000","items":[{"id":3}],"a.b":7}}')
-        self.assertTrue(TrafficSearch('100','JSON field','data.amount').matches(wire))
-        self.assertFalse(TrafficSearch('20000','JSON field','data.amount').matches(wire))
-        self.assertTrue(TrafficSearch('3','JSON field','data.items[0].id').matches(wire))
-        self.assertTrue(TrafficSearch('7','JSON field','/data/a.b').matches(wire))
-        self.assertTrue(TrafficSearch('','JSON field','data.amount').matches(wire))
-        self.assertFalse(TrafficSearch('','JSON field','data.unknown').matches(wire))
-        for mode in ('Text','Hex bytes','JSON field'):
+    def test_only_text_and_hex_modes_and_idle_queries(self):
+        self.assertEqual(MODES,('Text','Hex bytes'))
+        for mode in MODES:
             idle=TrafficSearch('',mode)
             self.assertFalse(idle.error);self.assertTrue(idle.matches(event(b'\xff not JSON')))
-        self.assertFalse(TrafficSearch('1','JSON field','data.amount').matches(event(b'\xff')))
+        self.assertTrue(TrafficSearch('100','Text').matches(event(b'{"data":{"amount":"10000"}}')))
+        self.assertTrue(TrafficSearch('1','JSON field').error)
         self.assertTrue(TrafficSearch('').matches(event(b'any bytes\0')))
         self.assertTrue(TrafficSearch('A'*4097).error)

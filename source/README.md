@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.6.0** (Linux release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.6.1** (Linux release).
 
 ### Analyze traffic without sending anything
 
@@ -383,10 +383,7 @@ and invalid input keeps the previous results. RX/TX filtering still applies.
   (including escaped Unicode) or peer name. Example: `APPROVED` or `10000`.
 * **Hex bytes**: an exact, byte-aligned contiguous sequence, e.g. `A4 FF 00`,
   `A4FF00` or `0xA4,0xFF,0x00`. Incomplete/invalid hex shows Invalid search.
-* **JSON field**: enter `data.amount` or `/data/amount` in Field, then a value to
-  find within it. Array paths such as `data.items[0].id` are supported. A blank
-  value finds messages where the field exists. UTF-8 JSON with optional ASCII
-  length prefix is supported.
+
 
 Search checks all payload bytes, including content beyond the shortened table
 preview. Results show matching rows / retained rows. It updates as messages arrive

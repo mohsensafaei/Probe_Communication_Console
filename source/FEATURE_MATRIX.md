@@ -2,7 +2,7 @@
 
 This is a workflow comparison, not a claim of byte-for-byte compatibility with all releases of either application. The requested SSCOM version was not specified. Hercules describes Serial, TCP Client/Server, UDP and HW-group configuration; SSCOM releases vary and some include terminal emulation, waveform display or STM32 ISP tools.
 
-| Feature | Probe 1.6.0 Linux | Notes |
+| Feature | Probe 1.6.1 Linux | Notes |
 | --- | --- | --- |
 | Multiple probe workspaces | Implemented | Up to eight independent named tabs, concurrent endpoints and recording, background model updates, active-tab shortcuts and isolated shutdown. |
 | Trace path across two probes | Implemented | Read-only retained snapshots; exact byte spans across chunks or optional scalar JSON ID; explicit ambiguity/manual selection, observed intervals and existing Capture Diff. No automatic protocol conversion or loss diagnosis. |

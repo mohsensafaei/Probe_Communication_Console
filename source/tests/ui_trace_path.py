@@ -73,24 +73,38 @@ class TraceUITests(unittest.TestCase):
     def test_draft_search_never_filters_and_invalid_submit_keeps_results(self):
         self.window.probe_tabs.select(self.first);self.window.update()
         self.add(self.first,b'\0\xff');self.add(self.first,b'{"sid":"A"}')
-        for mode in ('Hex bytes','JSON field','Text','JSON field'):
-            self.first.vars['search_mode'].set(mode);self.window.update()
-            self.assertEqual(len(self.first.table.get_children()),2)
-        self.first.vars['search_field'].set('sid');self.first.vars['search'].set('A')
+        with patch.object(self.first.table,'delete',wraps=self.first.table.delete) as clear:
+            for mode in ('Hex bytes','Text','Hex bytes','Text'):
+                self.first.vars['search_mode'].set(mode);self.window.update()
+                self.assertEqual(len(self.first.table.get_children()),2)
+            self.assertEqual(clear.call_count,0)
+        self.assertNotIn('search_field',self.first.vars)
+        self.first.vars['search'].set('A')
         self.window.update();self.assertEqual(len(self.first.table.get_children()),2)
         self.first.search_button.invoke();self.assertEqual(len(self.first.table.get_children()),1)
         self.first.vars['search'].set('no match');self.window.update()
         self.assertEqual(len(self.first.table.get_children()),1)
-        self.first.vars['search_field'].set('[');self.first.apply_search()
+        self.first.vars['search_mode'].set('Hex bytes');self.first.vars['search'].set('00 FF');self.first.apply_search()
+        self.first.vars['search'].set('A');self.first.apply_search()
         self.assertEqual(len(self.first.table.get_children()),1)
         self.assertEqual(self.first.search_count.cget('text'),'Invalid search')
-        self.first.vars['search_mode'].set('Hex bytes');self.window.update()
+        self.first.vars['search_mode'].set('Text');self.window.update()
         self.assertEqual(len(self.first.table.get_children()),2)
         self.add(self.first,b'new traffic');self.assertEqual(len(self.first.table.get_children()),3)
         self.first.clear_search();self.first.vars['search'].set('new traffic')
         self.window.focus_force();self.first.search_entry.focus_set();self.window.update()
         self.first.search_entry.event_generate('<Return>');self.window.update()
         self.assertEqual(len(self.first.table.get_children()),1)
+
+    def test_legacy_json_search_preferences_and_profiles_load_as_text(self):
+        import json
+        path=Path(self.directory.name)/'settings-probe-3.json'
+        path.write_text(json.dumps(dict(last=dict(search_mode='JSON field',search_field='sid'))))
+        probe=self.window.new_probe();self.assertEqual(probe.vars['search_mode'].get(),'Text')
+        self.add(probe,b'raw data');probe.profiles={'Legacy':dict(search_mode='JSON field',search_field='sid',search='missing')}
+        probe.vars['profile'].set('Legacy');probe.load_profile();self.window.update()
+        self.assertEqual(probe.vars['search_mode'].get(),'Text')
+        self.assertEqual(len(probe.table.get_children()),1)
 
 
 if __name__=='__main__':unittest.main()

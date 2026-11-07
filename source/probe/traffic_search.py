@@ -3,7 +3,7 @@ import json
 import re
 from .codec import parse_hex, visible
 
-MODES=("Text","Hex bytes","JSON field")
+MODES=("Text","Hex bytes")
 
 
 def json_body(data):
@@ -30,12 +30,12 @@ def leaf_text(value):
 
 
 class TrafficSearch:
-    def __init__(self,query='',mode='Text',field='',encoding='utf-8'):
-        self.error='';self.query=query.strip();self.mode=mode;self.encoding=encoding;self.keys=[];self.needle=None
-        self.active=bool(self.query or mode=='JSON field' and field.strip())
+    def __init__(self,query='',mode='Text',encoding='utf-8'):
+        self.error='';self.query=query.strip();self.mode=mode;self.encoding=encoding;self.needle=None
+        self.active=bool(self.query)
         try:
-            if mode not in MODES:raise ValueError('Choose Text, Hex bytes or JSON field.')
-            if len(query)>4096 or len(field)>256:raise ValueError('Search is limited to 4096 characters; field paths to 256.')
+            if mode not in MODES:raise ValueError('Choose Text or Hex bytes.')
+            if len(query)>4096:raise ValueError('Search is limited to 4096 characters.')
             # Preserve existing saved/typed hex: queries in Text mode.
             if mode=='Text' and self.query.lower().startswith('hex:'):
                 self.mode='Hex bytes';self.query=self.query[4:].strip()
@@ -43,7 +43,6 @@ class TrafficSearch:
             if self.mode=='Hex bytes' and self.query:
                 self.needle=parse_hex(self.query)
                 if not self.needle:raise ValueError('Enter complete hex bytes, e.g. A4 FF.')
-            if self.mode=='JSON field' and self.active:self.keys=field_keys(field.strip())
         except ValueError as exc:self.error=str(exc)
         self.term=self.query.casefold()
 
@@ -52,12 +51,6 @@ class TrafficSearch:
         if not self.active:return True
         data=event['data']
         if self.mode=='Hex bytes':return self.needle in data
-        if self.mode=='JSON field':
-            try:
-                value=json_body(data)
-                for key in self.keys:value=value[int(key)] if isinstance(value,list) else value[key]
-                return self.term in leaf_text(value).casefold()
-            except (ValueError,TypeError,KeyError,IndexError,RecursionError):return False
         if event.get('hid'):
             fields=event['hid'].get('fields',[])
             if any(self.term in f"{f['field']}={f['value']}".casefold() for f in fields):return True
