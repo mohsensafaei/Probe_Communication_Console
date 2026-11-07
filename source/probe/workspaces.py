@@ -30,11 +30,22 @@ class WorkspaceWindow(tk.Tk):
         self.add_button.pack(side='left')
         ttk.Label(bar,text='Add probe · connections keep running in every tab').pack(side='left',padx=8)
         ttk.Button(bar,text='Trace path…',command=self.trace_path).pack(side='left',padx=6)
-        ttk.Button(bar,text='Close probe',command=self.close_probe).pack(side='right')
         ttk.Button(bar,text='Rename…',command=self.rename_probe).pack(side='right',padx=6)
-        self.probe_tabs=ttk.Notebook(self);self.probe_tabs.pack(fill='both',expand=True)
+        size=max(14,round(self.winfo_fpixels('12p')))
+        self._close_blank=tk.PhotoImage(master=self,width=size,height=size)
+        self._close_icon=tk.PhotoImage(master=self,width=size,height=size)
+        self.style.element_create('Probe.close','image',self._close_blank,('active',self._close_icon))
+        self.style.layout('Probes.TNotebook.Tab',[('Notebook.tab',{'sticky':'nswe','children':[
+            ('Notebook.padding',{'sticky':'nswe','children':[
+                ('Notebook.focus',{'sticky':'nswe','children':[
+                    ('Notebook.label',{'side':'left','sticky':''}),
+                    ('Probe.close',{'side':'right','sticky':''})]})]})]})])
+        self._close_pressed=None
+        self.probe_tabs=ttk.Notebook(self,style='Probes.TNotebook');self.probe_tabs.pack(fill='both',expand=True)
         self.probe_tabs.bind('<<NotebookTabChanged>>',self._selected)
-        self.probe_tabs.bind('<Double-1>',lambda e:self.rename_probe())
+        self.probe_tabs.bind('<ButtonPress-1>',self._close_press)
+        self.probe_tabs.bind('<ButtonRelease-1>',self._close_release)
+        self.probe_tabs.bind('<Double-1>',self._rename_tab)
         self.protocol('WM_DELETE_WINDOW',self.close)
         for key,method,args in (('<Control-Return>','send',()),('<Control-l>','clear',()),
                                 ('<Control-s>','export',()),('<F1>','help',()),
@@ -66,6 +77,9 @@ class WorkspaceWindow(tk.Tk):
         if len(self.probes)>=self.MAX_PROBES:return
         slot=next(i for i in range(1,self.MAX_PROBES+1) if all(p.slot!=i for p in self.probes))
         probe=self.factory(self.probe_tabs,slot=slot,demo=demo)
+        size=self._close_icon.width();stroke=max(1,size//10)
+        for x in range(size//3, size-size//3):
+            for y in (x,size-1-x):self._close_icon.put(probe.colors['text'],to=(x,y,x+stroke,y+stroke))
         self.probes.append(probe);self.names[probe]=f'Probe {slot}'
         self.probe_tabs.add(probe,text=self.names[probe])
         self.probe_tabs.select(probe)
@@ -86,6 +100,26 @@ class WorkspaceWindow(tk.Tk):
             probe.refresh(force=True)
             probe.plot.dirty=True
             probe.terminal.dirty=True
+
+    def _close_at(self,event):
+        if self.probe_tabs.identify(event.x,event.y)=='Probe.close':
+            return self.probe_tabs.tabs()[self.probe_tabs.index(f'@{event.x},{event.y}')]
+
+    def _close_press(self,event):
+        self._close_pressed=self._close_at(event)
+        if self._close_pressed:return 'break'
+
+    def _close_release(self,event):
+        pressed=self._close_pressed;self._close_pressed=None
+        if pressed:
+            if pressed==self._close_at(event):
+                probe=next((p for p in self.probes if str(p)==pressed),None)
+                if probe:self.close_probe(probe)
+            return 'break'
+
+    def _rename_tab(self,event):
+        if self._close_at(event):return self._close_press(event)
+        self.rename_probe()
 
     def rename_probe(self):
         probe=self.current_probe

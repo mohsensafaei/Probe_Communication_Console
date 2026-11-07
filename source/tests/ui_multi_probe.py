@@ -102,5 +102,26 @@ class MultiProbeTests(unittest.TestCase):
         self.assertFalse(self.window.current_probe.closing)
         self.assertTrue(self.window.current_probe.winfo_ismapped())
 
+    def test_hover_close_targets_background_tab_and_cancelled_press(self):
+        first=self.window.current_probe;second=self.window.new_probe()
+        self.connect(first,'USB / Serial');self.connect(second,'USB / Serial')
+        tabs=self.window.probe_tabs;self.window.update()
+        point=None
+        for y in range(8,44,4):
+            for x in range(8,tabs.winfo_width(),2):
+                if tabs.identify(x,y)=='Probe.close' and tabs.index(f'@{x},{y}')==0:point=(x,y);break
+            if point:break
+        self.assertIsNotNone(point)
+        x,y=point;tabs.event_generate('<Motion>',x=x,y=y);self.window.update()
+        tabs.event_generate('<ButtonPress-1>',x=x,y=y)
+        self.assertIs(self.window.current_probe,second)
+        tabs.event_generate('<ButtonRelease-1>',x=0,y=80);self.window.update()
+        self.assertEqual(len(self.window.probes),2)
+        tabs.event_generate('<ButtonPress-1>',x=x,y=y)
+        tabs.event_generate('<ButtonRelease-1>',x=x,y=y);self.window.update()
+        self.assertNotIn(first,self.window.probes);self.assertIs(self.window.current_probe,second)
+        self.assertTrue(second.engine.ready)
+        second.engine.send(b'STILL CONNECTED');self.spin(lambda:second.engine.rx==15)
+
 
 if __name__=='__main__':unittest.main()
