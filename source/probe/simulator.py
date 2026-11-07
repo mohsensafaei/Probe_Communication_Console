@@ -68,8 +68,7 @@ async def serve_simulator(engine: "Engine") -> None:
                 else: await asyncio.sleep(0)
                 if signal.is_set(): return False
                 if payload:
-                    await write(payload)
-                    engine.event("data", direction="RX", peer=peer, data=payload)
+                    await engine._transfer(payload,'RX',peer,write)
             if signal.is_set(): return False
             matches += 1
             engine.event("simulator", state="matched", matches=matches,
@@ -146,6 +145,7 @@ async def serve_simulator(engine: "Engine") -> None:
                     await asyncio.wait_for(writer.wait_closed(), 1)
                 engine.writers.discard(writer)
                 writers.pop(peer, None)
+                await engine._plugin_end(peer)
                 matchers.pop(peer, None)
                 engine.clients.pop(peer, None)
                 engine.event("peers", peers=list(writers))

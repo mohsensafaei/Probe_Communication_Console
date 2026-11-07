@@ -1,6 +1,10 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.6.2** (Linux release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.7.0** (Linux release).
+
+### Your Python plugins
+
+Open **Traffic → Plugins…** to add a Python file or folder. Analyze custom fields, edit/rebuild messages, run manual actions and plot named values. Message changes require explicit permission. See [PLUGINS.md](PLUGINS.md) and `examples/plugins` for the small API and working binary / JSON examples.
 
 ### Analyze traffic without sending anything
 

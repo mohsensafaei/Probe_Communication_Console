@@ -30,7 +30,8 @@ def _writer(commands,replies,errors,pending):
                             row=dict(value)
                             if 'data' in row:row['hex']=row.pop('data').hex().upper()
                             handles['capture'].write(json.dumps(row,ensure_ascii=True)+'\n')
-                        if handles['raw'] and value.get('kind')=='data' and value.get('direction')=='RX':handles['raw'].write(value['data'])
+                        if handles['raw'] and value.get('kind')=='data' and value.get('direction')=='RX':
+                            handles['raw'].write(bytes.fromhex(value['original_hex']) if 'original_hex' in value else value['data'])
                         if time.monotonic()-last_flush>=.05:
                             for f in handles.values():
                                 if f:f.flush()

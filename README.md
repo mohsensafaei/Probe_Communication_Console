@@ -1,4 +1,6 @@
-# Probe for Linux 1.6.2
+# Probe for Linux 1.7.0
+
+User Python plugins: **Traffic → Plugins…**, with results in Analyze / Live plot and explicit opt-in message transforms. See [the plugin guide](source/PLUGINS.md).
 
 TCP, UDP and USB/serial communications console with an ANSI terminal, binary
 inspector, capture/replay, serial proxy and Serial-to-TCP bridge.

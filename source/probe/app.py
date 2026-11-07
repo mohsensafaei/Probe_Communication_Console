@@ -93,7 +93,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                         app_peer_port="COM21", simulator_port="COM20", simulator_peer_port="COM21",
                         send_mode="Text", encoding="utf-8", ending="None", checksum="None",
                         prefix="", suffix="", interval="1000", framing="Chunks", delimiter="0A",
-                        frame_size="16", gap="50", view="Text + Hex", search="", search_mode="Text", direction="All",
+                        frame_size="16", gap="50", view="Text + Hex", search="", search_mode="Text", direction="All", plugins="[]",
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
                         theme="Probe Dark", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
                         sequence_advance="After interval", sequence_reply_timeout="2000", sequence_variables="{}",
@@ -119,6 +119,8 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         else:
             self._style()
         self._build()
+        from .plugin_ui import Plugins
+        self.plugins=Plugins(self)
         self.compact=False
         self.bind("<Configure>",self.resized,add="+")
         self.bind("<Map>",lambda event:self.refresh(),add="+")
@@ -294,6 +296,8 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             return
         try:
             cfg=self.values(); self.validate(cfg)
+            if self.plugins.worker is None and any(e.get('enabled') and e.get('changes') for e in self.plugins.entries):
+                raise ValueError('A message-changing plugin is unavailable. Fix or disable it in Plugins before connecting.')
             if cfg["mode"] == "Device Simulator": cfg["simulator_model"] = self.simulator_model
             if self.engine and self.engine.thread and self.engine.thread.is_alive():
                 raise RuntimeError("Previous session is still stopping.")
@@ -301,6 +305,8 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             self.last_error=""
             self.manual_disconnect=False
             self.engine=Engine(self.emit)
+            self.engine.plugins=self.plugins.worker
+            self.engine.workspace=self.slot
             self.terminal.reset()
             if cfg["mode"]!="HID Monitor":self.apply_auto()
             if self.record_path:self.engine.record(self.record_path)
@@ -327,6 +333,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         if hasattr(self,"status"): self.status.configure(text=message,fg=self.colors["red"] if error else self.colors["muted"])
 
     def poll(self):
+        self.plugins.poll()
         changed=False
         deadline=time.perf_counter()+.008
         for _ in range(180):
@@ -783,8 +790,14 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         if self.active:self.set_status("Disconnect before loading a profile.",True);return
         profile=self.profiles.get(self.vars["profile"].get())
         if not profile:self.set_status("This profile has not been saved yet.",True);return
+        previous=self.values()
         for k,v in profile.items():
             if k in self.vars and k not in ("repeat","target","auto","theme"):self.vars[k].set(v)
+        try:self.plugins.configure(json.loads(self.vars['plugins'].get()))
+        except (ValueError,OSError,SyntaxError,KeyError) as exc:
+            for key,value in previous.items():
+                if key in self.vars:self.vars[key].set(value)
+            self.set_status('Profile not loaded; plugins unavailable: '+str(exc),True);return
         self.payload.delete("1.0","end");self.payload.insert("1.0",profile.get("payload",""));self._mode_changed();self.preview()
 
     def zoom(self,delta):
@@ -879,6 +892,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             if self.engine.thread and self.engine.thread.is_alive():
                 self.closing=False;self.set_status("Capture/session shutdown is still pending. Please retry closing after it finishes.",True);return False
             if self.engine.recording_error_message:messagebox.showerror("Recording incomplete",self.engine.recording_error_message,parent=self)
+        self.plugins.close()
         for timer in tuple(self._jobs):self.after_cancel(timer)
         return True
 

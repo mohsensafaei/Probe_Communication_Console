@@ -58,6 +58,23 @@ def self_test():
     from .terminal import TerminalModel
     list(list_ports.comports())
     payload = bytes(range(256))
+    from .plugins import PluginWorker
+    with tempfile.TemporaryDirectory() as directory:
+        path=Path(directory)/'main.py'
+        path.write_text('import hashlib, hmac, struct\ndef process(data, context):\n return {"fields":{"digest":hashlib.sha256(data).hexdigest()}}\ndef transform(data, context):\n return data.upper()\n')
+        worker=PluginWorker([dict(id='self-test',path=str(path),enabled=True,changes=True)])
+        try:
+            fields=worker.submit('process',b'abc',dict(direction='RX',peer='test')).result(20)
+            if len(fields[0]['result']['fields'][0]['value'])!=64:raise RuntimeError('Plugin field self-test failed')
+            with session('USB / Serial',serial_port='loop://') as (engine,events,_):
+                engine.plugins=worker;engine.send(b'abc')
+                wait_for(lambda:len(received(events))==3,events)
+                expect_equal(received(events),b'ABC')
+                if not any(e.get('original_hex')=='616263' for e in events):raise RuntimeError('Plugin original bytes were not retained')
+        finally:
+            worker.close()
+            if worker.thread:worker.thread.join(3)
+    print('PASS user Python plugin process, bundled standard-library imports and transformed serial loopback')
     with session("USB / Serial", serial_port="loop://") as (engine, events, _):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "capture.jsonl"

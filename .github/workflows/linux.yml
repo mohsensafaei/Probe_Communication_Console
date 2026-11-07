@@ -27,7 +27,9 @@ jobs:
       - name: Backend and Linux PTY tests
         run: .venv/bin/python -m unittest discover -s tests -v
       - name: Core processing benchmark (informational)
-        run: .venv/bin/python benchmarks/core_benchmark.py
+        run: |
+          .venv/bin/python benchmarks/core_benchmark.py
+          .venv/bin/python benchmarks/plugin_benchmark.py
       - name: Native Tk GUI
         run: xvfb-run -a .venv/bin/python -m unittest discover -s tests -p "ui_*.py" -v
       - name: Native display benchmark (informational)

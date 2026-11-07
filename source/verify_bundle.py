@@ -26,7 +26,8 @@ def verify(archive: Path) -> None:
         for required in (executable, root/"README.md", root/"LICENSE", root/"licenses"/"pyserial-LICENSE.txt",
                          root/"examples"/"device-model.json", root/"examples"/"test-sequence.json",
                          root/"examples"/"lab-protocol.json", root/"examples"/"variable-sequence.json",
-                         root/"examples"/"variable-device.json"):
+                         root/"examples"/"variable-device.json", root/"PLUGINS.md",
+                         root/"examples"/"plugins"/"binary_sensor.py",root/"examples"/"plugins"/"json_tools.py"):
             if not required.is_file():
                 raise RuntimeError(f"Missing bundle input: {required.name}")
         if os.name == "nt":

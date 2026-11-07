@@ -432,6 +432,8 @@ class AnalysisWindow(tk.Toplevel,Actions):
         self.comparison=ComparePane(self.tabs,app,a_label="Choose A",b_label="Choose B");self.tabs.add(self.comparison,text="Capture Diff")
         from .hid_ui import HidReportPane
         self.hid=HidReportPane(self.tabs,app)
+        from .plugin_ui import PluginPane
+        self.plugins=PluginPane(self.tabs,app)
         self.tabs.bind("<<NotebookTabChanged>>",self.remember_tab)
         self.wm_protocol("WM_DELETE_WINDOW",self.hide)
         self.bind("<Escape>",lambda e:self.hide())
@@ -480,6 +482,10 @@ def open_analysis(app,tab=None,*,event=None,event_key=None):
     win=getattr(app,"analysis_window",None)
     if win is None or not win.winfo_exists():win=AnalysisWindow(app)
     key=event_key if event_key is not None else app.table.selection()[0] if event else None
+    if app.plugins.entries or event and 'original_hex' in event:
+        if str(win.plugins) not in win.tabs.tabs():win.tabs.add(win.plugins,text="Plugins")
+        win.plugins.set_event(event,key)
+    elif str(win.plugins) in win.tabs.tabs():win.tabs.forget(win.plugins)
     if event and event.get("hid"):
         if str(win.hid) not in win.tabs.tabs():win.tabs.add(win.hid,text="HID Report")
         win.hid.set_event(event)
@@ -498,7 +504,7 @@ def open_analysis(app,tab=None,*,event=None,event_key=None):
         if previous:win.comparison.set_data("A",previous["data"],"Previous message · "+str(previous.get("peer","")))
         else:win.comparison.a=b"";win.comparison.a_ready=False;win.comparison.a_label.set("Choose A");win.comparison.refresh()
     if tab is not None:
-        names={"Protocol":win.protocol,"Compare":win.comparison,**win.payload.pages}
+        names={"Protocol":win.protocol,"Compare":win.comparison,"Plugins":win.plugins,**win.payload.pages}
         if tab in names:win.tabs.select(names[tab])
     win.deiconify();win.lift();win.focus_set()
     app.analysis_window=win;return win

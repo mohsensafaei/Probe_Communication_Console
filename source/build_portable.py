@@ -29,7 +29,7 @@ else:folder=root/"dist"/"Probe"
 executable=folder/("Probe.exe" if os.name=="nt" else "Probe")
 with tempfile.TemporaryDirectory(prefix="probe-bundle-check-") as check_dir:
     subprocess.run([str(executable),"--self-test"],cwd=check_dir,check=True,timeout=60)
-for name in ("README.md","FEATURE_MATRIX.md","VALIDATION.md","CHANGELOG.md","LICENSE","THIRD_PARTY_NOTICES.md"):
+for name in ("README.md","PLUGINS.md","FEATURE_MATRIX.md","VALIDATION.md","CHANGELOG.md","LICENSE","THIRD_PARTY_NOTICES.md"):
     shutil.copy2(root/name,folder/name)
 shutil.copytree(root/"examples", folder/"examples", dirs_exist_ok=True,
                 ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
