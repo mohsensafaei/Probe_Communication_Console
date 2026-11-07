@@ -1,6 +1,6 @@
 # Probe
 
-A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.5.0** (Linux release).
+A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.6.0** (Linux release).
 
 ### Analyze traffic without sending anything
 
@@ -376,7 +376,9 @@ is sample order, not a precise time axis.
 
 ## Search traffic
 
-The labeled Search bar filters retained traffic while RX/TX filtering still applies.
+Press **Search** or **Enter** to apply the Traffic search. Changing its type resets
+the applied search; typing alone never hides rows. Empty inputs show all traffic,
+and invalid input keeps the previous results. RX/TX filtering still applies.
 * **Text**: case-insensitive search of the entire decoded payload, JSON string values
   (including escaped Unicode) or peer name. Example: `APPROVED` or `10000`.
 * **Hex bytes**: an exact, byte-aligned contiguous sequence, e.g. `A4 FF 00`,
@@ -388,7 +390,7 @@ The labeled Search bar filters retained traffic while RX/TX filtering still appl
 
 Search checks all payload bytes, including content beyond the shortened table
 preview. Results show matching rows / retained rows. It updates as messages arrive
-and also works on retained traffic while paused. Enter applies immediately; Reset
+and also works on retained traffic while paused. Reset
 or Escape clears search settings. Direction filtering, captures and byte contents
 are unchanged. Search is per displayed message, not across unrelated receive chunks;
 use Framing when an application message spans chunks. History remains bounded to
@@ -564,9 +566,32 @@ its existing bounded display queue/history; this multiplies the total memory
 budget by the number of probes. Hidden tabs keep the acquisition models updated
 and rebuild the retained table when selected, without formatting/inserting each
 hidden row or drawing hidden plots. Terminal pop-outs keep their own live view.
-This is simultaneous acquisition, not a combined timeline or automatic comparison
-between different probes. Timestamps use the same host clock; hardware timing
+**Trace path…** compares retained traffic between two probes on demand.
+Timestamps use the same host clock; hardware timing
 and ordering between independent endpoints are not guaranteed.
+
+## Trace path (1.6)
+
+Right-click one Traffic message → **Follow across probes…**, or use **Trace path…**
+at the top. Select the reference message and target probe. Matching bytes are found
+within each direction/peer/client stream, including split or coalesced reads; byte
+spans identify the exact portions. Alternatively enter a scalar JSON identifier,
+such as `sessionId` or `data.sessionId`, and press **Find matches**. Configure
+Traffic framing first if a JSON message spans reads. IDs preserve their JSON types.
+
+One match is selected automatically; repeated IDs/bytes require an explicit choice.
+**Compare selected…** opens the existing Capture Diff with the correct probe for
+each side. With **Show all target traffic**, Ctrl/Shift-select consecutive chunks
+of one flow to compare manually. Changed bytes do not necessarily mean corruption;
+expected protocol transformations must be interpreted by the user.
+
+Trace is a read-only snapshot of retained history. **Refresh traffic** includes
+new rows; opening/comparing sends nothing and adds no acquisition callbacks or
+automatic scans. Up to 100 matches are listed. No match means none was found in
+this snapshot, not proof that a message was lost. Observed intervals use recorded
+timestamps, not pure device latency or proof of causality. Closing/reopening Trace
+or closing a probe releases its snapshots. JSON↔TLV mapping and automatic failure
+localization are outside this first version.
 
 Preferences use `settings.json` for Probe 1 and `settings-probe-N.json` for other
 slots. Reopening a slot restores its saved connection/profile/sequence settings,

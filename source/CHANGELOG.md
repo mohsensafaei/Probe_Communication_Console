@@ -1,5 +1,12 @@
 # Changes
 
+## 1.6.0
+
+- Add an on-demand two-probe Trace path: reference selection, exact byte spans across split/coalesced reads, optional scalar JSON identifier and explicit manual matching.
+- Keep repeated matches ambiguous, label recorded intervals and reuse Capture Diff with the correct A/B probe pickers. Trace snapshots do not add work to acquisition.
+- Apply Traffic search only with Search or Enter; changing type resets the applied search, blank inputs keep traffic visible and invalid input preserves previous results.
+- Exercise native trace/diff/cleanup/search workflows and benchmark an approximately 8 MiB retained stream scan.
+
 ## 1.5.0
 
 - Add up to eight independent, named Probe workspaces with a + button; each owns its endpoints, traffic, analysis, sequences, recording, plot and terminal.

@@ -1,4 +1,4 @@
-# Probe for Linux 1.5.0
+# Probe for Linux 1.6.0
 
 TCP, UDP and USB/serial communications console with an ANSI terminal, binary
 inspector, capture/replay, serial proxy and Serial-to-TCP bridge.
@@ -125,3 +125,15 @@ repeatable faults. Request framing validates complete messages and checksums.
 Use the Request & reply tab for normal behavior and Fault injection for recovery
 tests. See `source/README.md` and `source/examples/simulator-*.json`. Legacy
 exact-byte models still load.
+
+## Follow a message across probes
+
+Use **Trace path…** at the top, or right-click a message → **Follow across probes…**.
+Choose a target probe; compare matching stream bytes or enter an optional JSON ID
+like `sessionId` and press **Find matches**. **Compare selected…** reuses Capture
+Diff. Repeated matches require selection; manual same-flow chunk selection is also
+available. **Refresh traffic** takes a new read-only snapshot. No traffic is sent.
+
+Traffic search applies only with **Search** or **Enter**. Changing the search type
+resets the applied filter; typing alone never hides rows. Invalid input preserves
+the previous results. **Reset** clears the search; RX/TX filtering still applies.

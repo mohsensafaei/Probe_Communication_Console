@@ -196,3 +196,12 @@ checks that closing one leaves the other connected. No physical serial/HID
 hardware timing claim is made. The informational 1/2/4-probe benchmark checks
 hidden table insertion counts and separates Python allocation instrumentation
 from elapsed-time measurements.
+
+## 1.6 trace and explicit search coverage
+
+Headless tests cover binary split/coalesced spans, peer/direction/client isolation,
+bounded duplicate occurrences, strict scalar JSON IDs and manual byte preservation.
+Native GUI checks cover changed-ID comparison, correct A/B probe pickers, ambiguous
+matches, snapshot refresh/disposal, empty histories and draft/invalid search input.
+The core benchmark includes 2000 rows / about 8 MiB of retained stream data. Frozen
+smoke tests open Trace and compare payloads using the packaged modules.

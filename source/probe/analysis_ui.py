@@ -273,7 +273,8 @@ class ComparePane(ttk.Frame,Actions):
 
     def choose(self,side):
         state=self.picker_state.get(side,(self.direction,self.peer))
-        picker=TrafficPicker(self.app,lambda data,label:self.set_data(side,data,label),self,direction=state[0],peer=state[1])
+        source=getattr(self,'sources',{}).get(side,self.app)
+        picker=TrafficPicker(source,lambda data,label:self.set_data(side,data,label),self,direction=state[0],peer=state[1])
         def remember(event):
             if event.widget is picker:self.picker_state[side]=(picker.direction.get(),picker.peer.get())
         picker.bind("<Destroy>",remember,add="+")

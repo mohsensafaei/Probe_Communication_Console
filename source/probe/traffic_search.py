@@ -32,6 +32,7 @@ def leaf_text(value):
 class TrafficSearch:
     def __init__(self,query='',mode='Text',field='',encoding='utf-8'):
         self.error='';self.query=query.strip();self.mode=mode;self.encoding=encoding;self.keys=[];self.needle=None
+        self.active=bool(self.query or mode=='JSON field' and field.strip())
         try:
             if mode not in MODES:raise ValueError('Choose Text, Hex bytes or JSON field.')
             if len(query)>4096 or len(field)>256:raise ValueError('Search is limited to 4096 characters; field paths to 256.')
@@ -42,13 +43,13 @@ class TrafficSearch:
             if self.mode=='Hex bytes' and self.query:
                 self.needle=parse_hex(self.query)
                 if not self.needle:raise ValueError('Enter complete hex bytes, e.g. A4 FF.')
-            if self.mode=='JSON field':self.keys=field_keys(field.strip())
+            if self.mode=='JSON field' and self.active:self.keys=field_keys(field.strip())
         except ValueError as exc:self.error=str(exc)
         self.term=self.query.casefold()
 
     def matches(self,event):
         if self.error:return False
-        if not self.query and self.mode!='JSON field':return True
+        if not self.active:return True
         data=event['data']
         if self.mode=='Hex bytes':return self.needle in data
         if self.mode=='JSON field':

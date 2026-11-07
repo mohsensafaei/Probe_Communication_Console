@@ -30,7 +30,7 @@ class TrafficWorkspace:
         return self.history.evicted
 
     def search_filter(self):
-        key=tuple(self.vars[k].get() for k in ("search","search_mode","search_field","encoding"))
+        key=(*self._applied_search,self.vars['encoding'].get())
         if getattr(self,"_search_key",None)!=key:
             self._search_key=key;self._search_filter=TrafficSearch(*key[:3],encoding=key[3])
         return self._search_filter
@@ -40,13 +40,22 @@ class TrafficWorkspace:
 
     def search_counts(self):
         matcher=self.search_filter()
-        self.search_count.configure(text="Invalid search" if matcher.error else f"{self._shown_count} / {len(self.events)}",foreground=self.colors["red"] if matcher.error else self.colors["muted"])
+        error=self._search_error or matcher.error
+        self.search_count.configure(text="Invalid search" if error else f"{self._shown_count} / {len(self.events)}",foreground=self.colors["red"] if error else self.colors["muted"])
+
+    def apply_search(self):
+        query=tuple(self.vars[k].get() for k in ('search','search_mode','search_field'))
+        self._search_error=TrafficSearch(*query,encoding=self.vars['encoding'].get()).error
+        if self._search_error:self.search_counts();self.set_status(self._search_error,True);return
+        self._applied_search=query;self.refresh(force=True)
+        self.set_status('Search applied. Edit and press Search / Enter to update; Reset shows all traffic.')
 
     def clear_search(self):
+        self._applied_search=('','Text','');self._search_error=''
         self.vars["search"].set("");self.vars["search_field"].set("");self.vars["search_mode"].set("Text");self.refresh(force=True)
 
     def search_help(self):
-        messagebox.showinfo("Search traffic", "Text: search decoded payload text or field values (case-insensitive).\nExample: APPROVED, 10000, or a device name.\n\nHex bytes: search an exact contiguous byte sequence.\nExample: A4 FF 00 or A4FF00. Use two digits per byte.\n\nJSON field: enter a path such as data.amount or /data/amount, then a value to find within it. A blank value finds messages containing that field.\n\nSearch checks the whole retained payload, including bytes hidden in the table preview. RX/TX filtering still applies. Reset or Escape clears the search; recorded files remain unchanged.\n\n"+(self.search_filter().error or "Results: shown messages / retained messages. Search also works while paused; new live rows resume after Resume."),parent=self)
+        messagebox.showinfo("Search traffic", "Press Search or Enter to apply. Changing the search type resets the applied search; typing alone never hides traffic. Invalid input keeps the previous results.\n\nText: search decoded payload text or field values (case-insensitive).\nExample: APPROVED, 10000, or a device name.\n\nHex bytes: search an exact contiguous byte sequence.\nExample: A4 FF 00 or A4FF00. Use two digits per byte.\n\nJSON field: enter a path such as data.amount or /data/amount, then a value to find within it. A blank value finds messages containing that field.\n\nSearch checks the whole retained payload, including bytes hidden in the table preview. RX/TX filtering still applies. Reset or Escape clears the search; recorded files remain unchanged.\n\n"+(self._search_error or "Results: shown messages / retained messages. Search also works while paused; new live rows resume after Resume."),parent=self)
 
     def row_values(self,idx,event,view=None,encoding=None):
         data=event["data"]; view=view if view is not None else self.vars["view"].get()
@@ -83,12 +92,12 @@ class TrafficWorkspace:
     def search_changed(self,*_):
         if self.vars["search_mode"].get()=="JSON field":self.search_fieldbox.grid()
         else:self.search_fieldbox.grid_remove()
-        if self.search_job:self.after_cancel(self.search_job)
-        self.search_job=self.after(180,lambda:self.refresh(force=True))
+        mode=self.vars['search_mode'].get();self._search_error=''
+        if mode!=self._search_mode:
+            self._search_mode=mode;self._applied_search=('','Text','');self.refresh(force=True)
+        else:self.search_counts()
 
     def refresh(self,force=False):
-        if self.search_job:self.after_cancel(self.search_job)
-        self.search_job=None
         if self.paused and not force:return
         selected=self.table.selection()
         focused=self.table.focus()
