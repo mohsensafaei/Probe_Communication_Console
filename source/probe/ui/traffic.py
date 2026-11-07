@@ -8,7 +8,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ..codec import visible
-from ..traffic_search import TrafficSearch
+from ..traffic_search import MODES, TrafficSearch
 from ..exporting import write_export
 
 
@@ -32,7 +32,7 @@ class TrafficWorkspace:
     def search_filter(self):
         key=(*self._applied_search,self.vars['encoding'].get())
         if getattr(self,"_search_key",None)!=key:
-            self._search_key=key;self._search_filter=TrafficSearch(*key[:3],encoding=key[3])
+            self._search_key=key;self._search_filter=TrafficSearch(*key)
         return self._search_filter
 
     def matches(self,event):
@@ -44,18 +44,18 @@ class TrafficWorkspace:
         self.search_count.configure(text="Invalid search" if error else f"{self._shown_count} / {len(self.events)}",foreground=self.colors["red"] if error else self.colors["muted"])
 
     def apply_search(self):
-        query=tuple(self.vars[k].get() for k in ('search','search_mode','search_field'))
+        query=tuple(self.vars[k].get() for k in ('search','search_mode'))
         self._search_error=TrafficSearch(*query,encoding=self.vars['encoding'].get()).error
         if self._search_error:self.search_counts();self.set_status(self._search_error,True);return
         self._applied_search=query;self.refresh(force=True)
         self.set_status('Search applied. Edit and press Search / Enter to update; Reset shows all traffic.')
 
     def clear_search(self):
-        self._applied_search=('','Text','');self._search_error=''
-        self.vars["search"].set("");self.vars["search_field"].set("");self.vars["search_mode"].set("Text");self.refresh(force=True)
+        self._applied_search=('','Text');self._search_error=''
+        self.vars["search"].set("");self.vars["search_mode"].set("Text");self.refresh(force=True)
 
     def search_help(self):
-        messagebox.showinfo("Search traffic", "Press Search or Enter to apply. Changing the search type resets the applied search; typing alone never hides traffic. Invalid input keeps the previous results.\n\nText: search decoded payload text or field values (case-insensitive).\nExample: APPROVED, 10000, or a device name.\n\nHex bytes: search an exact contiguous byte sequence.\nExample: A4 FF 00 or A4FF00. Use two digits per byte.\n\nJSON field: enter a path such as data.amount or /data/amount, then a value to find within it. A blank value finds messages containing that field.\n\nSearch checks the whole retained payload, including bytes hidden in the table preview. RX/TX filtering still applies. Reset or Escape clears the search; recorded files remain unchanged.\n\n"+(self._search_error or "Results: shown messages / retained messages. Search also works while paused; new live rows resume after Resume."),parent=self)
+        messagebox.showinfo("Search traffic", "Press Search or Enter to apply. Changing the search type resets the applied search; typing alone never hides traffic. Invalid input keeps the previous results.\n\nText: search decoded payload text or field values (case-insensitive).\nExample: APPROVED, 10000, or a device name.\n\nHex bytes: search an exact contiguous byte sequence.\nExample: A4 FF 00 or A4FF00. Use two digits per byte.\n\nSearch checks the whole retained payload, including bytes hidden in the table preview. RX/TX filtering still applies. Reset or Escape clears the search; recorded files remain unchanged.\n\n"+(self._search_error or "Results: shown messages / retained messages. Search also works while paused; new live rows resume after Resume."),parent=self)
 
     def row_values(self,idx,event,view=None,encoding=None):
         data=event["data"]; view=view if view is not None else self.vars["view"].get()
@@ -90,11 +90,13 @@ class TrafficWorkspace:
         return change
 
     def search_changed(self,*_):
-        if self.vars["search_mode"].get()=="JSON field":self.search_fieldbox.grid()
-        else:self.search_fieldbox.grid_remove()
         mode=self.vars['search_mode'].get();self._search_error=''
+        if mode not in MODES:mode='Text';self.vars['search_mode'].set(mode)
         if mode!=self._search_mode:
-            self._search_mode=mode;self._applied_search=('','Text','');self.refresh(force=True)
+            filtered=self.search_filter().active
+            self._search_mode=mode;self._applied_search=('','Text')
+            if filtered:self.refresh(force=True)
+            else:self.search_counts()
         else:self.search_counts()
 
     def refresh(self,force=False):

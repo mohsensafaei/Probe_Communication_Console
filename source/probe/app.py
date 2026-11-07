@@ -80,7 +80,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         self.started = 0; self.rx_total = self.tx_total = 0
         self.display_framing = DisplayFraming(self.new_framer)
         self.record_path = None; self.raw_path = None
-        self._applied_search = ('','Text','')
+        self._applied_search = ('','Text')
         self._search_mode = 'Text'
         self._search_error = ''
         self.last_error = ""
@@ -93,7 +93,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                         app_peer_port="COM21", simulator_port="COM20", simulator_peer_port="COM21",
                         send_mode="Text", encoding="utf-8", ending="None", checksum="None",
                         prefix="", suffix="", interval="1000", framing="Chunks", delimiter="0A",
-                        frame_size="16", gap="50", view="Text + Hex", search="", search_mode="Text", search_field="", direction="All",
+                        frame_size="16", gap="50", view="Text + Hex", search="", search_mode="Text", direction="All",
                         target="All clients", side="Device / upstream", profile="Default", auto="Off",
                         theme="Probe Dark", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
                         sequence_advance="After interval", sequence_reply_timeout="2000", sequence_variables="{}",
@@ -762,6 +762,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             for k,v in config.get("last",{}).items():
                 if k in self.vars and k not in ("repeat","search","target","auto"):self.vars[k].set(v)
             if self.vars["mode"].get() not in MODES:self.vars["mode"].set("TCP Client")
+            if self.vars['search_mode'].get() not in ('Text','Hex bytes'):self.vars['search_mode'].set('Text')
         except (OSError,ValueError,TypeError):pass
 
     def save_settings(self):
@@ -842,7 +843,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to inspect it. Use Load into composer in Analyze to explicitly load exact bytes, then Send to transmit.\n\n"
             "ANALYZE TRAFFIC\nDouble-click a traffic row to open Analyze. Decoded text, Hex + ASCII and Every byte are included there. Protocol Inspector offers Auto (JSON detection) or Raw Bytes; selecting a field highlights its bytes. Copy field path supplies a sequence selector. Analyze remembers the page you last used for that message. Right-click selected rows → Capture Diff compares the exact two selected messages; for a larger selection, choose A/B from that selection. Capture Diff also compares messages or combined same-peer/direction capture chunks, highlights changed/added/removed ranges and can ignore JSON values or byte ranges. Save comparison retains all original bytes. These tools send nothing.\n\n"
             "TRACE PATH\nUse Trace path at the top or right-click one message > Follow across probes. Choose a second probe, then match exact stream bytes or an optional JSON identifier. Repeated matches require selection. Compare selected reuses Capture Diff. Refresh takes a new read-only snapshot; observed intervals are not device latency. Nothing is sent.\n\n"
-            "SEARCH\nChoose Text, Hex bytes or JSON field, then press Search or Enter. Changing the type resets the applied filter; editing alone never hides rows. Invalid input preserves previous results. Reset or Escape clears the search.\n\n"
+            "SEARCH\nChoose Text or Hex bytes, then press Search or Enter. Changing the type resets the applied filter; editing alone never hides rows. Invalid input preserves previous results. Reset or Escape clears the search.\n\n"
             "LIVE PLOT\nOpen the Live plot workspace page. Receive LF/CRLF-terminated RX numbers or CSV, up to four channels: 1,2 followed by LF, then 3,4 followed by LF. Choose the RX peer or automatic selection. Auto accepts numeric lines. Custom extracts a JSON field, text column, named value or fixed binary value; configure message boundaries and the RX parameter. TX-only data is not plotted. Separate peer buffers and the last 300 samples keep plotting bounded.\n\n"
             "DYNAMIC SEQUENCES\nEdit message > Response & next step: Save reply values picks JSON/TLV/byte fields and names variables; Choose next step adds conditions and next/goto/finish/fail/timeout actions. Save rules, then Save message. Insert variable adds ${name}, ${name:json} (a JSON value without surrounding quotes) or ${name:hex}. Variables defines initial values and shows latest reply values. Outgoing frame can rebuild length/checksum after substitution. Missing values stop before sending. Version 3 exports retain rules; legacy files still load.\n\n"
             "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
@@ -1003,7 +1004,7 @@ def main():
                 diff=trace.compare().comparison
                 if not any(d.kind in ('changed','removed','added') for d in diff.differences):raise RuntimeError('Trace Capture Diff failed in bundle.')
                 trace.destroy()
-                primary.clear_search();primary.vars['search_mode'].set('JSON field')
+                primary.clear_search();primary.vars['search_mode'].set('Hex bytes')
                 if len(primary.table.get_children())!=len(primary.events):raise RuntimeError('Search type hid traffic before Search in bundle.')
                 app.close_probe(secondary)
                 if not primary.engine.ready:raise RuntimeError("Closing one probe stopped another connection.")

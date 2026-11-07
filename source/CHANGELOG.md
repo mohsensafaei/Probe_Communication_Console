@@ -1,8 +1,10 @@
 # Changes
 
-## Unreleased
+## 1.6.1
 
 - Replace the separate Close probe button with a stable-width tab close icon shown on hover; close the clicked probe without selecting it, and cancel on drag-off.
+
+- Simplify Traffic search to Text and Hex bytes; remove the JSON-field selector and backend mode, migrate old preferences, and keep explicit Search/Enter behavior.
 
 ## 1.6.0
 
