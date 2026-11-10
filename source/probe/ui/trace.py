@@ -1,9 +1,11 @@
-"""A snapshot of one message across two probes, using the existing diff view."""
+'A snapshot of one message across two probes, using the existing diff view.'
 import tkinter as tk
 from tkinter import ttk
-from .analysis_ui import Actions, ComparePane, entry, modal, table
-from .codec import visible
-from .trace_path import combine, find_matches, flow, message
+
+from ..codec import visible
+from ..trace_path import combine, find_matches, flow, message
+from .comparison import ComparePane
+from .widgets import Actions, entry, modal, table
 
 
 class TraceWindow(tk.Toplevel,Actions):

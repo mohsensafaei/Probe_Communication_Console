@@ -1,15 +1,22 @@
-"""Hardware test lab: recorded device responses and editable timed sequences."""
+'Hardware test lab: recorded device responses and editable timed sequences.'
 import json
-from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from pathlib import Path
+from tkinter import filedialog, ttk
 
-from .capture import load_capture
-from .codec import parse_hex
-from .sequence_ui import SequencePane
-from .serial_endpoints import simulator_transports
-from .simulation import (DeviceModel, Exchange, Reply, capture_peers, compile_capture,
-                         model_from_dict, model_to_dict)
+from ..capture import load_capture
+from ..codec import parse_hex
+from ..serial_endpoints import simulator_transports
+from ..simulation import (
+    DeviceModel,
+    Exchange,
+    Reply,
+    capture_peers,
+    compile_capture,
+    model_from_dict,
+    model_to_dict,
+)
+from .sequence import SequencePane
 
 
 def read_json(path):
@@ -138,13 +145,13 @@ class SimulatorPane(Pane):
 
     def edit_rule(self, new=False):
         self.ensure_editable()
-        from .simulator_ui import RuleEditor
+        from .simulator import RuleEditor
         self.rule_editor = RuleEditor(self, None if new else self.selected_index())
         return self.rule_editor
 
     def edit_framing(self):
         self.ensure_editable()
-        from .simulator_ui import FrameEditor
+        from .simulator import FrameEditor
         self.frame_editor = FrameEditor(self)
         return self.frame_editor
 

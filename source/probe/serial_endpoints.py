@@ -1,6 +1,6 @@
-"""Describe the two distinct ends of a preinstalled virtual serial pair."""
-from dataclasses import dataclass
+'Describe the two distinct ends of a preinstalled virtual serial pair.'
 import os
+from dataclasses import dataclass
 
 
 def simulator_transports() -> tuple[str, ...]:

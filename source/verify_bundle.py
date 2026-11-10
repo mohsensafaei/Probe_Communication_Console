@@ -31,7 +31,7 @@ def verify(archive: Path) -> None:
             if not required.is_file():
                 raise RuntimeError(f"Missing bundle input: {required.name}")
         if os.name == "nt":
-            from probe.hid_capture import INSTALLER,INSTALLER_SHA256
+            from probe.hid_capture import INSTALLER, INSTALLER_SHA256
             import hashlib
             installer=root/"drivers"/"windows"/INSTALLER
             if not installer.is_file() or hashlib.sha256(installer.read_bytes()).hexdigest()!=INSTALLER_SHA256:

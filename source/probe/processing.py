@@ -1,4 +1,4 @@
-"""Picklable, side-effect-free sequence work executed outside transport/GIL."""
+'Picklable, side-effect-free sequence work executed outside transport/GIL.'
 
 
 def render(spec,values):return spec.render(values)

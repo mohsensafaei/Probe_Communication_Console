@@ -45,7 +45,7 @@ class MultiProbeTests(unittest.TestCase):
         self.assertIsNot(first.queue,second.queue);self.assertIsNot(first.events,second.events)
         self.assertIsNot(first.terminal.model,second.terminal.model)
         self.assertNotEqual(first.settings_path,second.settings_path)
-        with patch('probe.workspaces.simpledialog.askstring',return_value='Service → POS'):self.window.rename_probe()
+        with patch('probe.ui.workspaces.simpledialog.askstring',return_value='Service → POS'):self.window.rename_probe()
         self.assertIn('Service → POS',self.window.probe_tabs.tab(second,'text'))
         self.assertEqual([second.notebook.tab(t,'text') for t in second.notebook.tabs()],['Traffic','Live plot','Terminal'])
 

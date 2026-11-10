@@ -1,4 +1,4 @@
-"""Bounded byte alignment; ignores preserve original offsets and original bytes."""
+'Bounded byte alignment; ignores preserve original offsets and original bytes.'
 from dataclasses import asdict, dataclass
 from difflib import SequenceMatcher
 

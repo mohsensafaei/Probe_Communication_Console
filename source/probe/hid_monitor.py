@@ -1,19 +1,14 @@
-"""Read-only HID monitoring integrated with Probe's existing event/capture path."""
-import contextlib
+"Read-only HID monitoring integrated with Probe's existing event/capture path."
 import ctypes
 import os
-import re
+
 from .hid_capture import validate_source
 from .hid_helper import HelperClient
 from .hid_reports import HidTracker
 
 
 def windows_report_descriptors(vid,pid):
-    """Query descriptor metadata only. Never read input or write HID reports.
-
-Windows reconstructs these descriptors from preparsed data. If identical devices
-cannot be distinguished, keep raw bytes rather than choosing a different device.
-"""
+    'Query descriptor metadata only. Never read input or write HID reports.'
     import hid
     candidates=[d for d in hid.enumerate(vid,pid) if d.get('bus_type',1)==1]
     roots=set();cfg=ctypes.WinDLL('cfgmgr32');ulong=ctypes.c_ulong

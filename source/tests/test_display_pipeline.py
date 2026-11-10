@@ -101,6 +101,44 @@ class DisplayBufferTests(unittest.TestCase):
 
 
 class DisplayModelTests(unittest.TestCase):
+    def test_modified_frames_split_and_join_original_bytes(self):
+        framing = DisplayFraming(lambda: Framer('Fixed length', size=2))
+        rows = list(framing.feed(event(b'ABCD', original_hex='61626364')))
+        self.assertEqual([r['original_hex'] for r in rows], ['6162', '6364'])
+        framing = DisplayFraming(lambda: Framer('Fixed length', size=4))
+        self.assertEqual(list(framing.feed(event(b'AB', original_hex='6162', modified_by=['upper']))), [])
+        row, = framing.feed(event(b'CD'))
+        self.assertEqual(row['original_hex'], '61624344')
+        self.assertEqual(row['modified_by'], ['upper'])
+        row, = framing.feed(event(b'EFGH'))
+        self.assertNotIn('original_hex', row)
+        self.assertNotIn('_original', row)
+
+    def test_original_bytes_survive_idle_tick_and_partial_flush(self):
+        for mode in ('Idle gap', 'Delimiter', 'Fixed length'):
+            framing = DisplayFraming(lambda: Framer(mode, size=4))
+            list(framing.feed(event(b'AB', original_hex='6162')))
+            rows = framing.tick(wall_time=2) if mode == 'Idle gap' else framing.flush()
+            self.assertEqual(rows[0]['original_hex'], '6162')
+            self.assertNotIn('_original', rows[0])
+
+    def test_length_changing_plugins_keep_exact_chunk_provenance(self):
+        framing = DisplayFraming(lambda: Framer('Fixed length', size=4))
+        list(framing.feed(event(b'AB', original_hex='6162')))
+        rows = list(framing.feed(event(b'CDE', original_hex='63')))
+        self.assertEqual([(r['data'], r['original_hex']) for r in rows], [(b'AB', '6162'), (b'CDE', '63')])
+        self.assertTrue(all(r['display_partial'] for r in rows))
+        self.assertFalse(framing.streams)
+        blocked, = framing.feed(event(b'', original_hex='6465', plugin_error='blocked'))
+        self.assertEqual(blocked['original_hex'], '6465')
+
+    def test_framing_separates_sessions_and_proxy_clients(self):
+        for field in ('session', 'client_peer'):
+            framing = DisplayFraming(lambda: Framer('Fixed length', size=4))
+            self.assertEqual(list(framing.feed(event(b'AB', **{field:'one'}))), [])
+            self.assertEqual(list(framing.feed(event(b'CD', **{field:'two'}))), [])
+            self.assertEqual([r['data'] for r in framing.flush()], [b'AB', b'CD'])
+
     def test_headless_imports(self):
         subprocess.run([sys.executable, "-c", "import sys; import probe.event_buffer, probe.traffic_model; assert 'tkinter' not in sys.modules"], check=True)
 

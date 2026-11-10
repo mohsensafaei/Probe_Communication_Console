@@ -1,12 +1,22 @@
-"""Progressively disclosed editors for device matching and repeatable faults."""
-from dataclasses import replace
+'Progressively disclosed editors for device matching and repeatable faults.'
 import tkinter as tk
+from dataclasses import replace
 from tkinter import ttk
-from .codec import parse_hex
-from .protocol import CHECKSUMS
-from .simulation import DeviceModel, Exchange, Reply, model_from_dict, model_to_dict
-from .simulator_rules import (FrameSpec, Condition, Fault, FRAME_MODES, SOURCES,
-                              OPERATORS, FAULTS, integer, milliseconds)
+
+from ..codec import parse_hex
+from ..protocol import CHECKSUMS
+from ..simulation import DeviceModel, Exchange, Reply, model_from_dict, model_to_dict
+from ..simulator_rules import (
+    FAULTS,
+    FRAME_MODES,
+    OPERATORS,
+    SOURCES,
+    Condition,
+    Fault,
+    FrameSpec,
+    integer,
+    milliseconds,
+)
 
 
 class Editor(tk.Toplevel):

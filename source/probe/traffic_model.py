@@ -1,7 +1,7 @@
-"""Retained display history, independent of widgets and transport acquisition."""
+'Retained display history, independent of widgets and transport acquisition.'
+import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass
-import time
 
 
 @dataclass(frozen=True)
@@ -20,11 +20,7 @@ class TrafficHistory:
         self.evicted = 0
 
     def extend(self, events):
-        """Apply retention before rendering; only report surviving new rows.
-
-        A single read can produce 65,536 one-byte frames. Rows evicted within
-        this batch never need a widget, a search or payload formatting.
-        """
+        'Apply retention before rendering; only report surviving new rows.'
         if self.max_rows < 1 or self.max_bytes < 1:
             raise ValueError("History limits must be positive.")
         boundary = self.sequence
@@ -64,9 +60,20 @@ class DisplayFraming:
         self._chunks = False
 
     @staticmethod
-    def _flush(state, reason):
+    def _row(metadata, data):
+        row = {**metadata, 'data': data}
+        pending = row.pop('_original', None)
+        if pending is not None:
+            original = bytes(pending[:len(data)])
+            del pending[:len(data)]
+            if original != data:row['original_hex'] = original.hex()
+            else:row.pop('modified_by', None)
+        return row
+
+    @classmethod
+    def _flush(cls, state, reason):
         framer, metadata, _ = state
-        return [{**metadata, "data": data, "display_partial": True, "display_reason": reason}
+        return [{**cls._row(metadata, data), "display_partial": True, "display_reason": reason}
                 for data in framer.flush()]
 
     def feed(self, event):
@@ -76,7 +83,7 @@ class DisplayFraming:
         if self._chunks:
             yield event
             return
-        key = (event["direction"], event["peer"])
+        key = tuple(event.get(k, '') for k in ('direction', 'peer', 'client_peer', 'session'))
         if key not in self.streams:
             framer = self.factory()
             if framer.mode == "Chunks":
@@ -93,14 +100,27 @@ class DisplayFraming:
         if monotonic != use_monotonic:
             yield from self._flush(self.streams[key], "clock changed")
         now = event["monotonic_ns"] / 1e9 if use_monotonic else event["time"]
-        yield from ({**metadata, "data": data} for data in framer.tick(now))
-        # Do not keep the original large read alive just for its metadata.
-        metadata = {k: v for k, v in event.items() if k != "data"}
+        yield from (self._row(metadata, data) for data in framer.tick(now))
+        original = bytes.fromhex(event['original_hex']) if 'original_hex' in event else None
+        if original is not None and len(original) != len(event['data']):
+            yield from self._flush(self.streams.pop(key), 'plugin changed length')
+            yield {**event, 'display_partial': True, 'display_reason': 'plugin changed length; showing transport chunk'}
+            return
+        previous = metadata.get('_original')
+        changed = bool(previous) or original is not None
+        modifiers = metadata.get('modified_by', []) if framer.buffer else []
+        if changed:
+            if previous is None:previous = bytearray(framer.buffer)
+            previous.extend(original if original is not None else event['data'])
+        metadata = {k: v for k, v in event.items() if k not in ('data', 'original_hex')}
+        if changed:
+            metadata['_original'] = previous
+            metadata['modified_by'] = list(dict.fromkeys(modifiers + event.get('modified_by', [])))
         for data in framer.iter_feed(event["data"], now):
             partial = (framer.mode == "Idle gap" or
                        framer.mode == "Fixed length" and len(data) != framer.size or
                        framer.mode == "Delimiter" and not data.endswith(framer.delimiter))
-            row = {**metadata, "data": data}
+            row = self._row(metadata, data) if changed else {**metadata, 'data': data}
             if partial:
                 row.update(display_partial=True, display_reason="frame buffer limit")
             yield row
@@ -111,7 +131,7 @@ class DisplayFraming:
         monotonic_time = time.perf_counter() if monotonic_time is None else monotonic_time
         result = []
         for framer, metadata, monotonic in self.streams.values():
-            result.extend({**metadata, "data": data}
+            result.extend(self._row(metadata, data)
                           for data in framer.tick(monotonic_time if monotonic else wall_time))
         return result
 

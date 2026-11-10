@@ -1,11 +1,11 @@
-"""USB capture formats and local prerequisites. No elevation at import/startup."""
+'USB capture formats and local prerequisites. No elevation at import/startup.'
 import hashlib
 import os
-from pathlib import Path
 import re
 import struct
 import subprocess
 import sys
+from pathlib import Path
 
 INSTALLER='USBPcapSetup-1.5.4.0.exe'
 INSTALLER_SHA256='87a7edf9bbbcf07b5f4373d9a192a6770d2ff3add7aa1e276e82e38582ccb622'
@@ -33,8 +33,6 @@ def usbpcap_command():
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\USBPcap',0,winreg.KEY_READ|view) as key:
                 roots.append(Path(winreg.QueryValueEx(key,'InstallLocation')[0]))
         except OSError:pass
-    # Privileged helper only executes a machine-installed command. Do not resolve
-    # executables via PATH or caller-controlled ProgramFiles environment values.
     for view in (winreg.KEY_WOW64_64KEY,winreg.KEY_WOW64_32KEY):
         try:
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,r'SOFTWARE\Microsoft\Windows\CurrentVersion',0,winreg.KEY_READ|view) as key:

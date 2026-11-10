@@ -1,11 +1,12 @@
-"""Small, bounded numeric RX plot. No acquisition/plotting dependencies."""
+'Small, bounded numeric RX plot. No acquisition/plotting dependencies.'
 import json
-from collections import OrderedDict
-from .plot_extract import KINDS, TYPES, validate
-from .plot_model import NumericSamples
-from .protocol import json_frame
 import tkinter as tk
+from collections import OrderedDict
 from tkinter import ttk
+
+from ..plot_extract import KINDS, TYPES, validate
+from ..plot_model import NumericSamples
+from ..protocol import json_frame
 
 
 class LivePlotPane(ttk.Frame):
@@ -83,7 +84,7 @@ class LivePlotPane(ttk.Frame):
             for child in form.winfo_children():child.destroy()
             kind=add("Message format","kind",KINDS);kind.bind("<<ComboboxSelected>>",changed)
             if v["kind"].get()=="JSON field":
-                field=add("JSON path","field")
+                add("JSON path","field")
                 paths=[]
                 for key in reversed(self.app.order):
                     event=self.app.events.get(key,{})

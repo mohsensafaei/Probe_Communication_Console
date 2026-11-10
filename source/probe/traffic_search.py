@@ -1,6 +1,7 @@
-"""Read-only payload filters. Hex matches complete bytes, never half-nibbles."""
+'Read-only payload filters. Hex matches complete bytes, never half-nibbles.'
 import json
 import re
+
 from .codec import parse_hex, visible
 
 MODES=("Text","Hex bytes")

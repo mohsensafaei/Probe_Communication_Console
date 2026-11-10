@@ -1,8 +1,8 @@
-"""Bounded, read-only protocol interpretation with exact source byte ranges."""
-from dataclasses import dataclass
+'Bounded, read-only protocol interpretation with exact source byte ranges.'
 import json
 import re
 import struct
+from dataclasses import dataclass
 
 from .codec import checksum, visible
 
@@ -39,11 +39,7 @@ def pointer_part(key):
 
 
 def json_frame(data, strict_length=True):
-    """Return the first JSON object/array, its exact byte fields and frame end.
-
-    Accept plain UTF-8 JSON or an ASCII decimal body-length prefix (1–12 digits).
-    Trailing bytes are displayed separately; they are never silently discarded.
-    """
+    'Return the first JSON object/array, its exact byte fields and frame end.'
     bounded(data)
     try:text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -98,8 +94,6 @@ def json_frame(data, strict_length=True):
 
 def json_value(data, selector):
     value, _, _ = json_frame(data)
-    # RFC 6901 pointers are exact even when a key contains dots, / or ~.
-    # Dot paths are accepted for convenient manual entry.
     if selector.startswith("/"):
         keys = [key.replace("~1", "/").replace("~0", "~") for key in selector[1:].split("/")]
     elif selector in ("", "$"):keys = []

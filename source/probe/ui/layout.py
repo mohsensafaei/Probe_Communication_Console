@@ -1,11 +1,15 @@
-"""Workbench widget construction and styling; callbacks are owned by Probe."""
+'Workbench widget construction and styling; callbacks are owned by Probe.'
+import os
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
+
+from .. import __version__
 from ..engine import MODES
+from ..serial_endpoints import simulator_transports
 from ..traffic_search import MODES as SEARCH_MODES
-from ..terminal_ui import TerminalPane
-from ..plot_ui import LivePlotPane
-from ..skin import Chassis, MeterStrip, Rail
+from .plot import LivePlotPane
+from .skin import Chassis, MeterStrip, Rail
+from .terminal import TerminalPane
 
 
 class WorkbenchLayout:
@@ -19,8 +23,6 @@ class WorkbenchLayout:
         s.configure("Muted.TLabel", foreground=c["muted"])
         s.configure("TButton", background=c["metal"], foreground=c["ink"], padding=(9,3), borderwidth=1,
                     relief="raised", font=(self.ui_font,11,"bold"))
-        # Clam's Button.focus element draws a dotted rectangle over the label.
-        # Keep normal keyboard traversal and indicate focus with a solid border.
         s.layout("TButton", [("Button.border", {"sticky":"nswe", "border":1, "children":[
             ("Button.padding", {"sticky":"nswe", "children":[("Button.label", {"sticky":"nswe"})]})]})])
         s.map("TButton", background=[("disabled",c["panel"]),("active",c["shine"])],
@@ -215,3 +217,182 @@ class WorkbenchLayout:
         ttk.Checkbutton(composefoot,text="Repeat (ms)",variable=self.vars["repeat"],command=self.repeat).pack(side="right")
         self.status=self.label(self.content,"Ready · TCP and Serial streams have no inherent message boundaries.",9,color=c["muted"],anchor="w")
         self.status.grid(row=5,column=0,sticky="ew",pady=(7,0))
+
+
+    def _mode_changed(self):
+        mode=self.vars["mode"].get(); c=self.colors
+        for button,m in zip(self.nav,MODES):
+            button.configure(bg=c["select"] if m==mode else c["input"],fg=c["accent"] if m==mode else c["muted"],
+                             relief="flat")
+        for w in self.config_frame.winfo_children(): w.destroy()
+        self.config_canvas.yview_moveto(0)
+        self.config_controls=[]
+        def field(label,key,values=None,readonly=False):
+            self.label(self.config_frame,label,9,color=c["muted"]).pack(anchor="w",pady=(6,4))
+            w=self.combo(self.config_frame,key,values,readonly=readonly,width=20) if values is not None else ttk.Entry(self.config_frame,textvariable=self.vars[key])
+            w.pack(fill="x"); self.config_controls.append(w); return w
+        if mode in ("TCP Client","TCP Proxy","UDP"):
+            field("Upstream host" if mode=="TCP Proxy" else "Remote host","host")
+            field("Upstream port" if mode=="TCP Proxy" else "Remote port","port")
+        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP","Device Simulator"):
+            field("Listen address","bind"); field("Listen port (0 = automatic)","listen_port")
+        if mode == "HID Monitor":
+            from .hid import build_panel
+            build_panel(self,field)
+        if mode == "Device Simulator":
+            field("Expose device as", "simulator_transport", simulator_transports(), True)
+            if os.name == "nt":
+                field("Probe-side virtual COM", "simulator_port")
+                field("Application-side partner COM", "simulator_peer_port")
+            count = len(self.simulator_model.exchanges) if self.simulator_model else 0
+            self.label(self.config_frame, f"{count} recorded exchanges loaded.\nNo physical device is needed.", 9,
+                       color=c["muted"], wraplength=200, justify="left").pack(anchor="w", pady=8)
+            ttk.Button(self.config_frame, text="Open Test lab", command=self.test_lab).pack(fill="x", pady=6)
+        if "Serial" in mode:
+            self.port_combo=field("Physical port / serial URL","serial_port",[],False)
+            ttk.Button(self.config_frame,text="Refresh ports",command=self.refresh_ports).pack(anchor="e",pady=4)
+            field("Baud rate","baud",["300","1200","2400","4800","9600","19200","38400","57600","115200","230400","460800","921600"],False)
+            row=self.frame(self.config_frame); row.pack(fill="x",pady=(7,2))
+            for text,key,vals in [("Bits","bits",["5","6","7","8"]),("Parity","parity",["N","E","O","M","S"]),("Stop","stopbits",["1","1.5","2"])]:
+                part=self.frame(row);part.pack(side="left",fill="x",expand=True,padx=(0,3))
+                self.label(part,text,8,color=c["muted"]).pack(anchor="w")
+                w=self.combo(part,key,vals,width=4);w.pack(fill="x",pady=4);self.config_controls.append(w)
+            field("Flow control","flow",["None","RTS/CTS","XON/XOFF","DSR/DTR"],True)
+            controls=self.frame(self.config_frame);controls.pack(fill="x",pady=6)
+            for key in ("dtr","rts"):
+                ttk.Checkbutton(controls,text=key.upper(),variable=self.vars[key],command=lambda k=key:self.control(k)).pack(side="left")
+            ttk.Button(controls,text="Break",command=lambda:self.control("break")).pack(side="right")
+            self.line_label=self.label(self.config_frame,"CTS  —   DSR  —   DCD  —   RI  —",8,color=c["muted"]); self.line_label.pack(anchor="w")
+            self.refresh_ports()
+        if mode=="Serial Proxy":
+            field("Probe-side virtual port","app_port",["Auto PTY"] if os.name!="nt" else [],False)
+            field("Application-side partner port", "app_peer_port")
+            hint="Linux: Auto PTY creates a port for the other app." if os.name!="nt" else "COM pair: app → COM21; Probe → COM20. Install the pair first."
+            self.label(self.config_frame,hint,9,color=c["muted"],wraplength=220,justify="left").pack(anchor="w",pady=7)
+        if mode=="TCP Proxy":
+            self.label(self.config_frame,"Point your app at the listen address. Probe forwards both directions unchanged.",9,color=c["muted"],wraplength=220,justify="left").pack(anchor="w",pady=10)
+        if mode=="USB / Serial":
+            self.label(self.config_frame,"USB here means a COM / tty serial device. Use loop:// to test without hardware.",9,color=c["muted"],wraplength=220,justify="left").pack(anchor="w",pady=10)
+        if mode in ("TCP Client","USB / Serial"):
+            ttk.Checkbutton(self.config_frame,text="Reconnect on disconnect",variable=self.vars["reconnect"]).pack(anchor="w",pady=8)
+        self.connection_button.configure(text="Start proxy" if "Proxy" in mode else "Listen" if mode in ("TCP Server","Serial ↔ TCP","UDP") else "Connect")
+        if mode == "Device Simulator": self.connection_button.configure(text="Start simulator")
+        if mode == "HID Monitor":
+            self.connection_button.configure(text="Start capture")
+            self.composer.grid_remove()
+        else:self.composer.grid()
+        self.terminal.update_hint()
+        self.side_combo.configure(state="readonly" if mode in ("TCP Proxy","Serial Proxy","Serial ↔ TCP") else "disabled")
+        self.vars["side"].set("Device / upstream")
+
+
+    def _lock_config(self,locked):
+        for w in self.config_controls:
+            if locked: w.configure(state="disabled")
+            elif isinstance(w,ttk.Combobox): w.configure(state="normal")
+            else: w.configure(state="normal")
+        if self.vars["mode"].get()=="HID Monitor" and hasattr(self,"hid_combo"):
+            self.hid_combo.configure(state="disabled" if locked else "readonly")
+        for b in self.nav: b.configure(state="disabled" if locked else "normal")
+
+
+    def zoom(self,delta):
+        self.font_size=max(8,min(16,self.font_size+delta));self._style()
+        self.payload.configure(font=(self.mono,self.font_size))
+        analysis=getattr(self,"analysis_window",None)
+        if analysis is not None and analysis.winfo_exists():
+            for widget in (analysis.payload.decoded,analysis.payload.hextext,analysis.protocol.hex,analysis.comparison.detail):widget.configure(font=(self.mono,self.font_size))
+        panes=[self.terminal]
+        if self.terminal_popup and self.terminal_popup.winfo_exists():panes.append(self.terminal_popout_pane)
+        for pane in panes:
+            pane.text.configure(font=(self.mono,self.font_size));pane.tags.clear();pane.render(force=True)
+
+
+    def resized(self,event):
+        if event.widget is not self:return
+        tight=event.height<740
+        if tight!=getattr(self,"tight",False):
+            self.tight=tight
+            if tight:self.chassis.grid_remove()
+            else:self.chassis.grid()
+        compact=event.height<840
+        if compact==self.compact:return
+        self.compact=compact
+        if compact:self.subtitle.pack_forget();self.preview_label.pack_forget()
+        else:
+            self.subtitle.pack(anchor="w",pady=(3,0))
+            self.preview_label.pack(side="bottom",anchor="w",pady=(5,0))
+        self.hero.configure(font=(self.display_font,10 if compact else 12))
+        self.chassis.configure(height=46 if compact else 66)
+        self.traffic_toolbar.grid_configure(pady=4 if compact else 6)
+        self.composebar.pack_configure(pady=(4,4) if compact else (6,6))
+        self.payload.configure(height=2)
+        for label in self.stat_labels.values():
+            label.configure(font=(self.mono,14 if compact else 17))
+            label.pack_configure(pady=(2,2) if compact else (4,4))
+        for b in self.nav:b.configure(pady=4 if compact else 7)
+
+
+    def _redraw_skin(self, widget):
+        if isinstance(widget,(Chassis,MeterStrip,Rail)):widget.redraw()
+        for child in widget.winfo_children():self._redraw_skin(child)
+
+
+    def dialog(self,title,size="610x470"):
+        win=tk.Toplevel(self);win.title(title);win.geometry(size);win.configure(bg=self.colors["panel"])
+        win.transient(self.winfo_toplevel());win.grab_set();return win
+
+
+    def tools(self):
+        win=self.dialog("Payload tools & session tools","620x630")
+        self.label(win,"Build the exact bytes you need",17,True).pack(anchor="w",padx=20,pady=(20,8))
+        self.label(win,"Layout: prefix + payload + checksum + suffix + line ending",10,color=self.colors["muted"]).pack(anchor="w",padx=20)
+        form=self.frame(win);form.pack(fill="x",padx=20,pady=12)
+        for name,key in [("Prefix (hex)","prefix"),("Suffix (hex)","suffix")]:
+            self.label(form,name,9,color=self.colors["muted"]).pack(anchor="w",pady=5)
+            ttk.Entry(form,textvariable=self.vars[key]).pack(fill="x")
+        self.label(form,"Checksum covers prefix + payload",9,color=self.colors["muted"]).pack(anchor="w",pady=7)
+        self.combo(form,"checksum",["None","SUM8","LRC8","XOR8","CRC16 Modbus","CRC16 CCITT","CRC32"],width=25).pack(anchor="w")
+        self.label(win,"Automatic reply",13,True).pack(anchor="w",padx=20,pady=(14,4))
+        self.label(win,"Replies once per receive chunk / UDP datagram. Disabled in proxies.\nUse framing only for display; automatic replies are not protocol aware.",9,color=self.colors["muted"],justify="left").pack(anchor="w",padx=20)
+        self.combo(win,"auto",["Off","Echo received bytes","Reply with composer"],width=27).pack(anchor="w",padx=20,pady=8)
+        actions=self.frame(win);actions.pack(fill="x",padx=20,pady=8)
+        ttk.Button(actions,text="Import capture",command=self.import_capture).pack(side="left",padx=(0,5))
+        ttk.Button(actions,text="Replay TX",command=self.replay_capture).pack(side="left",padx=5)
+        ttk.Button(actions,text="Stop replay",command=self.stop_replay).pack(side="left",padx=5)
+        ttk.Button(actions,text="Reset counters",command=self.reset_counters).pack(side="left",padx=5)
+        def apply():
+            try:
+                self.payload_bytes()
+                if self.vars["auto"].get()!="Off" and self.vars["mode"].get() in ("TCP Proxy","Serial Proxy","Serial ↔ TCP"):
+                    raise ValueError("Automatic reply is available in direct terminal modes.")
+                self.apply_auto();self.preview();win.destroy()
+            except Exception as exc:messagebox.showerror("Payload tools",str(exc),parent=win)
+        ttk.Button(win,text="Apply",style="Accent.TButton",command=apply).pack(anchor="e",padx=20,pady=18)
+
+
+    def help(self):
+        win=self.dialog("Probe · Quick guide","780x620")
+        text=self.text_widget(win,height=25,wrap="word");text.pack(fill="both",expand=True,padx=16,pady=16)
+        self.put_text(text,f"PROBE {__version__}\n\n"
+            "GET STARTED\nChoose a mode, enter its endpoint, then Connect. Type a payload and press Ctrl+Enter. Double-click a traffic row (or select it and press Enter) to open Analyze for decoded text, hex/ASCII, every byte, protocol fields and comparison. One reusable window keeps all message views together.\n\n"
+            "TCP CLIENT / SERVER\nClient connects to a device. Server accepts up to 16 clients. Choose a client or All clients before sending. Bind to 0.0.0.0 to accept LAN connections.\n\n"
+            "TCP PROXY\nSet Listen to 127.0.0.1:9001 and Upstream to the real server. Point the other app to 127.0.0.1:9001. TX = app to upstream; RX = upstream to app. Each client has its own upstream connection. Binary bytes and half-close are preserved. TLS traffic remains encrypted.\n\n"
+            "USB / SERIAL\nSupports COM / tty serial devices, including USB CDC and USB-to-UART adapters. Refresh lists ports. Set baud, bits, parity, stop and flow. DTR/RTS start OFF. Use loop:// for a hardware-free check; rfc2217://host:port for remote serial. Use HID Monitor for read-only USB HID capture; arbitrary USB bulk terminals are not supported.\n\n"
+            "SERIAL PROXY\nLinux: select Auto PTY; copy the created /dev/pts/N into your other app. Windows: install a virtual COM pair; Probe opens one end, the app opens its partner. Probe also opens the physical device. The bridge forwards bytes, not virtual-port baud changes or modem lines. Configure the physical port here.\n\n"
+            "SERIAL ↔ TCP\nOne TCP app at a time talks to the physical serial device. This is a raw-byte bridge, not an RFC2217 server.\n\n"
+            "PAYLOADS\nText, hex, escaped text (\\r, \\n, \\xHH), decimal bytes, encoding and line ending. Tools adds prefix, checksum and suffix. Checksum covers prefix+payload, excluding suffix and line ending. CRC16 Modbus is little-endian; CCITT is big-endian, init FFFF; CRC32 is little-endian. Send file sends its original bytes, without composer transformations.\n\n"
+            "CAPTURE\nRecord streams lossless JSONL (hex+metadata) before filtering and framing. Raw RX file concatenates received bytes. Toolbar Export saves the retained rolling window, including filtered rows. Ctrl+click selects multiple messages; right-click → Export selected saves only those messages. The Hex / Decoded text choices still apply. Display is bounded to 2000 rows / 8 MiB; the inspector pages through every byte in 4 KiB pages. Under overload, UI drops are reported; record for full capture.\n\n"
+            "FRAMING / AUTOMATIC REPLIES\nTCP and serial are streams, not messages. Display by read chunk, delimiter, fixed length or idle gap. Framing never changes forwarding. Echo / composer reply runs once per receive chunk, not per protocol message. Do not enable echo at both ends.\n\n"
+            "SHORTCUTS\nCtrl+Enter: send · Ctrl+L: clear · Ctrl+S: export · Ctrl +/-: font · F1: help\n\n"
+            "LIVE TERMINAL\nThe Terminal tab interprets ANSI/VT-style color, cursor and screen commands while the traffic table preserves exact bytes. Enable Send keyboard for direct input. Traffic, Live plot and Terminal are main workspace pages; the composer target and injection side stay visible. Enter and Backspace are configurable; Ctrl+Shift+C/V copies/pastes. Detach moves Terminal into its own window; Dock or closing that window returns it to the main workspace. One peer is displayed at a time.\n\n"
+            "CAPTURE REPLAY\nTools or the traffic context menu can import JSONL/CSV while disconnected. Import sends nothing. Connect, then Replay TX/RX with a speed multiplier to send the captured bytes to the selected target/side. Double-click a row to inspect it. Use Load into composer in Analyze to explicitly load exact bytes, then Send to transmit.\n\n"
+            "ANALYZE TRAFFIC\nDouble-click a traffic row to open Analyze. Decoded text, Hex + ASCII and Every byte are included there. Protocol Inspector offers Auto (JSON detection) or Raw Bytes; selecting a field highlights its bytes. Copy field path supplies a sequence selector. Analyze remembers the page you last used for that message. Right-click selected rows → Capture Diff compares the exact two selected messages; for a larger selection, choose A/B from that selection. Capture Diff also compares messages or combined same-peer/direction capture chunks, highlights changed/added/removed ranges and can ignore JSON values or byte ranges. Save comparison retains all original bytes. These tools send nothing.\n\n"
+            "TRACE PATH\nUse Trace path at the top or right-click one message > Follow across probes. Choose a second probe, then match exact stream bytes or an optional JSON identifier. Repeated matches require selection. Compare selected reuses Capture Diff. Refresh takes a new read-only snapshot; observed intervals are not device latency. Nothing is sent.\n\n"
+            "SEARCH\nChoose Text or Hex bytes, then press Search or Enter. Changing the type resets the applied filter; editing alone never hides rows. Invalid input preserves previous results. Reset or Escape clears the search.\n\n"
+            "LIVE PLOT\nOpen the Live plot workspace page. Receive LF/CRLF-terminated RX numbers or CSV, up to four channels: 1,2 followed by LF, then 3,4 followed by LF. Choose the RX peer or automatic selection. Auto accepts numeric lines. Custom extracts a JSON field, text column, named value or fixed binary value; configure message boundaries and the RX parameter. TX-only data is not plotted. Separate peer buffers and the last 300 samples keep plotting bounded.\n\n"
+            "DYNAMIC SEQUENCES\nEdit message > Response & next step: Save reply values picks JSON/TLV/byte fields and names variables; Choose next step adds conditions and next/goto/finish/fail/timeout actions. Save rules, then Save message. Insert variable adds ${name}, ${name:json} (a JSON value without surrounding quotes) or ${name:hex}. Variables defines initial values and shows latest reply values. Outgoing frame can rebuild length/checksum after substitution. Missing values stop before sending. Version 3 exports retain rules; legacy files still load.\n\n"
+            "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
+            "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket, Windows virtual COM pair or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
+            "TEST SEQUENCES\nChoose messages, then Send next message: After interval or After a reply. Reply mode sends the first immediately and waits after every send, including the last, with no interval delay. Set Reply timeout; missing replies stop the run. Any nonempty incoming chunk from the destination counts, including unsolicited data. Edit message > Advanced > Expected reply can require specific hex bytes across chunks. Interval mode retains shared/individual delays and optional reply checks. Run once, Repeat a set number or Repeat until stopped. Stop cancels waits and pending sends. Save/Load preserves the effective behavior. Timing is best effort, not hard real-time.\n\n"
+            "VENDOR FEATURES\nHW-group proprietary UDP discovery, device IP configuration and TEA/I/O extensions are not implemented without verified protocol/SDK information. STM32 programming is intentionally outside this application's scope. See FEATURE_MATRIX.md.\n")

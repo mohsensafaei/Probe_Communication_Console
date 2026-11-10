@@ -1,7 +1,8 @@
-"""Traffic file serialization, independent of Tk and endpoint ownership."""
+'Traffic file serialization, independent of Tk and endpoint ownership.'
 import csv
 import datetime as dt
 import json
+
 from .codec import visible
 
 

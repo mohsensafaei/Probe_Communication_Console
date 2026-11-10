@@ -6,7 +6,7 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from probe.app import Probe
 from probe.simulation import model_from_dict
-from probe.testlab_ui import read_json
+from probe.ui.testlab import read_json
 from PIL import ImageGrab
 
 with tempfile.TemporaryDirectory() as directory,patch('probe.app.data_directory',return_value=Path(directory)):

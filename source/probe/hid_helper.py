@@ -1,13 +1,8 @@
-"""On-demand capture helper. GUI/normal transports are never elevated.
-
-The authenticated loopback channel accepts only heartbeat/stop. No caller paths,
-commands, shell fragments, or file writes are accepted by the elevated process.
-"""
+'On-demand capture helper. GUI/normal transports are never elevated.'
 import contextlib
 import ctypes
 import json
 import os
-from pathlib import Path
 import re
 import select
 import shutil
@@ -17,9 +12,18 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
-from .hid_capture import (MAX_PACKET, linux_devices, linux_metadata, pcap_packets,
-                          parse_usbmon, usbpcap_command, validate_source, windows_devices)
+from .hid_capture import (
+    MAX_PACKET,
+    linux_devices,
+    linux_metadata,
+    parse_usbmon,
+    pcap_packets,
+    usbpcap_command,
+    validate_source,
+    windows_devices,
+)
 
 MAX_FRAME=3*MAX_PACKET
 

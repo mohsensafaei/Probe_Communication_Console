@@ -14,6 +14,36 @@ from probe.app import Probe
 from probe.engine import MODES
 
 class UISmoke(unittest.TestCase):
+    def test_clear_removes_imported_replay_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'old.jsonl'
+            path.write_text(json.dumps(dict(time=1,direction='TX',hex='4f4c44')))
+            self.app.import_capture(path)
+            self.app.clear()
+            self.assertEqual(self.app.last_capture,[])
+            self.assertFalse(self.app.events)
+
+    def test_profile_restores_plot_config_and_auto_mode(self):
+        plot=self.app.plot
+        for name in ('temperature','pressure'):
+            plot.configure_custom();plot.custom_variables['field'].set(name);plot.apply_custom()
+            self.app.vars['profile'].set(name);self.app.save_profile()
+        self.app.vars['profile'].set('temperature');self.app.load_profile()
+        plot.feed(dict(direction='RX',peer='test',data=b'{"temperature":25,"pressure":999}'))
+        self.assertEqual(list(plot.model.peers['test']['rows']),[(25,)])
+        self.assertEqual(plot.config['field'],'temperature')
+        self.app.profiles['Auto']={'plot_mode':'Auto','plot_config':'{}'}
+        self.app.vars['profile'].set('Auto');self.app.load_profile()
+        self.assertEqual(plot.mode.get(),'Auto');self.assertIsNone(plot.model.config)
+
+    def test_simulator_invalid_capture_shows_validation_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'invalid.jsonl';path.write_text('null\n')
+            self.app.test_lab();pane=self.app.simulator_panel
+            with patch('probe.ui.testlab.filedialog.askopenfilename',return_value=str(path)):
+                pane.action(pane.load_capture_file)
+            self.assertIn('JSON object',pane.feedback.get())
+
     def test_frame_burst_formats_only_retained_rows(self):
         self.app.vars["framing"].set("Fixed length")
         self.app.vars["frame_size"].set("1")
@@ -105,7 +135,7 @@ class UISmoke(unittest.TestCase):
             yield from UISmoke.descendants(child)
 
     def test_simulator_field_rule_fault_editor_and_roundtrip(self):
-        from probe.simulator_ui import ConditionEditor
+        from probe.ui.simulator import ConditionEditor
         from probe.simulation import model_from_dict, model_to_dict, RequestMatcher
         self.app.test_lab();pane=self.app.simulator_panel
         editor=pane.edit_rule(True)
@@ -343,9 +373,9 @@ class UISmoke(unittest.TestCase):
         self.assertIn("ACK","".join(self.app.terminal.model.screen.display))
 
     def test_hid_selection_is_unelevated_and_analysis_uses_existing_workspace(self):
-        from probe.hid_ui import devices_received
+        from probe.ui.hid import devices_received
         from probe.hid_reports import HidTracker
-        from test_hid import MOUSE,packet
+        from test_hid import MOUSE, packet
         with patch("probe.hid_helper.launch_helper") as launch:
             self.app.choose_mode("HID Monitor");self.app.update()
             self.assertFalse(self.app.composer.winfo_ismapped())
@@ -364,7 +394,7 @@ class UISmoke(unittest.TestCase):
         self.app.choose_mode("TCP Client");self.app.update();self.assertTrue(self.app.composer.winfo_ismapped())
 
     def test_hid_permission_cancel_leaves_normal_app_usable(self):
-        from probe.hid_ui import devices_received
+        from probe.ui.hid import devices_received
         self.app.choose_mode("HID Monitor")
         source=r"\\.\USBPcap1:2" if os.name=="nt" else "1:2"
         devices_received(self.app,dict(devices=[dict(name="Lab mouse",source=source)]))
@@ -637,10 +667,10 @@ class UISmoke(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"steps.json"
             self.app.vars["sequence_cycles"].set("2")
-            with patch("probe.testlab_ui.filedialog.asksaveasfilename",return_value=str(path)):
+            with patch("probe.ui.testlab.filedialog.asksaveasfilename",return_value=str(path)):
                 pane.save_file()
             self.app.macros=[]
-            with patch("probe.testlab_ui.filedialog.askopenfilename",return_value=str(path)):
+            with patch("probe.ui.testlab.filedialog.askopenfilename",return_value=str(path)):
                 pane.load_file()
             self.assertEqual(len(self.app.macros),2)
             self.assertEqual(self.app.vars["sequence_cycles"].get(),"2")
@@ -682,7 +712,7 @@ class UISmoke(unittest.TestCase):
         self.assertEqual([pane.table.set(str(i),"delay") for i in range(2)],["100","100"])
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"sequence.json"
-            with patch("probe.sequence_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
+            with patch("probe.ui.sequence.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
             self.assertEqual([r["delay_ms"] for r in json.loads(path.read_text())["steps"]],[100,100])
         self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
         self.app.toggle();self.spin(lambda:self.app.engine.ready)
@@ -705,7 +735,7 @@ class UISmoke(unittest.TestCase):
             original=[dict(name="A",text="41",send_mode="Hex",delay_ms=7,repeat=3,expect="42",timeout_ms=90),
                       dict(name="B",text="43",send_mode="Hex",delay_ms=80)]
             path.write_text(json.dumps(dict(format="probe-sequence",version=1,cycles=0,steps=original)))
-            with patch("probe.sequence_ui.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
+            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
             self.assertTrue(pane.individual.get())
             self.assertEqual(pane.repeat_mode.get(),pane.REPEATS[2])
             self.assertEqual(pane.effective_rows(),original)
@@ -714,7 +744,7 @@ class UISmoke(unittest.TestCase):
             pane.individual.set(True)
             self.assertEqual(pane.effective_rows(),original)
             path.write_text(json.dumps([dict(name="Legacy",text="00 FF",send_mode="Hex")]))
-            with patch("probe.sequence_ui.filedialog.askopenfilename",return_value=str(path)),patch("probe.sequence_ui.messagebox.askyesno",return_value=True):pane.load_file()
+            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)),patch("probe.ui.sequence.messagebox.askyesno",return_value=True):pane.load_file()
             self.assertFalse(pane.individual.get())
             self.assertEqual(pane.interval.get(),"100")
             self.assertEqual(pane.effective_rows()[0]["delay_ms"],100)
@@ -777,11 +807,11 @@ class UISmoke(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"reply-sequence.json"
             expected=pane.effective_rows()
-            with patch("probe.sequence_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
+            with patch("probe.ui.sequence.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
             self.assertEqual(json.loads(path.read_text())["version"],2)
             self.app.macros=[]
             pane.advance.set("After interval")
-            with patch("probe.sequence_ui.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
+            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
             self.assertEqual(pane.advance.get(),"After a reply")
             self.assertEqual(pane.reply_timeout.get(),"500")
             self.assertEqual(pane.effective_rows(),expected)
@@ -847,9 +877,9 @@ class UISmoke(unittest.TestCase):
         self.assertEqual(pane.fields[0].status,"Mismatch")
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"protocol.json"
-            with patch("probe.analysis_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save_profile()
+            with patch("probe.ui.analysis.filedialog.asksaveasfilename",return_value=str(path)):pane.save_profile()
             pane.set_fields([])
-            with patch("probe.analysis_ui.filedialog.askopenfilename",return_value=str(path)):pane.load_profile()
+            with patch("probe.ui.analysis.filedialog.askopenfilename",return_value=str(path)):pane.load_profile()
             self.assertEqual(pane.fields[0].name,"Size")
         self.assertIsNone(self.app.engine)
 
@@ -865,12 +895,12 @@ class UISmoke(unittest.TestCase):
         self.assertEqual([item.kind for item in pane.differences if item.kind!="equal"],["ignored"])
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"diff.json"
-            with patch("probe.analysis_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save()
+            with patch("probe.ui.analysis.filedialog.asksaveasfilename",return_value=str(path)):pane.save()
             report=json.loads(path.read_text());self.assertEqual(bytes.fromhex(report["a_hex"]),a);self.assertEqual(bytes.fromhex(report["b_hex"]),b)
         self.assertIsNone(self.app.engine)
 
     def test_analysis_picker_combines_chunks_without_replacing_history(self):
-        from probe.analysis_ui import TrafficPicker
+        from probe.ui.traffic_picker import TrafficPicker
         original=[("RX",b'{"sid":'),("TX",b"A"),("RX",b'"123"}')]
         for n,(direction,data) in enumerate(original):self.app.add_event(dict(kind="data",direction=direction,peer="COM34",time=time.time()+n,data=data))
         result=[];picker=TrafficPicker(self.app,lambda data,label:result.append(data));self.app.update()
@@ -904,10 +934,10 @@ class UISmoke(unittest.TestCase):
         variables=pane.variables_dialog();variables.name.set("amount");variables.kind.set("JSON");variables.value.set("100");variables.put();variables.save()
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"flow.json"
-            with patch("probe.sequence_ui.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
+            with patch("probe.ui.sequence.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
             document=json.loads(path.read_text());self.assertEqual(document["version"],3);self.assertIn("amount",document["variables"])
             self.app.macros=[]
-            with patch("probe.sequence_ui.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
+            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
             self.assertEqual(compile_steps(pane.effective_rows())[1].flow.on_true.target,target)
 
     def test_sequence_variables_and_branch_run_over_real_tcp(self):
@@ -933,8 +963,8 @@ class UISmoke(unittest.TestCase):
         self.app.add_event(dict(kind="data", time=now, direction="TX", peer="device", data=b"QUERY"))
         self.app.add_event(dict(kind="data", time=now+.001, direction="RX", peer="device", data=b"ANSWER"))
         # Present the Windows panel even on a POSIX test host; I/O uses real pySerial.
-        with patch("probe.testlab_ui.simulator_transports", return_value=("TCP socket", "Virtual COM pair")), \
-             patch("probe.app.simulator_transports", return_value=("TCP socket", "Virtual COM pair")), \
+        with patch("probe.ui.testlab.simulator_transports", return_value=("TCP socket", "Virtual COM pair")), \
+             patch("probe.transports.config.simulator_transports", return_value=("TCP socket", "Virtual COM pair")), \
              socket.socket() as listener:
             listener.bind(("127.0.0.1", 0)); listener.listen(); listener.settimeout(3)
             win = self.app.test_lab(); win.geometry("980x680")

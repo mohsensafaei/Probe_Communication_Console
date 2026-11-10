@@ -1,2 +1,2 @@
-"""Probe — a small, byte-exact communications workbench."""
+'Probe — a small, byte-exact communications workbench.'
 __version__ = "1.7.0"

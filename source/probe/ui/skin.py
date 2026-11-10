@@ -1,4 +1,4 @@
-"""Original Probe instrument housing and hardware test-probe emblem."""
+'Original Probe instrument housing and hardware test-probe emblem.'
 import tkinter as tk
 
 

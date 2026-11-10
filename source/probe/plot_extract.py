@@ -1,7 +1,8 @@
-"""Bounded read-only extraction for live plots. No scripts or expressions."""
+'Bounded read-only extraction for live plots. No scripts or expressions.'
 import math
 import re
 import struct
+
 from .protocol import json_frame, json_value
 
 KINDS=("JSON field","Delimited column","Named value","Bytes")

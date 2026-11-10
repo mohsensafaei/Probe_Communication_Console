@@ -10,8 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from probe.engine import Engine
-from probe.hid_capture import (USBMON_HEADER, USBPCAP_HEADER, parse_usbmon, parse_usbpcap,
-    pcap_packets, parse_extcap_devices, validate_source, linux_devices, bundled_installer)
+from probe.hid_capture import USBMON_HEADER, USBPCAP_HEADER, parse_usbmon, parse_usbpcap, pcap_packets, parse_extcap_devices, validate_source, linux_devices, bundled_installer
 from probe.hid_helper import HelperClient, send_message, receive_message, helper_command, launch_helper
 from probe.hid_monitor import run_monitor
 from probe.hid_reports import ReportDescriptor, HidTracker, interfaces_from_config

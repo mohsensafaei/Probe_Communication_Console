@@ -1,13 +1,11 @@
-"""Bounded request framing, semantic predicates and repeatable reply faults.
-
-These are declarative rules, not scripts. No eval, plugins or network dependencies.
-"""
-from dataclasses import dataclass, asdict
-from decimal import Decimal, InvalidOperation
+'Bounded request framing, semantic predicates and repeatable reply faults.'
 import math
 import re
+from dataclasses import asdict, dataclass
+from decimal import Decimal, InvalidOperation
+
 from .codec import checksum, parse_hex
-from .protocol import json_frame, tlv_fields, IncompleteMessage
+from .protocol import IncompleteMessage, json_frame, tlv_fields
 from .sequence_flow import compile_flow, display_value
 from .traffic_search import field_keys
 

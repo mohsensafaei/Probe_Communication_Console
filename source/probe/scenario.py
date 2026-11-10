@@ -1,16 +1,25 @@
-"""Validated test steps and a cancellable runner on the transport event loop."""
+'Validated test steps and a cancellable runner on the transport event loop.'
 import asyncio
 import math
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import time
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from . import processing
 from .codec import parse_hex
 from .protocol import MAX_DATA, IncompleteMessage
-from .sequence_flow import Action, Flow, SendSpec, compile_flow, display_value, initial_variables, needs_reply, send_spec
-from .timing import sleep_at_least, wait_for, SequenceClock, SCHEDULED_NS
-from . import processing
+from .sequence_flow import (
+    Action,
+    Flow,
+    SendSpec,
+    compile_flow,
+    display_value,
+    initial_variables,
+    needs_reply,
+    send_spec,
+)
+from .timing import SCHEDULED_NS, SequenceClock, wait_for
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -78,11 +87,7 @@ def compile_steps(rows: Sequence[Mapping[str, Any]], default_delay: int = 1000, 
 
 def steps_from_capture(rows: Sequence[Mapping[str, Any]], delay_ms: int = 100,
                        recorded_timing: bool = False) -> list[dict[str, Any]]:
-    """Copy explicitly selected RX or TX records into outgoing, byte-exact steps.
-
-    Direction is provenance, not a routing instruction. The caller chooses the
-    destination independently. Uniform timing is the default for quick tests.
-    """
+    'Copy explicitly selected RX or TX records into outgoing, byte-exact steps.'
     delay_ms = integer(delay_ms, "Interval (ms)", 0, MAX_DELAY)
     if not rows or len(rows) > MAX_STEPS:
         raise ValueError(f"Select 1–{MAX_STEPS} captured messages.")
