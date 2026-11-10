@@ -40,3 +40,11 @@ class FindingsTests(unittest.TestCase):
         interval=observed_interval(first,second)
         self.assertEqual(interval['seconds'],-9);self.assertEqual(interval['clock'],'wall_time')
         self.assertFalse(interval['shared_clock'])
+
+    def test_explicit_raw_and_auto_modes_override_saved_custom_fields(self):
+        fields=[dict(name='Length',kind='Length LE',offset=0,length=1)]
+        event=self.event(b'\x02OK')
+        for mode in ('Raw Bytes','Auto'):
+            report=inspect_event(event,fields,mode=mode)
+            self.assertEqual(report['mode'],'Raw bytes');self.assertEqual(report['checks'],[])
+        self.assertEqual(inspect_event(event,fields,mode='Custom fields')['checks'][0]['status'],'valid')

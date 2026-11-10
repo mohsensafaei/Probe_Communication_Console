@@ -113,7 +113,7 @@ class AnalysisWindow(tk.Toplevel,Actions):
 
     def save_analysis(self):
         if not self.event or self.event['data']!=self.data:raise ValueError('Select a traffic message first.')
-        report=inspect_event(self.event,self.protocol.definitions)
+        report=inspect_event(self.event,self.protocol.definitions,mode=self.protocol.mode.get())
         path=filedialog.asksaveasfilename(parent=self,defaultextension='.json',filetypes=[('Analysis report','*.json')])
         if path:Path(path).write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False),encoding='utf-8')
 

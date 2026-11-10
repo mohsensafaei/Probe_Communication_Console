@@ -3,13 +3,14 @@ from dataclasses import asdict
 from ..protocol import inspect_payload
 
 
-def inspect_event(event, definitions=()):
+def inspect_event(event, definitions=(), mode=None):
     report=dict(format='probe-analysis',version=1,event_id=event.get('event_id'),byte_count=len(event['data']),
                 partial=bool(event.get('display_partial')),fields=[],checks=[])
     if event.get('redacted'):
         return dict(report,status='not_checked_redacted')
     try:
-        mode,fields=inspect_payload(event['data'],'Custom fields' if definitions else 'Auto',definitions)
+        mode=mode or ('Custom fields' if definitions else 'Auto')
+        mode,fields=inspect_payload(event['data'],'Raw bytes' if mode=='Raw Bytes' else mode,definitions)
         report.update(status='inspected',mode=mode,fields=[asdict(field) for field in fields])
         for field in fields:
             if field.status not in ('Valid','Mismatch','Truncated'):continue

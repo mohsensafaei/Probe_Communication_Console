@@ -44,6 +44,10 @@ class EvidenceUI(unittest.TestCase):
         report=json.loads(path.read_text())
         self.assertEqual(report['event_id'],self.app.events[key]['event_id'])
         self.assertEqual(report['byte_count'],3);self.assertIsNone(self.app.engine)
+        pane.protocol.definitions=[dict(name='Length',kind='Length LE',offset=0,length=1)]
+        pane.protocol.mode.set('Raw Bytes');pane.protocol.refresh()
+        with patch('probe.ui.analysis.filedialog.asksaveasfilename',return_value=str(path)):pane.save_analysis()
+        report=json.loads(path.read_text());self.assertEqual(report['mode'],'Raw bytes');self.assertEqual(report['checks'],[])
 
     def spin(self,predicate):
         import time
