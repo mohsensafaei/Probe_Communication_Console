@@ -96,6 +96,13 @@ def summary(case, limit=40000):
     return text[:limit]+'\n[Summary truncated; use case.json and traffic.jsonl.]' if len(text)>limit else text
 
 
+def build_preview(*args):
+    from concurrent.futures import ProcessPoolExecutor
+    import multiprocessing
+    with ProcessPoolExecutor(max_workers=1,mp_context=multiprocessing.get_context('spawn')) as pool:
+        return pool.submit(build_case,*args).result()
+
+
 def save_case(path, case):
     path=Path(path)
     handle=tempfile.NamedTemporaryFile(dir=path.parent,prefix='.probe-case-',suffix='.tmp',delete=False)

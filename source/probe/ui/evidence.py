@@ -5,7 +5,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, ttk
 
-from ..evidence.case import SETTINGS, build_case, save_case, select_rows, summary
+from ..evidence.case import SETTINGS, build_preview, save_case, select_rows, summary
 from .widgets import Actions, modal
 
 
@@ -68,12 +68,14 @@ class CaseDialog(Actions):
         probes=[]
         for snapshot in self.snapshots:
             if snapshot['primary'] or self.others.get():
-                probes.append(dict(snapshot,rows=select_rows(snapshot['all_rows'],snapshot['selected'],int(self.context.get()))))
+                probes.append({k:v for k,v in snapshot.items() if k not in ('primary','all_rows','selected')} | dict(rows=select_rows(snapshot['all_rows'],snapshot['selected'],int(self.context.get()))))
+        rows=[row for probe in probes for row in probe['rows']]
+        if len(rows)>200 or sum(len(row['data'])+len(row.get('original_hex',''))//2 for row in rows)>8*1024*1024:raise ValueError('Choose at most 200 messages / 8 MiB, including original bytes.')
         args=(probes,self.problem.get('1.0','end-1c'),self.expected.get('1.0','end-1c'),self.masks.get('1.0','end-1c').splitlines(),self.payload.get())
         self.busy=True;self.preview_button.configure(state='disabled');self.feedback.set('Building a read-only snapshot…')
         results=queue.SimpleQueue()
         def work():
-            try:results.put((build_case(*args),''))
+            try:results.put((build_preview(*args),''))
             except Exception as exc:results.put((None,str(exc)))
         threading.Thread(target=work,daemon=True,name='Probe case preview').start()
         def finish():
