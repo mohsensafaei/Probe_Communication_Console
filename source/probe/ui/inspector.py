@@ -91,7 +91,12 @@ class ProtocolPane(ttk.Frame,Actions):
         if Path(path).stat().st_size>262144:raise ValueError("A protocol profile is limited to 256 KiB.")
         profile=json.loads(Path(path).read_text(encoding="utf-8-sig"))
         if not isinstance(profile,dict) or profile.get("format")!="probe-protocol" or profile.get("version")!=1:raise ValueError("Choose a Probe protocol profile.")
-        fields=validate_fields(profile.get("fields"));self.mode.set("Custom fields");self.set_fields(fields)
+        from ..configuration.documents import describe
+        from .importing import ImportPreview
+        def apply():
+            fields=validate_fields(profile.get('fields'));self.mode.set('Custom fields');self.set_fields(fields)
+        self.import_preview=ImportPreview(self,self.app,describe(profile,'protocol'),apply)
+        return self.import_preview
 
     def save_profile(self):
         validate_fields(self.definitions)

@@ -3,7 +3,7 @@ import copy
 import json
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
 from uuid import uuid4
 
 from ..codec import visible
@@ -493,8 +493,14 @@ class SequencePane(ttk.Frame):
         if not path:return
         if Path(path).stat().st_size > 24 * 1024 * 1024:raise ValueError("File is too large (24 MiB maximum).")
         document=json.loads(Path(path).read_text(encoding="utf-8-sig"))
+        from ..configuration.documents import describe
+        from .importing import ImportPreview
+        self.import_preview=ImportPreview(self,self.app,describe(document,'sequence')+'\n\nDestination: '+self.destination_text()+'\nReplaces the current sequence.',lambda:self.load_document(document))
+        return self.import_preview
+
+    def load_document(self,document):
+        self.ensure_idle()
         rows, cycles = sequence_from_dict(document)
-        if self.app.macros and not messagebox.askyesno("Replace sequence", "Replace the current sequence with this file?", parent=self):return
         self.app.macros = rows;self.adopt_timing()
         self.app.vars["sequence_variables"].set(json.dumps(document.get("variables",{}) if isinstance(document,dict) else {}))
         self.update_timing_controls()

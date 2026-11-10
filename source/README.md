@@ -609,3 +609,7 @@ tracemalloc Python allocations (not whole-process RAM or transport jitter).
 
 Traffic → right-click → Copy message IDs / Find message by ID links analysis to
 stable capture evidence. See [automation and diagnostic workflows](docs/automation.md).
+
+Configuration Schemas are provided in `schemas`. Load shows a validated Apply / Cancel
+preview before replacing a sequence, simulator model or protocol profile.
+For the complete test suite, install `python -m pip install -r requirements-dev.txt`.

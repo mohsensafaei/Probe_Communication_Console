@@ -100,3 +100,36 @@ class EvidenceUI(unittest.TestCase):
             dialog.context.set('1');release.set();self.spin(lambda:not dialog.busy)
         self.assertIsNone(dialog.case);self.assertTrue(dialog.save_button.instate(['disabled']))
         dialog.window.destroy()
+
+    def test_sequence_import_is_validated_previewed_and_cancelable(self):
+        import json
+        self.app.test_lab();pane=self.app.sequence_panel
+        self.app.macros=[dict(name='Original',text='old')];pane.refresh()
+        path=Path(self.directory.name)/'sequence.json'
+        path.write_text(json.dumps(dict(format='probe-sequence',version=1,cycles=2,steps=[dict(name='New',text='new')])) )
+        with patch('probe.ui.sequence.filedialog.askopenfilename',return_value=str(path)):pane.load_file()
+        self.assertEqual(self.app.macros[0]['name'],'Original');pane.import_preview.window.destroy()
+        with patch('probe.ui.sequence.filedialog.askopenfilename',return_value=str(path)):pane.load_file()
+        pane.import_preview.apply_button.invoke()
+        self.assertEqual(self.app.macros[0]['name'],'New');self.assertEqual(self.app.vars['sequence_cycles'].get(),'2')
+        self.assertIsNone(self.app.engine)
+        path.write_text('{"format":"probe-sequence","version":3,"steps":[]}')
+        with patch('probe.ui.sequence.filedialog.askopenfilename',return_value=str(path)),self.assertRaises(ValueError):pane.load_file()
+        self.assertEqual(self.app.macros[0]['name'],'New')
+
+    def test_simulator_and_protocol_imports_only_apply_after_review(self):
+        from jsonschema import Draft202012Validator
+        import json
+        root=Path(__file__).resolve().parents[1]
+        self.app.test_lab();simulator=self.app.simulator_panel
+        path=root/'examples/device-model.json'
+        with patch('probe.ui.testlab.filedialog.askopenfilename',return_value=str(path)):simulator.load_model()
+        self.assertIsNone(self.app.simulator_model)
+        simulator.import_preview.apply_button.invoke();self.assertEqual(len(self.app.simulator_model.exchanges),2)
+        self.app.table.selection_set(next(iter(self.app.events)));self.app.analyze();protocol=self.app.analysis_window.protocol
+        path=root/'examples/lab-protocol.json'
+        with patch('probe.ui.inspector.filedialog.askopenfilename',return_value=str(path)):protocol.load_profile()
+        self.assertEqual(protocol.definitions,[]);protocol.import_preview.apply_button.invoke()
+        self.assertEqual(len(protocol.definitions),3);self.assertIsNone(self.app.engine)
+        protocol.definitions[0]['offset']='0'
+        Draft202012Validator(json.loads((root/'schemas/protocol.schema.json').read_text())).validate(dict(format='probe-protocol',version=1,fields=protocol.definitions))

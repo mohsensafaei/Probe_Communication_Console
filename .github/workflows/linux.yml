@@ -23,7 +23,7 @@ jobs:
       - name: Install pinned dependencies
         run: |
           python3 -m venv .venv
-          .venv/bin/python -m pip install -r requirements.txt pyinstaller==6.22.3
+          .venv/bin/python -m pip install -r requirements-dev.txt pyinstaller==6.22.3
       - name: Backend and Linux PTY tests
         run: .venv/bin/python -m unittest discover -s tests -v
       - name: Core processing benchmark (informational)

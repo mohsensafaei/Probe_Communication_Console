@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Probe diagnostic case version 1",
+  "description": "Authoring contract. Probe also validates byte encodings, cross-field rules, totals and references before applying. Schemas do not execute or send anything.",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "case_id",
+    "probe_version",
+    "source",
+    "completeness",
+    "redaction",
+    "probes",
+    "analysis",
+    "intervals"
+  ],
+  "properties": {
+    "format": {
+      "const": "probe-diagnostic-case"
+    },
+    "version": {
+      "const": 1
+    },
+    "case_id": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "probe_version": {
+      "type": "string",
+      "maxLength": 32
+    },
+    "source": {
+      "const": "retained_history_snapshot"
+    },
+    "completeness": {
+      "const": "unknown"
+    },
+    "redaction": {
+      "type": "object",
+      "properties": {
+        "literal_mask_count": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "minimum": 0,
+          "maximum": 32,
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "payload_included": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "literal_mask_count",
+        "payload_included"
+      ],
+      "additionalProperties": false
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "minItems": 1,
+      "maxItems": 8
+    },
+    "analysis": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "minItems": 1,
+      "maxItems": 200
+    },
+    "intervals": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "minItems": 0,
+      "maxItems": 200
+    }
+  }
+}
