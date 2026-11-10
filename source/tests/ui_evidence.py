@@ -95,7 +95,7 @@ class EvidenceUI(unittest.TestCase):
         def slow(*args):
             started.set();release.wait(3);return build_case(*args)
         self.app.table.selection_set(next(iter(self.app.events)))
-        with patch('probe.ui.evidence.build_case',side_effect=slow):
+        with patch('probe.ui.evidence.build_preview',side_effect=slow):
             dialog=self.app.share_case();self.assertTrue(started.wait(1))
             dialog.context.set('1');release.set();self.spin(lambda:not dialog.busy)
         self.assertIsNone(dialog.case);self.assertTrue(dialog.save_button.instate(['disabled']))

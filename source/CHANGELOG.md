@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Isolate diagnostic preview CPU work in an on-demand process; transfer only chosen rows and enforce case bounds before spawning.
+
 - Publish configuration/evidence JSON Schemas and review validated Sequence, Simulator and Protocol imports before applying them.
 
 - Share bounded diagnostic cases from selected multi-probe evidence, with local preview/copy/ZIP, literal masking and explicit capture-health limits.

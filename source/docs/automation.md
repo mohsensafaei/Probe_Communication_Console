@@ -41,7 +41,8 @@ problem and expected behavior. Add 0–20 surrounding rows or explicitly include
 selected messages from other probes. The dialog snapshots retained history once;
 new traffic does not silently change the evidence while reviewing it.
 
-**Preview** builds the case off the UI/acquisition path. **Copy summary** gives a
+**Preview** builds the case in an on-demand process, separate from the GUI and
+transport GIL. Only chosen/context rows are transferred; other history stays local. **Copy summary** gives a
 bounded Markdown summary; **Save case…** writes a ZIP with README.md, case.json
 (metadata, findings, observation intervals) and traffic.jsonl (chosen bytes once).
 Limits are 200 messages / 8 MiB, including original payloads. No upload, connection,
@@ -87,3 +88,7 @@ combined byte limits, numeric-string bounds, checksum ranges and branch targets.
 No second runtime validator or runtime dependency is added. Legacy input formats
 remain supported. Automated schema/example checks use the development dependency
 in `requirements-dev.txt`; install it before running the complete test suite.
+
+Run `python benchmarks/evidence_benchmark.py` from `source` to check byte-exact
+TCP acquisition while a diagnostic preview process analyzes a separate capture.
+Results are machine-specific; this is not a wire-timing or physical serial test.

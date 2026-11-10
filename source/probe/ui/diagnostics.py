@@ -72,6 +72,10 @@ def smoke_test(app, report):
         app.close_probe(secondary)
         if not primary.engine.ready:raise RuntimeError("Closing one probe stopped another connection.")
 
+        from ..evidence.case import build_preview
+        case=build_preview([dict(name='Frozen evidence',rows=[dict(event_id='smoke:1',time=1,direction='RX',peer='smoke',data=b'{"value":1}')])])
+        if case['events'][0]['event_id']!='smoke:1' or case['analysis'][0]['status']!='inspected':raise RuntimeError('Diagnostic preview worker failed in bundle.')
+
     except Exception as exc:
         report(False, str(exc))
         app.close()
