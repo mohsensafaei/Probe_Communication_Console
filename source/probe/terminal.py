@@ -1,4 +1,4 @@
-"""Bounded ANSI/VT screen and incremental decoding, independent of the GUI."""
+'Bounded ANSI/VT screen and incremental decoding, independent of the GUI.'
 import codecs
 import copy
 

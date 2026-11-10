@@ -82,6 +82,23 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual(rows[0]["data"],bytes.fromhex("00 02 A4 FF"))
             self.assertEqual(rows[0]["time"],2)
 
+    def test_import_preserves_plugin_metadata_and_bounds_original_bytes(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'changed.jsonl'
+            metadata=dict(original_hex='616263',modified_by=['uppercase'],session='one',client_peer='client',
+                          source_time=1.0,source_monotonic_ns=123,plugin_elapsed_ns=42)
+            path.write_text(json.dumps(dict(time=2,direction='TX',hex='414243',**metadata)))
+            row,=load_capture(path)
+            self.assertEqual({key:row[key] for key in metadata},metadata)
+            with self.assertRaises(ValueError):load_capture(path,max_bytes=5)
+
+    def test_non_object_capture_rows_and_invalid_original_bytes_are_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'invalid.jsonl'
+            for row in (None,[],True,1,'text',dict(direction='TX',hex='00',original_hex='GG')):
+                path.write_text(json.dumps(row))
+                with self.assertRaises(ValueError):load_capture(path)
+
     def test_csv_import(self):
         with tempfile.TemporaryDirectory() as d:
             path=Path(d)/"capture.csv"

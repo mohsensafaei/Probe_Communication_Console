@@ -1,4 +1,4 @@
-"""Small real-I/O checks run against the installed/frozen program itself."""
+'Small real-I/O checks run against the installed/frozen program itself.'
 import contextlib
 import os
 import socket
@@ -52,8 +52,8 @@ def expect_equal(actual, expected):
 def self_test():
     import serial
     from serial.tools import list_ports
+
     # These URL handlers are imported dynamically by pySerial in frozen builds.
-    from serial.urlhandler import protocol_loop, protocol_rfc2217, protocol_socket
     from .capture import load_capture
     from .terminal import TerminalModel
     list(list_ports.comports())
@@ -141,8 +141,8 @@ def self_test():
     if model.screen.display[0].strip() != "OK" or model.screen.buffer[0][0].fg != "red":
         raise RuntimeError("ANSI terminal self-test failed")
     print("PASS ANSI terminal")
-    from .simulation import DeviceModel, Exchange, Reply
     from .scenario import Step
+    from .simulation import DeviceModel, Exchange, Reply
     model = DeviceModel((Exchange(b"PING\r\n", (Reply(b"PONG\r\n", 2),)),))
     with session("Device Simulator", simulator_model=model) as (_, events, ready):
         with session("TCP Client", port=ready["address"][1]) as (engine, events, _):
@@ -156,8 +156,8 @@ def self_test():
                 app.write(b"PING\r\n")
                 expect_equal(app.read(6), b"PONG\r\n")
     print("PASS device simulator (TCP; PTY on POSIX) and timed reply-checked sequences")
-    from .simulator_rules import FrameSpec, Condition, Fault
     from .simulation import model_from_dict, model_to_dict
+    from .simulator_rules import Condition, Fault, FrameSpec
     fields=DeviceModel((Exchange(b"",(Reply(b"OK"),),(Condition(selector="data.service",value="03"),),
                                 Fault("Duplicate",count=2,gap_ms=1),"Payment"),),framing=FrameSpec())
     fields=model_from_dict(model_to_dict(fields))
@@ -166,8 +166,8 @@ def self_test():
             app.sendall(b'{"data":{"service":"03","amount":1234}}')
             expect_equal(app.makefile("rb").read(4),b"OKOK")
     print("PASS semantic simulator rules, v2 model and deterministic fault injection")
-    from .protocol import json_value
     from .comparison import compare_bytes
+    from .protocol import json_value
     from .scenario import compile_steps
     if json_value(b'000019{"sessionId":"123"}',"sessionId")!="123":
         raise RuntimeError("Protocol Inspector JSON extraction failed")
@@ -183,8 +183,9 @@ def self_test():
             engine.start_scenario(steps)
             wait_for(lambda:any(event.get("state")=="complete" for event in events),events)
     print("PASS protocol interpretation, byte comparison and reply variables over TCP")
-    from .hid_helper import HelperClient
     import threading
+
+    from .hid_helper import HelperClient
     # Exercises the actual spawned/frozen helper without UAC, kernel capture or hardware.
     messages=list(HelperClient().messages('check','',threading.Event(),elevate=False))
     if not any(message.get('kind')=='checked' and message.get('capture_started') is False for message in messages):

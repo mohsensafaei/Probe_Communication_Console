@@ -1,9 +1,10 @@
-"""One Tk interpreter, independent connection workspaces."""
-from pathlib import Path
+'One Tk interpreter, independent connection workspaces.'
 import sys
 import tkinter as tk
-from tkinter import ttk, simpledialog
-from . import __version__
+from pathlib import Path
+from tkinter import simpledialog, ttk
+
+from .. import __version__
 from .typography import font_roles
 
 
@@ -14,21 +15,20 @@ class WorkspaceWindow(tk.Tk):
         super().__init__()
         self.factory, self.probes, self.names, self.states = factory, [], {}, {}
         self._closing = False
+        self._add_job = None
         self.title(f"Probe {__version__} · Communications workbench")
         self.geometry(f"{min(1360,max(1060,self.winfo_screenwidth()-80))}x{min(900,max(740,self.winfo_screenheight()-80))}")
         self.minsize(1060,740)
         self.fonts = font_roles(self)
         self.style = ttk.Style(self)
         self.style.theme_use('clam')
-        root = Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent.parent))
+        root = Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parents[2]))
         try:
             self.icon_image=tk.PhotoImage(master=self,file=str(root/'assets'/'probe.png'))
             self.iconphoto(True,self.icon_image)
         except tk.TclError:pass
         bar=ttk.Frame(self,padding=(12,6));bar.pack(fill='x')
-        self.add_button=ttk.Button(bar,text='+',width=3,command=self.new_probe)
-        self.add_button.pack(side='left')
-        ttk.Label(bar,text='Add probe · connections keep running in every tab').pack(side='left',padx=8)
+        ttk.Label(bar,text='Connections keep running in every tab').pack(side='left',padx=8)
         ttk.Button(bar,text='Trace path…',command=self.trace_path).pack(side='left',padx=6)
         ttk.Button(bar,text='Rename…',command=self.rename_probe).pack(side='right',padx=6)
         size=max(14,round(self.winfo_fpixels('12p')))
@@ -42,6 +42,9 @@ class WorkspaceWindow(tk.Tk):
                     ('Probe.close',{'side':'right','sticky':''})]})]})]})])
         self._close_pressed=None
         self.probe_tabs=ttk.Notebook(self,style='Probes.TNotebook');self.probe_tabs.pack(fill='both',expand=True)
+        self.add_button=ttk.Button(self.probe_tabs,text='+',width=3,command=self.new_probe)
+        self.probe_tabs.bind('<Configure>',self._place_add_button)
+        self.add_button.bind('<Configure>',self._place_add_button)
         self.probe_tabs.bind('<<NotebookTabChanged>>',self._selected)
         self.probe_tabs.bind('<ButtonPress-1>',self._close_press)
         self.probe_tabs.bind('<ButtonRelease-1>',self._close_release)
@@ -93,6 +96,26 @@ class WorkspaceWindow(tk.Tk):
         if state is not None:self.states[probe]=state
         marker=' ●' if self.states.get(probe)=='Connected' else ''
         self.probe_tabs.tab(probe,text=f'{self.names[probe]} · {probe.vars["mode"].get()}{marker}')
+        self._queue_add_button()
+
+    def _queue_add_button(self):
+        if not self._closing and self._add_job is None:self._add_job=self.after_idle(self._place_add_button)
+
+    def _place_add_button(self,event=None):
+        if self._add_job:self.after_cancel(self._add_job);self._add_job=None
+        if self._closing:return
+        width=self.add_button.winfo_reqwidth()
+        if self.__dict__.get('_add_width')!=width:
+            self._add_width=width
+            self.style.configure('Probes.TNotebook',tabmargins=(0,0,width+6,0))
+        left,right=0,self.probe_tabs.winfo_width()
+        y=self._close_icon.height()//2+4
+        while left<right:
+            middle=(left+right)//2
+            try:self.probe_tabs.index(f'@{middle},{y}')
+            except tk.TclError:right=middle
+            else:left=middle+1
+        self.add_button.place(x=min(left+4,max(0,self.probe_tabs.winfo_width()-width-2)),y=0)
 
     def _selected(self,event=None):
         probe=self.current_probe
@@ -128,7 +151,7 @@ class WorkspaceWindow(tk.Tk):
             self.names[probe]=name.strip()[:40];self.update_probe_title(probe)
 
     def trace_path(self,source=None):
-        from .trace_ui import TraceWindow
+        from .trace import TraceWindow
         previous=self.__dict__.get('trace_window')
         if previous and previous.winfo_exists():previous.destroy()
         self.trace_window=TraceWindow(self,source or self.current_probe)
@@ -144,11 +167,13 @@ class WorkspaceWindow(tk.Tk):
         for variable in probe.vars.values():
             for modes,command in variable.trace_info():variable.trace_remove(modes,command)
         self.add_button.configure(state='normal')
+        self._queue_add_button()
         if not self.probes and not self._closing:self.new_probe()
         return True
 
     def close(self):
         self._closing=True
+        if self._add_job:self.after_cancel(self._add_job);self._add_job=None
         for probe in self.probes:
             if probe.engine:probe.engine.stop()
         for probe in tuple(self.probes):

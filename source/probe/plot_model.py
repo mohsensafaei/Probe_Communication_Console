@@ -1,8 +1,9 @@
-"""Bounded numeric acquisition model; independent of Tk and transport I/O."""
-from collections import OrderedDict, deque
+'Bounded numeric acquisition model; independent of Tk and transport I/O.'
 import math
 import re
-from .plot_extract import validate, extract, frames
+from collections import OrderedDict, deque
+
+from .plot_extract import extract, frames, validate
 
 
 class NumericSamples:

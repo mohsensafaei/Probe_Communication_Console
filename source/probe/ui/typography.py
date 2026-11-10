@@ -1,15 +1,15 @@
-"""Load bundled OFL fonts privately; never install fonts on the user's system."""
+"Load bundled OFL fonts privately; never install fonts on the user's system."
 import ctypes
 import ctypes.util
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 _handles = []
 
 
 def load_fonts():
-    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
     files = sorted((root / "assets" / "fonts").glob("*.ttf"))
     try:
         if os.name == "nt":

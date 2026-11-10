@@ -1,10 +1,11 @@
-"""On-demand matching of retained traffic; no transport or GUI dependencies."""
+'On-demand matching of retained traffic; no transport or GUI dependencies.'
 from bisect import bisect_right
+
 from .traffic_search import field_keys, json_body
 
 
 def flow(event):
-    return tuple(event.get(key, '') for key in ('direction', 'peer', 'client_peer'))
+    return tuple(event.get(key, '') for key in ('direction', 'peer', 'client_peer', 'session'))
 
 
 def message(keys, event, data=None, method='Selected manually', span=''):
@@ -53,5 +54,5 @@ def find_matches(reference, rows, field='', limit=100):
 
 def combine(rows):
     if not rows:raise ValueError('Select target traffic first.')
-    if len({flow(event) for _,event in rows})!=1:raise ValueError('Combine only one direction, peer and client.')
+    if len({flow(event) for _,event in rows})!=1:raise ValueError('Combine only one direction, peer, client and session.')
     return message((key for key,_ in rows),rows[0][1],b''.join(event['data'] for _,event in rows))

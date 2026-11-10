@@ -1,20 +1,15 @@
-"""Thread-contained asyncio transport engine; the UI never performs network I/O."""
+'Thread-contained asyncio transport engine; the UI never performs network I/O.'
 import asyncio
 import contextlib
-import datetime
-import errno
-import json
 import os
-import socket
 import threading
 import time
-from pathlib import Path
 
-from .timing import sleep_at_least, SCHEDULED_NS
 from .recording import CaptureWriter
+from .timing import SCHEDULED_NS
+from .transports import MODES as MODES
+from .transports import network, serial
 
-MODES = ("TCP Client", "TCP Server", "TCP Proxy", "UDP", "USB / Serial",
-         "Serial Proxy", "Serial ↔ TCP", "Device Simulator", "HID Monitor")
 
 class Engine:
     def __init__(self, emit):
@@ -60,7 +55,7 @@ class Engine:
         event = {"kind": kind, "time": time.time(), **fields}
         if kind=='data':
             event['monotonic_ns']=time.perf_counter_ns()
-            if self.plugins:event['session']=self.session
+            event['session']=self.session
             scheduled=SCHEDULED_NS.get()
             if scheduled is not None:
                 event['scheduled_ns']=scheduled;event['dispatch_lateness_ns']=max(0,event['monotonic_ns']-scheduled)
@@ -150,8 +145,6 @@ class Engine:
         loop = self.loop
         if loop and not loop.is_closed():
             def cancel_session():
-                # Server.serve_forever waits for accepted transports when cancelled.
-                # Close them first so a connected application cannot hold Stop open.
                 for task in list(self.tasks): task.cancel()
                 for writer in list(self.writers): writer.close()
                 if self.root_task: self.root_task.cancel()
@@ -214,9 +207,9 @@ class Engine:
             elif mode == "UDP":
                 await self._transfer(data,"TX",str(self.udp_target),lambda out:self.loop.sock_sendto(self.udp,out,self.udp_target))
             elif mode in ("USB / Serial", "Serial Proxy", "Serial ↔ TCP") and side == "Device / upstream":
-                await self._transfer(data,"TX",self.cfg['serial_port'],lambda out:self._serial_write(self.serials[0],out))
+                await self._transfer(data,"TX",self.cfg['serial_port'],lambda out:serial.write(self,self.serials[0],out))
             elif mode == "Serial Proxy":
-                await self._transfer(data,"RX","Injected to app",self._app_write)
+                await self._transfer(data,"RX","Injected to app",lambda data:serial.app_write(self,data))
             else:
                 peers = list(self.clients.items())
                 if target != "All clients": peers = [(k,v) for k,v in peers if k == target]
@@ -262,163 +255,11 @@ class Engine:
             try:await asyncio.wait_for(asyncio.wrap_future(self.plugins.submit('end',b'',dict(session=self.session,peer=peer))),3)
             except Exception as exc:self.event('error',message='Plugins: '+str(exc))
 
-    async def _serial_write(self, port, data):
-        # Serial writes are bounded by write_timeout and serialized per port.
-        async with self.serial_locks[id(port)]:
-            n = await asyncio.to_thread(port.write, data)
-            if n != len(data): raise IOError(f"Partial serial write: {n}/{len(data)} bytes")
-
-    def _serial_read(self, port):
-        data = port.read(min(max(port.in_waiting, 1), 65536))
-        pending = self.serial_pending_rx.setdefault(id(port), bytearray())
-        # Keep draining the driver during a write (full duplex), but publish a
-        # fast reply after the corresponding TX has been recorded on this loop.
-        if self.serial_locks[id(port)].locked() or pending:
-            pending.extend(data)
-            if len(pending) > 8 * 1024 * 1024:
-                raise RuntimeError("Pending serial reply exceeds 8 MiB while a write is in progress.")
-            if self.serial_locks[id(port)].locked(): return b""
-            data = bytes(pending)
-            pending.clear()
-        return data
-
-    def _port(self, name):
-        try: import serial
-        except ImportError: raise RuntimeError("USB / Serial requires pyserial. Run: python -m pip install pyserial") from None
-        cfg = self.cfg
-        kwargs = dict(baudrate=int(cfg.get("baud",115200)), bytesize=int(cfg.get("bits",8)),
-                      parity=cfg.get("parity","N"), stopbits=float(cfg.get("stopbits",1)),
-                      timeout=0, write_timeout=2, xonxoff=cfg.get("flow") == "XON/XOFF",
-                      rtscts=cfg.get("flow") == "RTS/CTS", dsrdtr=cfg.get("flow") == "DSR/DTR")
-        if os.name != "nt" and "://" not in name: kwargs["exclusive"] = True
-        if not hasattr(serial, "serial_for_url"):
-            raise RuntimeError("Wrong 'serial' package installed. Use the source launcher to install pyserial.")
-        port = serial.serial_for_url(name, do_not_open=True, **kwargs)
-        try:
-            port.dtr = bool(cfg.get("dtr",False)); port.rts = bool(cfg.get("rts",False))
-            port.open()
-        except Exception as exc:
-            with contextlib.suppress(Exception): port.close()
-            if os.name == "posix" and getattr(exc, "errno", None) in (errno.EACCES, errno.EPERM):
-                import getpass
-                import grp
-                import shlex
-                try: group = grp.getgrgid(os.stat(name).st_gid).gr_name
-                except (OSError, KeyError): group = "dialout"
-                command = f"sudo usermod -aG {shlex.quote(group)} {shlex.quote(getpass.getuser())}"
-                raise RuntimeError(f"Permission denied: {name}. Run {command}, then log out and back in.") from exc
-            raise
-        self.serials.append(port); self.serial_locks[id(port)] = asyncio.Lock()
-        return port
 
     def _connected(self, message, **extra):
         self.ready = True
         self.event("state", state="Connected", message=message, **extra)
 
-    async def _run(self):
-        cfg = self.cfg; mode = cfg["mode"]
-        if mode == "HID Monitor":
-            from .hid_monitor import run_monitor
-            worker=asyncio.create_task(asyncio.to_thread(run_monitor,self))
-            try:await asyncio.shield(worker)
-            except asyncio.CancelledError:
-                self.stopping.set()
-                # Drain the helper before recorder/session teardown. A pending OS
-                # permission dialog can outlive cancellation but emits no reports.
-                with contextlib.suppress(asyncio.TimeoutError,OSError):
-                    await asyncio.wait_for(asyncio.shield(worker),10)
-                raise
-        elif mode == "Device Simulator":
-            from .simulator import serve_simulator
-            await serve_simulator(self)
-        elif mode == "TCP Client":
-            reader, writer = await asyncio.wait_for(asyncio.open_connection(cfg["host"], int(cfg["port"])), 5)
-            self.writers.add(writer)
-            peer = f'{cfg["host"]}:{cfg["port"]}'
-            self.clients[peer] = (writer,)
-            self.event("peers", peers=list(self.clients))
-            self._connected(f"Connected to {peer}")
-            await self._reader(reader, writer, peer)
-        elif mode in ("TCP Server", "TCP Proxy", "Serial ↔ TCP"):
-            if mode == "Serial ↔ TCP": self._port(cfg["serial_port"])
-            self.server = await asyncio.start_server(self._accept, cfg["bind"], int(cfg["listen_port"]))
-            addr = self.server.sockets[0].getsockname()
-            self._connected(f"Listening on {addr[0]}:{addr[1]}", address=addr)
-            if mode == "Serial ↔ TCP":
-                task = asyncio.create_task(self._serial_bridge_rx())
-                self.tasks.add(task); task.add_done_callback(self.tasks.discard)
-            await self.server.serve_forever()
-        elif mode == "UDP":
-            # Resolve IPv4 names off the GUI thread; UDP broadcast is explicit.
-            infos = await self.loop.getaddrinfo(cfg["host"], int(cfg["port"]), family=socket.AF_INET, type=socket.SOCK_DGRAM)
-            self.udp_target = infos[0][4]
-            self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            self.udp.bind((cfg["bind"], int(cfg["listen_port"])))
-            self.udp.setblocking(False)
-            self._connected(f"UDP bound to {self.udp.getsockname()}", address=self.udp.getsockname())
-            while True:
-                data, address = await self.loop.sock_recvfrom(self.udp, 65535)
-                peer = f"{address[0]}:{address[1]}"
-                self.event("data", direction="RX", peer=peer, data=data)
-                response = data if self.echo else self.auto_reply
-                if response is not None:
-                    await self._transfer(response,'TX',peer,lambda out:self.loop.sock_sendto(self.udp,out,address))
-        else:
-            physical = self._port(cfg["serial_port"])
-            if mode == "Serial Proxy":
-                app_port = cfg.get("app_port", "Auto PTY")
-                if app_port == "Auto PTY":
-                    if os.name == "nt": raise ValueError("On Windows, enter Probe's end of an installed virtual COM pair.")
-                    import tty
-                    master, slave = os.openpty()
-                    self.pty_fds = [master, slave]
-                    tty.setraw(slave); os.set_blocking(master, False)
-                    self.app_path = os.ttyname(slave)
-                else:
-                    from .serial_endpoints import VirtualPair
-                    pair = VirtualPair(app_port, cfg.get("app_peer_port", ""))
-                    pair.validate(cfg["serial_port"])
-                    self._port(pair.probe); self.app_path = pair.application
-                self._connected(f"Serial proxy ready. App connects to {self.app_path}", app_path=self.app_path)
-            else: self._connected(f'Opened {cfg["serial_port"]}')
-            next_lines = 0
-            while True:
-                data = self._serial_read(physical)
-                if data:
-                    if mode == "Serial Proxy": await self._transfer(data,'RX',cfg['serial_port'],self._app_write)
-                    else:self.event("data", direction="RX", peer=cfg["serial_port"], data=data)
-                    if mode != "Serial Proxy":
-                        response = data if self.echo else self.auto_reply
-                        if response is not None:
-                            await self._transfer(response,'TX',cfg['serial_port'],lambda out:self._serial_write(physical,out))
-                if mode == "Serial Proxy":
-                    if self.pty_fds:
-                        try: sent = os.read(self.pty_fds[0], 65536)
-                        except BlockingIOError: sent = b""
-                    else:
-                        port = self.serials[1]
-                        sent = self._serial_read(port)
-                    if sent:
-                        await self._transfer(sent,'TX',cfg['serial_port'],lambda out:self._serial_write(physical,out))
-                if time.monotonic() > next_lines:
-                    self._lines(physical); next_lines = time.monotonic() + .5
-                await sleep_at_least(.01)
-
-    async def _app_write(self, data):
-        if self.pty_fds:
-            view = memoryview(data)
-            deadline = time.monotonic() + 5
-            while view:
-                try: view = view[os.write(self.pty_fds[0], view):]
-                except BlockingIOError:
-                    if time.monotonic() > deadline: raise TimeoutError("App is not reading its PTY.")
-                    await sleep_at_least(.01)
-        else: await self._serial_write(self.serials[1], data)
-
-    def _lines(self, port):
-        with contextlib.suppress(Exception):
-            self.event("lines", CTS=port.cts, DSR=port.dsr, DCD=port.cd, RI=port.ri)
 
     def control(self, name, value=True):
         async def change():
@@ -471,87 +312,23 @@ class Engine:
             if self.simulator_reset: self.simulator_reset()
         self.schedule(reset())
 
-    async def _reader(self, reader, writer, peer):
-        while True:
-            data = await reader.read(65536)
-            if not data: return
-            self.event("data", direction="RX", peer=peer, data=data)
-            response = data if self.echo else self.auto_reply
-            if response is not None:
-                await self._write(writer, response, direction="TX", peer=peer)
+    async def _run(self):
+        mode=self.cfg["mode"]
+        if mode == "HID Monitor":
+            from .hid_monitor import run_monitor
+            worker=asyncio.create_task(asyncio.to_thread(run_monitor,self))
+            try:await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                self.stopping.set()
+                with contextlib.suppress(asyncio.TimeoutError,OSError):
+                    await asyncio.wait_for(asyncio.shield(worker),10)
+                raise
 
-    async def _accept(self, reader, writer):
-        current = asyncio.current_task()
-        self.tasks.add(current)
-        peer = None; remote_writer = None
-        admitted = False
-        self.writers.add(writer)
-        try:
-            mode = self.cfg["mode"]
-            if self.accepting >= (1 if mode == "Serial ↔ TCP" else 16):
-                self.event("info", message="Rejected connection: session client limit reached."); return
-            self.accepting += 1; admitted = True
-            self.counter += 1
-            addr = writer.get_extra_info("peername")
-            peer = f"#{self.counter} {addr[0]}:{addr[1]}"
-            if mode == "TCP Proxy":
-                remote_reader, remote_writer = await asyncio.wait_for(
-                    asyncio.open_connection(self.cfg["host"], int(self.cfg["port"])), 5)
-                self.writers.add(remote_writer)
-                self.clients[peer] = (writer, remote_writer)
-            else: self.clients[peer] = (writer,)
-            self.event("peers", peers=list(self.clients))
-            self.event("info", message=f"Client connected: {peer}")
-            if mode == "TCP Proxy":
-                async def pump(src, dst, direction):
-                    while True:
-                        data = await src.read(65536)
-                        if not data:
-                            if dst.can_write_eof(): dst.write_eof(); await dst.drain()
-                            return
-                        await self._write(dst, data, direction=direction, peer=peer)
-                # Preserve half-close: a client may finish writing, then wait for its reply.
-                pumps = [asyncio.create_task(pump(reader, remote_writer, "TX")),
-                         asyncio.create_task(pump(remote_reader, writer, "RX"))]
-                try: await asyncio.gather(*pumps)
-                finally:
-                    for task in pumps: task.cancel()
-                    await asyncio.gather(*pumps, return_exceptions=True)
-            elif mode == "Serial ↔ TCP":
-                while True:
-                    data = await reader.read(65536)
-                    if not data: break
-                    await self._transfer(data,'TX',self.cfg['serial_port'],lambda out:self._serial_write(self.serials[0],out),client_peer=peer)
-            else: await self._reader(reader, writer, peer)
-        except asyncio.CancelledError: raise
-        except Exception as exc:
-            if not self.stopping.is_set(): self.event("error", message=f"Client session: {exc}")
-        finally:
-            for w in (writer, remote_writer):
-                if w:
-                    w.close()
-                    with contextlib.suppress(Exception, asyncio.CancelledError): await asyncio.wait_for(w.wait_closed(), 1)
-                    self.writers.discard(w)
-            if peer:
-                await self._plugin_end(peer)
-                self.clients.pop(peer, None)
-                self.event("peers", peers=list(self.clients))
-                self.event("info", message=f"Client disconnected: {peer}")
-            self.tasks.discard(current)
-            if admitted: self.accepting -= 1
+        elif mode == "Device Simulator":
+            from .simulator import serve_simulator
+            await serve_simulator(self)
 
-    async def _serial_bridge_rx(self):
-        try:
-            while True:
-                port = self.serials[0]
-                data = self._serial_read(port)
-                if data:
-                    client_peer=next(iter(self.clients),'')
-                    data,extra=await self._transform(data,'RX',self.cfg['serial_port'],client_peer=client_peer)
-                    self.event("data", direction="RX", peer=self.cfg["serial_port"], client_peer=client_peer,data=data,**extra)
-                    for peer, links in list(self.clients.items()): await self._write(links[0], data)
-                await sleep_at_least(.01)
-        except asyncio.CancelledError: raise
-        except Exception as exc:
-            self.event("error", message=f"Serial bridge stopped: {exc}")
-            self.stop()
+        elif mode == "TCP Client":await network.run_client(self)
+        elif mode in ("TCP Server","TCP Proxy","Serial ↔ TCP"):await network.run_server(self)
+        elif mode == "UDP":await network.run_udp(self)
+        else:await serial.run(self)

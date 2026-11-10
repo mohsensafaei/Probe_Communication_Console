@@ -1,14 +1,21 @@
-"""Optional response rules and variables, outside the simple sequence workflow."""
+'Optional response rules and variables, outside the simple sequence workflow.'
 import copy
 import json
 import tkinter as tk
 from tkinter import ttk
 from uuid import uuid4
 
-from .analysis_ui import Actions, TrafficPicker, entry, modal, table
-from .protocol import CHECKSUMS, inspect_payload
-from .sequence_flow import (FORMATS, OPERATORS, SOURCES, compile_flow, display_value,
-                            initial_variables, variable_name)
+from ..protocol import CHECKSUMS, inspect_payload
+from ..sequence_flow import (
+    FORMATS,
+    OPERATORS,
+    SOURCES,
+    compile_flow,
+    initial_variables,
+    variable_name,
+)
+from .traffic_picker import TrafficPicker
+from .widgets import Actions, entry, modal, table
 
 ACTION_LABELS={"Next message":"next","Go to message":"goto","Finish successfully":"stop","Fail test":"fail"}
 
@@ -209,7 +216,7 @@ class ResponseRules(tk.Toplevel,Actions):
         feedback=tk.StringVar();ttk.Label(body,textvariable=feedback,wraplength=600).pack(anchor="w",pady=8)
         def save():
             try:
-                from .sequence_flow import send_spec
+                from ..sequence_flow import send_spec
                 proposed={key:variable.get() for key,variable in variables.items()}
                 send_spec(dict(text="00",send_mode="Hex",**proposed));self.packet=proposed;win.destroy();self.grab_set()
             except (ValueError,KeyError,TypeError) as exc:feedback.set(str(exc))

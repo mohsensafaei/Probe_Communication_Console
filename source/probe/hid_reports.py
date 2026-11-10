@@ -1,11 +1,7 @@
-"""Bounded HID descriptor decoding and transfer-to-report reconstruction.
-
-HID 1.11 short items, little-endian bit fields. This never opens a device.
-Unknown usages stay numeric; unsupported/truncated layouts remain explicit.
-"""
-from collections import defaultdict, OrderedDict
-from dataclasses import dataclass
+'Bounded HID descriptor decoding and transfer-to-report reconstruction.'
 import struct
+from collections import OrderedDict, defaultdict
+from dataclasses import dataclass
 
 MAX_REPORT = 65536
 MAX_DESCRIPTOR = 16384

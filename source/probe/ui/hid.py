@@ -1,12 +1,13 @@
-"""HID device selection and report inspection; all capture work is off Tk."""
+'HID device selection and report inspection; all capture work is off Tk.'
 import os
-from pathlib import Path
 import threading
 import tkinter as tk
-from tkinter import ttk,filedialog,messagebox
-from .hid_capture import bundled_installer,usbpcap_command
-from .hid_helper import discover_devices,launch_helper
-from .hid_reports import MAX_DESCRIPTOR,ReportDescriptor
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
+
+from ..hid_capture import bundled_installer, usbpcap_command
+from ..hid_helper import discover_devices, launch_helper
+from ..hid_reports import MAX_DESCRIPTOR, ReportDescriptor
 
 
 def build_panel(app,field):
@@ -56,8 +57,6 @@ def install_driver(app):
     if usbpcap_command():messagebox.showinfo('USBPcap','USBPcap is already installed. If devices are missing, restart Windows and Refresh devices.',parent=app);return
     try:
         path=bundled_installer()
-        # The original signed installer presents its own license/setup pages.
-        # No silent install, online bootstrap, or automatic restart.
         process=launch_helper([str(path)],True)
         if hasattr(process,'close'):process.close()
         app.set_status('USBPcap setup opened from the bundled installer. After installation, restart Windows, then Refresh devices.')

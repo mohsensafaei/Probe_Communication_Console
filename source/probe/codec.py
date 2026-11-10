@@ -1,4 +1,4 @@
-"""Payload encoding and display. No transport ever decodes or modifies RX bytes."""
+'Payload encoding and display. No transport ever decodes or modifies RX bytes.'
 import binascii
 import re
 import struct
@@ -134,10 +134,7 @@ class Framer:
         return list(self.iter_feed(data, now))
 
     def iter_feed(self, data, now):
-        """Yield frames without materializing a potentially huge list.
-
-        Consume fully before feeding or flushing this framer again.
-        """
+        'Yield frames without materializing a potentially huge list.'
         self.last = now
         if self.mode == "Chunks":
             yield data

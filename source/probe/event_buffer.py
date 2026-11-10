@@ -1,10 +1,4 @@
-"""Bounded transport-to-display handoff; never touches Tk or recording.
-
-Data and control events share FIFO ordering but independent capacities. Traffic
-pressure may evict display data, never a connection/recording status. This is a
-rolling display, not the lossless recorder. Control-only floods retain the latest
-128 controls; both kinds of loss are counted explicitly.
-"""
+'Bounded transport-to-display handoff; never touches Tk or recording.'
 from collections import deque
 from queue import Empty
 from threading import Lock

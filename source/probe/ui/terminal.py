@@ -1,8 +1,9 @@
-"""Live terminal tab. Rendering never changes captured transport bytes."""
+'Live terminal tab. Rendering never changes captured transport bytes.'
 import re
 import tkinter as tk
 from tkinter import ttk
-from .terminal import TerminalModel, key_bytes
+
+from ..terminal import TerminalModel, key_bytes
 
 PALETTE={"black":"#10141d","red":"#ed778a","green":"#49d6b4","brown":"#dfb56c",
  "blue":"#78afff","magenta":"#c7a0fa","cyan":"#71d9e7","white":"#e7edf7",

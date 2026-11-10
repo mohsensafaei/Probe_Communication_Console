@@ -1,12 +1,7 @@
-"""Cancellable minimum delays, including Windows' coarse asyncio clock.
-
-CPython <=3.12 can schedule asyncio callbacks a full monotonic-clock tick early.
-Use the high-resolution performance clock to measure durations. On coarse clocks,
-short worker sleeps avoid spinning and bound cancellation cleanup to 50 ms.
-"""
+"Cancellable minimum delays, including Windows' coarse asyncio clock."
 import asyncio
-from collections.abc import Awaitable
 import time
+from collections.abc import Awaitable
 from typing import TypeVar
 
 T = TypeVar("T")
@@ -43,14 +38,13 @@ async def wait_for(awaitable: Awaitable[T], seconds: float) -> T:
 
 
 from contextvars import ContextVar
+
 SCHEDULED_NS=ContextVar('probe_scheduled_ns',default=None)
 
 
 async def sleep_until_ns(deadline_ns):
     """Cancellable absolute deadline; recheck early event-loop wakeups."""
     while (remaining:=deadline_ns-time.perf_counter_ns())>0:
-        # Native sleep releases the GIL and avoids selector timeout rounding.
-        # Bound a cancelled wait's underlying thread work to 50 ms.
         await asyncio.to_thread(time.sleep,min(remaining/1e9,.05))
 
 

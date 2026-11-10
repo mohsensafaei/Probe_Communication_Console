@@ -18,7 +18,7 @@ class TracePathTests(unittest.TestCase):
         self.assertEqual(rows[0][1]['data'],b'prefix\x00\xff')
 
     def test_different_directions_peers_and_clients_are_never_joined(self):
-        for field in ('direction','peer','client_peer'):
+        for field in ('direction','peer','client_peer','session'):
             rows=[row(1,b'AB'),row(2,b'CD')];rows[1][1][field]='other'
             self.assertEqual(find_matches({'data':b'ABCD'},rows),[])
             with self.assertRaises(ValueError):combine(rows)

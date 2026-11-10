@@ -1,10 +1,11 @@
-"""Bounded asynchronous capture. Serialization and disk I/O live in a process."""
+'Bounded asynchronous capture. Serialization and disk I/O live in a process.'
 import contextlib
 import json
 import multiprocessing as mp
 import queue
 import threading
 import time
+
 from .event_buffer import event_cost
 
 

@@ -9,8 +9,7 @@ import unittest
 
 from probe.diagnostics import session, received, wait_for
 from probe.scenario import Step, compile_steps, sequence_from_dict
-from probe.simulation import (DeviceModel, Exchange, Reply, RequestMatcher,
-                              compile_capture, model_from_dict, model_to_dict)
+from probe.simulation import DeviceModel, Exchange, Reply, RequestMatcher, compile_capture, model_from_dict, model_to_dict
 
 
 def model(delay=0):

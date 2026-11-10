@@ -1,10 +1,22 @@
-"""Compile recorded byte conversations into bounded, deterministic device models."""
-from dataclasses import dataclass, asdict
-from .simulator_rules import (Condition, Fault, FrameSpec, RequestFrames, RequestContext,
-    frame_to_dict, frame_from_dict, conditions_from_dict, fault_to_dict, fault_from_dict, reply_plan)
-from collections.abc import Iterable
-from typing import Any
+'Compile recorded byte conversations into bounded, deterministic device models.'
 import math
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
+from typing import Any
+
+from .simulator_rules import (
+    Condition,
+    Fault,
+    FrameSpec,
+    RequestContext,
+    RequestFrames,
+    conditions_from_dict,
+    fault_from_dict,
+    fault_to_dict,
+    frame_from_dict,
+    frame_to_dict,
+    reply_plan,
+)
 
 MAX_REQUEST = 65536
 MAX_MODEL_BYTES = 8 * 1024 * 1024

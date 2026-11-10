@@ -2,6 +2,8 @@
 
 A compact English-language Python desktop workbench for TCP, UDP and USB serial communications. Version **1.7.0** (Windows release).
 
+[Project structure](ARCHITECTURE.md)
+
 ### Your Python plugins
 
 Open **Traffic → Plugins…** to add a Python file or folder. Analyze custom fields, edit/rebuild messages, run manual actions and plot named values. Message changes require explicit permission. See [PLUGINS.md](PLUGINS.md) and `examples/plugins` for the small API and working binary / JSON examples.
@@ -196,6 +198,8 @@ The serial proxy forwards **data bytes**. Baud changes, break and modem line cha
 ## Framing and captures
 
 TCP and serial provide **byte streams**, not message boundaries. A socket read may contain part of one message or several messages. Probe can group displayed rows by read chunks, a hex delimiter (included), a fixed byte count or an idle gap. Grouping changes the display only. Incomplete display frames are flushed on disconnect; buffering is capped at 64 KiB.
+
+Framed rows preserve original bytes for equal-length plugin transformations. When a plugin changes byte length, Probe flushes the pending display frame and shows that transformed chunk separately, labelled partial, so original/output comparisons keep exact bytes without guessing their alignment.
 
 * **Record**: append lossless JSON Lines records containing timestamp, direction, peer and hex, directly at the transport before UI filtering or grouping. Record can be armed before connecting and stays armed for later connections.
 * **Raw RX file**: append received bytes to a binary file. With multiple clients these are interleaved by arrival order; use JSONL to retain peer identity.

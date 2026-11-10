@@ -1,12 +1,19 @@
-"""Declarative sequence variables and routing. No expressions or code execution."""
-from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+'Declarative sequence variables and routing. No expressions or code execution.'
 import codecs
 import json
 import re
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 from .codec import encode, parse_hex
-from .protocol import MAX_DATA, IncompleteMessage, field_number, json_frame, json_value, tlv_fields
+from .protocol import (
+    MAX_DATA,
+    IncompleteMessage,
+    field_number,
+    json_frame,
+    json_value,
+    tlv_fields,
+)
 
 NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,47}\Z")
 TOKEN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]{0,47})(?::(json|hex))?\}")
@@ -75,8 +82,6 @@ class SendSpec:
                     return raw.hex(" ").upper()
                 if isinstance(value,bytes):raise ValueError(f"{name}: use ${{{name}:hex}} for binary data.")
                 rendered=display_value(value)
-                # Escaped/Hercules inputs interpret backslashes/tokens. Encode
-                # inserted text to byte tokens so it cannot become new escapes.
                 if self.mode=="Escaped":return "".join(f"\\x{byte:02x}" for byte in rendered.encode(self.encoding))
                 if self.mode=="Hercules":return "".join(f"${byte:02X}" for byte in rendered.encode(self.encoding))
                 return rendered

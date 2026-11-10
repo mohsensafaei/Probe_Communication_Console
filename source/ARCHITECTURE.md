@@ -1,79 +1,68 @@
 # Project structure and ownership
 
-`source/` is the application root. Launchers, `Probe.spec` and portable build scripts
-remain here so existing offline workflows keep working. Run tests from this directory.
+Run commands and tests from `source/`. `run_probe.py` and `python -m probe` share
+`probe/cli.py`; PyInstaller still uses `Probe.spec` and the existing assets.
 
-| Module | Responsibility |
+| Location | Responsibility |
 | --- | --- |
-| `probe/app.py` | Application lifecycle, connection coordination, settings and callbacks |
-| `probe/ui/layout.py` | Workbench widgets, styling and layout |
-| `probe/ui/traffic.py` | Traffic rendering/filtering and export dialog |
-| `probe/event_buffer.py` | Thread-safe display handoff and shared queue cost estimation |
-| `probe/traffic_model.py` | Headless retained history and bounded per-stream display framing |
-| `probe/exporting.py` | Pure CSV, JSONL and readable-text serialization |
-| `probe/plot_model.py` | Bounded numeric acquisition, independent of Tk |
-| `probe/plot_ui.py` | Plot controls and drawing; re-exports NumericSamples for compatibility |
-| `probe/engine.py`, `simulator.py` | Thread-contained asyncio endpoints and simulation |
-| `probe/scenario.py`, `timing.py` | Sequence execution and absolute deadlines |
-| `probe/recording.py` | Bounded recording worker process |
-| `probe/protocol.py`, `comparison.py`, `codec.py` | Payload interpretation, comparison and framing |
-| `tests/`, `benchmarks/` | Correctness gates and reproducible measurements |
+| `probe/cli.py` | Arguments, helper mode and diagnostic entry points; loads Tk only for GUI startup |
+| `probe/app.py` | Workspace state, connection lifecycle, event dispatch and send controls |
+| `probe/settings.py` | Defaults, writable data directory and atomic settings persistence |
+| `probe/engine.py` | Async lifecycle, recording, send limits, plugin transforms and sequence coordination |
+| `probe/transports/config.py` | Endpoint validation and display-framer configuration without widgets |
+| `probe/transports/network.py` | TCP client/server/proxy, UDP and network client cleanup |
+| `probe/transports/serial.py` | Serial ports, full-duplex I/O, virtual serial endpoints and bridge reads |
+| `probe/ui/layout.py` | Widgets, transport controls, styling and responsive layout |
+| `probe/ui/traffic.py` | Traffic rendering, selection, search, export, capture import and replay |
+| `probe/ui/analysis.py` | Analysis window and byte/text views |
+| `probe/ui/inspector.py`, `comparison.py`, `traffic_picker.py` | Protocol fields, Capture Diff and message selection |
+| `probe/ui/widgets.py` | Small controls and validation feedback shared by analysis editors |
+| `probe/ui/sequence.py`, `sequence_capture.py`, `sequence_flow.py` | Sequence editing, capture selection and response rules |
+| `probe/ui/plot.py`, `terminal.py`, `plugin.py` | Plot, terminal and plugin presentation |
+| `probe/ui/testlab.py`, `simulator.py`, `hid.py` | Hardware-test and device-monitor controls |
+| `probe/ui/workspaces.py` | Root window, probe tabs and global shortcuts |
+| `probe/ui/skin.py`, `typography.py` | Instrument artwork and privately loaded fonts |
+| `probe/ui/diagnostics.py` | GUI smoke test, separate from normal startup |
+| `tests/`, `benchmarks/` | Regression tests and repeatable performance checks |
 
-The two UI mixins share Probe-owned widgets/state; they are presentation components,
-not independent application controllers. Neither imports Probe, avoiding a circular
-import. Core modules must not import the UI. `test_core_refactor.py` checks headless
-imports in a fresh interpreter, serialization and byte integrity.
+Core modules remain small files named for their work: `codec`, `protocol`,
+`comparison`, `capture`, `traffic_search`, `trace_path`, `traffic_model`,
+`plot_model`, `plot_extract`, `terminal`, `plugins`, `scenario`, `sequence_flow`,
+`simulation`, `simulator_rules`, `timing`, `recording` and the HID modules.
+They can be tested without a Tk interpreter. The plugin API and capture,
+profile, sequence and simulator file formats retain their existing contracts.
 
-Transport acquisition and recording are independent of Traffic filtering, pause and
-retention. Tk widgets stay on the UI thread. The changes do not introduce a new event
-loop, runtime dependency or worker. File formats and the existing public callbacks
-remain compatible. PyInstaller follows the new package imports, checked by actual
-frozen self-test and GUI smoke runs on each target OS.
+## Boundaries
 
-This is an incremental separation, not a claim that every class now has one small
-responsibility. Application connection/settings code and sequence UI are still large.
-A further split should preserve their ownership and cancellation behavior, backed by
-native GUI tests; moving files alone would not establish those boundaries.
+`ProbeWorkspace` owns one Engine, display queue, history, settings file and its
+Tk callbacks. Its two presentation mixins share that workspace's widgets.
+`WorkspaceWindow` owns the single Tk interpreter, tabs, fonts and global keys.
+Network and serial functions receive the engine explicitly and use its common
+recording/transform path. Core modules never import presentation modules.
 
-## Display ownership in 1.4.2
+Tk widgets stay on the GUI thread. Transport I/O stays on the engine's asyncio
+thread. Recording and plugin processes retain their cancellation and byte-order
+contracts. Moving UI code does not add polling, processes or runtime dependencies.
 
-Engine records original events before handing them to `DisplayEventBuffer`. Data
-uses a 1,024-event / 8 MiB estimated-memory rolling budget; controls have their own
-128-event FIFO so data cannot evict a disconnect or recording error. The dequeue
-operation merges their sequence numbers to preserve arrival order. Control-only
-overflow is also counted. These budgets are display limits, not recording limits.
+## Capture and display
 
-Only the UI thread owns `TrafficHistory` and `DisplayFraming`. History has one
-ordered mapping, O(1) oldest-row eviction and a batch delta for widgets. `order`
-is a compatibility snapshot for selection/export consumers, not a second mutable
-source of truth. A frame batch is consumed lazily and trimmed before widgets are
-created. Framing retains at most 64 streams; metadata never retains the original
-read's payload. Stream-limit flushes and display-loss flushes are visibly partial.
+Engine records transport events before GUI grouping or filtering. The display
+queue bounds data to 1,024 events / 8 MiB and keeps a separate control FIFO.
+`TrafficHistory` owns retained rows; `DisplayFraming` owns bounded stream buffers.
+Framing and Trace distinguish session, direction, peer and proxy client.
+Equal-length transforms preserve original bytes through splitting and joining.
+Length-changing transforms keep their exact chunk provenance and partial label.
+A display gap flushes pending frames before more data is grouped.
 
-A dropped data ordinal resets display framing, terminal and plot state before
-the next retained read; the queue does not mutate shared recorder/observer events.
-Monotonic acquisition timestamps drive idle gaps for live Engine events. Wall-time
-fallback preserves imported/demo events without monotonic timestamps. Idle checks
-are deferred while the queue is behind. The 8 ms poll budget is cooperative between
-events: one expensive payload or widget batch can exceed it. It is not a real-time
-latency guarantee. See `DISPLAY_PERFORMANCE.md` for measurements and remaining work.
+Each probe cancels its own callbacks and dialogs on close. Hidden probes keep
+collecting bounded models; selecting one refreshes its visible table. Trace uses
+an on-demand snapshot and the existing comparison view.
 
+## Verification
 
-## Multiple connection workspaces
-
-`WorkspaceWindow` in `workspaces.py` owns the root interpreter, probe tabs, shared
-fonts/styles and global key/wheel dispatch. `ProbeWorkspace` is a Frame with its
-own Engine, queue, history, settings file, dialogs and tracked timer callbacks.
-Closing a Frame cancels only its timers and destroys its descendants; it never
-cancels all Tcl timers. Variable traces are released after owned dialogs finish
-their destruction cleanup. The `Probe` entry point remains a root window and
-forwards legacy read/callback access to the selected workspace; new code uses
-`current_probe` explicitly. Hidden workspaces keep bounded models current and
-materialize their table on selection. Runtime dependencies are unchanged.
-
-Trace matching lives in the headless `trace_path.py`; `trace_ui.py` snapshots two
-bounded histories only on request and reuses ComparePane. It adds no acquisition
-hooks or polling. Exact stream matching joins each flow once and caps results at
-100; byte payloads in matches share the reference bytes. Trace windows are released
-when closed or when a listed probe closes. Search draft variables are separate
-from the applied filter; only Search/Enter replaces that filter.
+Run `python -m unittest discover -s tests -v`, GUI tests with `-p 'ui_*.py'`,
+`python run_probe.py --self-test`, and `--smoke-test` with a display.
+`test_structure.py` checks headless imports, the UI boundary, settings roundtrips
+and widget-free configuration validation. After packaging, run both diagnostics
+on the target operating system. Physical HID/serial and native Windows paths need
+an appropriate target machine.

@@ -1,15 +1,15 @@
-"""Plugin controls and results inside the existing workbench."""
-from collections import OrderedDict
-from itertools import islice
+'Plugin controls and results inside the existing workbench.'
 import json
 import queue
-from pathlib import Path
 import shutil
 import tkinter as tk
-from tkinter import ttk, filedialog, simpledialog
+from collections import OrderedDict
+from itertools import islice
+from pathlib import Path
+from tkinter import filedialog, simpledialog, ttk
 from uuid import uuid4
 
-from .plugins import PluginWorker, metadata
+from ..plugins import PluginWorker, metadata
 
 
 class Plugins:

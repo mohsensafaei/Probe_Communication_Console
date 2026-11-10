@@ -1,15 +1,15 @@
-"""Small Python plugin contract; user code only runs in a disposable worker."""
+'Small Python plugin contract; user code only runs in a disposable worker.'
 import ast
-from collections import OrderedDict
-from concurrent.futures import Future
 import importlib.util
 import json
 import math
 import multiprocessing as mp
-from pathlib import Path
 import queue
 import threading
 import time
+from collections import OrderedDict
+from concurrent.futures import Future
+from pathlib import Path
 
 MAX_DATA = 1024 * 1024
 MAX_RESULT = 64 * 1024

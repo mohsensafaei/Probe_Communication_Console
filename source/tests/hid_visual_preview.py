@@ -8,7 +8,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from PIL import ImageGrab
 from probe.app import Probe
 from probe.hid_reports import HidTracker
-from probe.hid_ui import devices_received
+from probe.ui.hid import devices_received
 
 MOUSE=bytes.fromhex('05010902A1010901A1000509190129031500250175019503810295017505810105010930093109381581257F750895038106C0C0')
 
