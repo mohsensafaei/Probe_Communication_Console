@@ -157,7 +157,7 @@ class DisplayModelTests(unittest.TestCase):
                     expected.pop(0)
                     evicted += 1
             change = history.extend(for_batch)
-            self.assertEqual(list(history.events.items()), expected)
+            self.assertEqual([(key,{k:v for k,v in row.items() if k not in ('event_id','event_version')}) for key,row in history.events.items()], expected)
             self.assertEqual(change.added, tuple(key for key, _ in expected if key not in before))
             self.assertEqual(set(change.removed), before - set(history.events))
             self.assertEqual(history.retained_bytes, sum(len(r["data"]) for _, r in expected))

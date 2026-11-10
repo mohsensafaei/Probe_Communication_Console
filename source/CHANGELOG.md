@@ -1,5 +1,9 @@
 # Changes
 
+## Unreleased
+
+- Preserve stable message IDs, bounded framed source byte ranges and acquisition timing through JSONL export/import; copy and locate IDs in Traffic.
+
 ## 1.7.0
 
 - Add per-probe Python plugins with a one-function process API and optional rebuild, action and opt-in transform hooks.

@@ -33,6 +33,7 @@ for name in ("README.md","PLUGINS.md","FEATURE_MATRIX.md","VALIDATION.md","CHANG
     shutil.copy2(root/name,folder/name)
 shutil.copytree(root/"examples", folder/"examples", dirs_exist_ok=True,
                 ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+shutil.copytree(root/"docs", folder/"docs", dirs_exist_ok=True)
 (folder/"probe-data").mkdir(exist_ok=True)
 licenses=folder/"licenses";licenses.mkdir(exist_ok=True)
 shutil.copy2(root/"licenses"/"pyserial-LICENSE.txt",licenses/"pyserial-LICENSE.txt")
