@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix Sequence import preview to show the editor’s 100 ms default and actual reply-gating rules.
+
 - Isolate diagnostic preview CPU work in an on-demand process; transfer only chosen rows and enforce case bounds before spawning.
 
 - Publish configuration/evidence JSON Schemas and review validated Sequence, Simulator and Protocol imports before applying them.
