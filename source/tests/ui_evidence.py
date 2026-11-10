@@ -44,3 +44,59 @@ class EvidenceUI(unittest.TestCase):
         report=json.loads(path.read_text())
         self.assertEqual(report['event_id'],self.app.events[key]['event_id'])
         self.assertEqual(report['byte_count'],3);self.assertIsNone(self.app.engine)
+
+    def spin(self,predicate):
+        import time
+        stop=time.monotonic()+5
+        while time.monotonic()<stop:
+            self.window.update()
+            if predicate():return
+            time.sleep(.01)
+        self.fail('Evidence preview timed out')
+
+    def test_case_preview_copy_save_and_invalidation_are_local_and_exact(self):
+        import json
+        import zipfile
+        key=next(iter(self.app.events));self.app.table.selection_set(key)
+        dialog=self.app.share_case();self.spin(lambda:not dialog.busy)
+        self.assertEqual(len(dialog.case['events']),1)
+        dialog.context.set('1');self.assertIsNone(dialog.case)
+        self.assertTrue(dialog.copy_button.instate(['disabled']))
+        dialog.problem.insert('1.0','Wrong reply');self.window.update()
+        dialog.preview();self.spin(lambda:not dialog.busy)
+        self.assertEqual(len(dialog.case['events']),2)
+        dialog.copy();self.assertIn('Wrong reply',self.window.clipboard_get())
+        path=Path(self.directory.name)/'case.zip'
+        with patch('probe.ui.evidence.filedialog.asksaveasfilename',return_value=str(path)):dialog.save()
+        with zipfile.ZipFile(path) as archive:
+            rows=[json.loads(line) for line in archive.read('traffic.jsonl').splitlines()]
+            self.assertEqual([e['hex'] for e in rows],['6F6E65','74776F'])
+        self.assertIsNone(self.app.engine);dialog.window.destroy()
+
+    def test_case_other_probes_are_opt_in_and_masked_copy_is_separate(self):
+        second=self.window.new_probe();second.add_event(dict(kind='data',time=2,direction='RX',peer='other',data=b'secret'))
+        second.table.selection_set(next(iter(second.events)))
+        self.app.table.selection_set(next(iter(self.app.events)))
+        dialog=self.app.share_case();self.spin(lambda:not dialog.busy)
+        self.assertEqual(len(dialog.case['probes']),1)
+        dialog.others.set(True);dialog.masks.insert('1.0','secret');self.window.update()
+        dialog.preview();self.spin(lambda:not dialog.busy)
+        self.assertEqual(len(dialog.case['probes']),2)
+        self.assertEqual(dialog.case['events'][-1]['hex'],'2A'*6)
+        self.assertEqual(next(iter(second.events.values()))['data'],b'secret')
+        dialog.context.set('bad')
+        dialog.action(dialog.preview);self.assertIsNone(dialog.case)
+        dialog.window.destroy()
+
+    def test_changed_options_while_building_cannot_enable_stale_copy(self):
+        from probe.evidence.case import build_case
+        import threading
+        started=threading.Event();release=threading.Event()
+        def slow(*args):
+            started.set();release.wait(3);return build_case(*args)
+        self.app.table.selection_set(next(iter(self.app.events)))
+        with patch('probe.ui.evidence.build_case',side_effect=slow):
+            dialog=self.app.share_case();self.assertTrue(started.wait(1))
+            dialog.context.set('1');release.set();self.spin(lambda:not dialog.busy)
+        self.assertIsNone(dialog.case);self.assertTrue(dialog.save_button.instate(['disabled']))
+        dialog.window.destroy()
