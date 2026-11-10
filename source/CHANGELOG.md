@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Export structured inspector findings with exact values/ranges and explicit clock-scoped observation intervals.
+
 - Preserve stable message IDs, bounded framed source byte ranges and acquisition timing through JSONL export/import; copy and locate IDs in Traffic.
 
 ## 1.7.0

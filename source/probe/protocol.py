@@ -26,6 +26,10 @@ class Field:
     kind: str = ""
     status: str = "Info"
     selector: str = ""
+    actual: str | int | None = None
+    expected: str | int | None = None
+    checked_start: int | None = None
+    checked_end: int | None = None
 
 
 def bounded(data):
@@ -63,7 +67,7 @@ def json_frame(data, strict_length=True):
     if prefix is not None:
         a, b = prefix;declared = int(text[a:b]);actual = offsets[end] - offsets[start]
         fields.append(Field("Body length", offsets[a], offsets[b]-offsets[a], f"{declared} (JSON bytes: {actual})",
-                            "ASCII length", "Valid" if declared == actual else "Mismatch"))
+                            "ASCII length", "Valid" if declared == actual else "Mismatch", actual=declared, expected=actual, checked_start=offsets[start], checked_end=offsets[end]))
         if strict_length and offsets[start] + declared > len(data):raise IncompleteMessage("Length-prefixed JSON body is incomplete.")
     def skip(i):
         while i < len(text) and text[i].isspace():i += 1
@@ -164,8 +168,8 @@ def custom_fields(data, definitions):
         offset = int(definition.get("offset", 0));size = int(definition.get("length", 1)) or max(0,len(data)-offset)
         name = str(definition.get("name", f"Field {index+1}"));kind = definition.get("kind", "Hex")
         if offset+size > len(data) or offset >= len(data):
-            result.append(Field(name, offset, size, "Not enough bytes", kind, "Truncated"));continue
-        raw = data[offset:offset+size];status = "Info"
+            result.append(Field(name, offset, size, "Not enough bytes", kind, "Truncated", actual=max(0,len(data)-offset), expected=size));continue
+        raw = data[offset:offset+size];status = "Info";actual=expected=start=end=None
         if kind in ("Text", "Hex"):value = visible(raw) if kind == "Text" else raw.hex(" ").upper()
         elif kind.startswith("Float"):
             if size not in (4, 8):raise ValueError("Float fields need 4 or 8 bytes.")
@@ -188,7 +192,7 @@ def custom_fields(data, definitions):
         else:
             if size > 8:raise ValueError("Integer fields support 1–8 bytes.")
             value = str(int.from_bytes(raw, "little" if kind.endswith("LE") else "big", signed=kind.startswith("Signed")))
-        result.append(Field(name, offset, size, value[:1024], kind, status))
+        result.append(Field(name, offset, size, value[:1024], kind, status, actual=actual.hex().upper() if isinstance(actual,bytes) else actual, expected=expected.hex().upper() if isinstance(expected,bytes) else expected, checked_start=start, checked_end=end))
     return tuple(result)
 
 

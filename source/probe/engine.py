@@ -6,7 +6,7 @@ import threading
 import time
 
 from .recording import CaptureWriter
-from .evidence.identity import namespace
+from .evidence.identity import CLOCK_ID, namespace
 from .timing import SCHEDULED_NS
 from .transports import MODES as MODES
 from .transports import network, serial
@@ -56,7 +56,7 @@ class Engine:
         event = {"kind": kind, "time": time.time(), **fields}
         if kind=='data':
             self.event_sequence += 1
-            event.update(event_version=1, event_id=f'{self.session}:{self.workspace}:{self.event_sequence}')
+            event.update(event_version=1, clock_id=CLOCK_ID, event_id=f'{self.session}:{self.workspace}:{self.event_sequence}')
             event['monotonic_ns']=time.perf_counter_ns()
             event['session']=self.session
             scheduled=SCHEDULED_NS.get()
