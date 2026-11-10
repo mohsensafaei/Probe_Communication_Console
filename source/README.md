@@ -604,3 +604,8 @@ without reconnecting automatically. Traffic and tab names are session-local.
 Run `python benchmarks/multi_probe_benchmark.py` from this directory with a native
 display to measure 1/2/4 probes. It reports elapsed batch time, Tk insertions and
 tracemalloc Python allocations (not whole-process RAM or transport jitter).
+
+## Reproducible evidence
+
+Traffic → right-click → Copy message IDs / Find message by ID links analysis to
+stable capture evidence. See [automation and diagnostic workflows](docs/automation.md).

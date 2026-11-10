@@ -6,6 +6,7 @@ import threading
 import time
 
 from .recording import CaptureWriter
+from .evidence.identity import namespace
 from .timing import SCHEDULED_NS
 from .transports import MODES as MODES
 from .transports import network, serial
@@ -49,11 +50,13 @@ class Engine:
         self.simulator_reset = None
         self.plugins = None
         self.workspace = 0
-        self.session = str(time.monotonic_ns())
+        self.session = namespace();self.event_sequence = 0
 
     def event(self, kind, **fields):
         event = {"kind": kind, "time": time.time(), **fields}
         if kind=='data':
+            self.event_sequence += 1
+            event.update(event_version=1, event_id=f'{self.session}:{self.workspace}:{self.event_sequence}')
             event['monotonic_ns']=time.perf_counter_ns()
             event['session']=self.session
             scheduled=SCHEDULED_NS.get()
@@ -95,7 +98,7 @@ class Engine:
     def start(self, cfg):
         if self.thread and self.thread.is_alive(): raise RuntimeError("Session is already running.")
         self.cfg = dict(cfg)
-        self.session = str(time.monotonic_ns())
+        self.session = namespace();self.event_sequence = 0
         self.stopping.clear()
         self.thread = threading.Thread(target=self._thread_main, name="Probe transport", daemon=True)
         self.thread.start()

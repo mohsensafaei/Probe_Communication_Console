@@ -3,11 +3,17 @@ import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass
 
+from .evidence.identity import Origins, namespace
+
 
 @dataclass(frozen=True)
 class HistoryChange:
     added: tuple
     removed: tuple
+
+
+def retained_size(event):
+    return len(event['data']) + len(event.get('original_hex',''))//2 + sum(320+len(ref['event_id']) for ref in event.get('source_refs',()))
 
 
 class TrafficHistory:
@@ -16,6 +22,7 @@ class TrafficHistory:
         self.max_bytes = max_bytes
         self.events = OrderedDict()
         self.sequence = 0
+        self.identity = namespace()
         self.retained_bytes = 0
         self.evicted = 0
 
@@ -29,14 +36,13 @@ class TrafficHistory:
         for event in events:
             self.sequence += 1
             key = str(self.sequence)
+            if not event.get('event_id'):event = dict(event, event_version=1, event_id=f'{self.identity}:{key}')
             self.events[key] = event
             added.append(key)
-            self.retained_bytes += len(event["data"])
-            if 'original_hex' in event:self.retained_bytes+=len(event['original_hex'])//2
+            self.retained_bytes += retained_size(event)
             while len(self.events) > self.max_rows or self.retained_bytes > self.max_bytes:
                 old, discarded = self.events.popitem(last=False)
-                self.retained_bytes -= len(discarded["data"])
-                if 'original_hex' in discarded:self.retained_bytes-=len(discarded['original_hex'])//2
+                self.retained_bytes -= retained_size(discarded)
                 self.evicted += 1
                 if int(old) <= boundary:
                     removed.append(old)
@@ -58,10 +64,15 @@ class DisplayFraming:
         self.max_streams = max_streams
         self.streams = OrderedDict()
         self._chunks = False
+        self.identity = namespace();self.sequence = 0
 
-    @staticmethod
-    def _row(metadata, data):
+    def _row(self, metadata, data):
         row = {**metadata, 'data': data}
+        origins = row.pop('_origins', None)
+        if origins is not None:
+            self.sequence += 1
+            refs, complete = origins.take(len(data))
+            row.update(event_version=1, event_id=f'{self.identity}:{self.sequence}', source_refs=refs, source_refs_complete=complete)
         pending = row.pop('_original', None)
         if pending is not None:
             original = bytes(pending[:len(data)])
@@ -70,10 +81,9 @@ class DisplayFraming:
             else:row.pop('modified_by', None)
         return row
 
-    @classmethod
-    def _flush(cls, state, reason):
+    def _flush(self, state, reason):
         framer, metadata, _ = state
-        return [{**cls._row(metadata, data), "display_partial": True, "display_reason": reason}
+        return [{**self._row(metadata, data), "display_partial": True, "display_reason": reason}
                 for data in framer.flush()]
 
     def feed(self, event):
@@ -106,6 +116,8 @@ class DisplayFraming:
             yield from self._flush(self.streams.pop(key), 'plugin changed length')
             yield {**event, 'display_partial': True, 'display_reason': 'plugin changed length; showing transport chunk'}
             return
+        origins = metadata.get('_origins') or Origins()
+        origins.add(event)
         previous = metadata.get('_original')
         changed = bool(previous) or original is not None
         modifiers = metadata.get('modified_by', []) if framer.buffer else []
@@ -113,6 +125,7 @@ class DisplayFraming:
             if previous is None:previous = bytearray(framer.buffer)
             previous.extend(original if original is not None else event['data'])
         metadata = {k: v for k, v in event.items() if k not in ('data', 'original_hex')}
+        metadata['_origins'] = origins
         if changed:
             metadata['_original'] = previous
             metadata['modified_by'] = list(dict.fromkeys(modifiers + event.get('modified_by', [])))
@@ -120,7 +133,7 @@ class DisplayFraming:
             partial = (framer.mode == "Idle gap" or
                        framer.mode == "Fixed length" and len(data) != framer.size or
                        framer.mode == "Delimiter" and not data.endswith(framer.delimiter))
-            row = self._row(metadata, data) if changed else {**metadata, 'data': data}
+            row = self._row(metadata, data)
             if partial:
                 row.update(display_partial=True, display_reason="frame buffer limit")
             yield row

@@ -119,7 +119,7 @@ class AnalysisWindow(tk.Toplevel,Actions):
 
 def open_analysis(app,tab=None,*,event=None,event_key=None):
     event=app.selected() if event is None else event;data=event["data"] if event else b""
-    label=f"{event['direction']} · {event.get('peer','')} · {len(data)} bytes" if event else "Choose traffic to begin. No connection is required."
+    label=f"{event.get('event_id','')} · {event['direction']} · {event.get('peer','')} · {len(data)} bytes" if event else "Choose traffic to begin. No connection is required."
     previous=None
     if event:
         for candidate in app.order:

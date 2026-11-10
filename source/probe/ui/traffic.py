@@ -3,7 +3,7 @@ import datetime as dt
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from ..capture import load_capture, replay_plan
 from ..codec import visible
@@ -223,6 +223,8 @@ class TrafficWorkspace:
         menu.add_command(label="Capture Diff…",state=state,command=lambda:self.compare_selected(selection))
         menu.add_command(label=f"Export selected ({count})…",state=state,
                          command=lambda:self.export(rows=[event for _,event in selection]))
+        menu.add_command(label="Copy message IDs",state=state,command=lambda:self.copy_event_ids(selection))
+        menu.add_command(label="Find message by ID…",command=self.find_event_id)
         if count>1:return menu
         menu.add_separator()
         menu.add_command(label="Follow across probes…",state=state,command=lambda:self.window.trace_path(self))
@@ -238,6 +240,19 @@ class TrafficWorkspace:
         menu.add_command(label="Reset byte counters",command=self.reset_counters)
         return menu
 
+
+    def copy_event_ids(self,selection):
+        self.clipboard_clear();self.clipboard_append('\n'.join(event['event_id'] for _,event in selection))
+
+    def find_event_id(self,identity=None):
+        identity=identity or simpledialog.askstring('Find message','Message ID:',parent=self)
+        if not identity:return
+        for key,event in self.events.items():
+            if event.get('event_id')==identity.strip():
+                self.vars['direction'].set('All');self.clear_search()
+                self.table.selection_set(key);self.table.see(key);self.table.focus(key)
+                return key
+        messagebox.showinfo('Message not retained','This message is not in this probe’s retained history. Import its capture or select the original probe.',parent=self)
 
     def compare_selected(self,selection=None):
         selection=self.selected_traffic() if selection is None else selection
