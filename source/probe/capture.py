@@ -20,6 +20,7 @@ def load_capture(path,max_events=2000,max_bytes=8*1024*1024):
         for ordinal,row in enumerate(rows,1):
             if not isinstance(row,dict):raise ValueError('Each capture row must be a JSON object.')
             if row.get("kind","data")!="data":continue
+            if row.get('redacted'):raise ValueError('Sanitized diagnostic evidence cannot be imported for replay. Use the original capture.')
             direction=row.get("direction")
             if direction not in ("TX","RX"):raise ValueError("Capture rows must have TX or RX direction.")
             if "hex" not in row:raise ValueError("This export contains decoded text only. Export with Hex enabled to import or replay exact bytes.")

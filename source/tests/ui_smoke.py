@@ -219,7 +219,7 @@ class UISmoke(unittest.TestCase):
         right_click(ids[3]);menu=self.app._traffic_popup
         self.assertEqual(self.app.table.selection(),(ids[1],ids[3]))
         self.assertEqual(menu.entrycget(0,"label"),"Capture Diff…")
-        self.assertEqual(menu.entrycget(1,"label"),"Export selected (2)…");self.assertEqual(menu.entrycget(2,"label"),"Copy message IDs");self.assertEqual(menu.entrycget(3,"label"),"Find message by ID…");self.assertEqual(menu.index("end"),3)
+        self.assertEqual(menu.entrycget(1,"label"),"Export selected (2)…");self.assertEqual(menu.entrycget(2,"label"),"Share diagnostic case…");self.assertEqual(menu.entrycget(3,"label"),"Copy message IDs");self.assertEqual(menu.entrycget(4,"label"),"Find message by ID…");self.assertEqual(menu.index("end"),4)
         right_click(ids[2]);self.assertEqual(self.app.table.selection(),(ids[2],))
         self.assertEqual(self.app._traffic_popup.entrycget(1,"label"),"Export selected (1)…")
         self.assertFalse(hasattr(self.app,"analysis_window"))

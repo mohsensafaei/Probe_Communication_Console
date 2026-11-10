@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Share bounded diagnostic cases from selected multi-probe evidence, with local preview/copy/ZIP, literal masking and explicit capture-health limits.
+
 - Export structured inspector findings with exact values/ranges and explicit clock-scoped observation intervals.
 
 - Preserve stable message IDs, bounded framed source byte ranges and acquisition timing through JSONL export/import; copy and locate IDs in Traffic.

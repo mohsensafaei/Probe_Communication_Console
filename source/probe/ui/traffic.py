@@ -223,6 +223,7 @@ class TrafficWorkspace:
         menu.add_command(label="Capture Diff…",state=state,command=lambda:self.compare_selected(selection))
         menu.add_command(label=f"Export selected ({count})…",state=state,
                          command=lambda:self.export(rows=[event for _,event in selection]))
+        menu.add_command(label="Share diagnostic case…",state=state,command=lambda:self.share_case(selection))
         menu.add_command(label="Copy message IDs",state=state,command=lambda:self.copy_event_ids(selection))
         menu.add_command(label="Find message by ID…",command=self.find_event_id)
         if count>1:return menu
@@ -240,6 +241,12 @@ class TrafficWorkspace:
         menu.add_command(label="Reset byte counters",command=self.reset_counters)
         return menu
 
+
+    def share_case(self,selection=None):
+        from .evidence import CaseDialog
+        selection=self.selected_traffic() if selection is None else selection
+        if not selection:raise ValueError('Select messages first.')
+        return CaseDialog(self,selection)
 
     def copy_event_ids(self,selection):
         self.clipboard_clear();self.clipboard_append('\n'.join(event['event_id'] for _,event in selection))
