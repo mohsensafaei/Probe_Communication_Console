@@ -1,8 +1,10 @@
 'Discoverable, offline protocol and comparison tools; no transport mutations.'
+import json
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
 
+from ..evidence.findings import inspect_event
 from ..codec import CONTROLS, hexdump, visible
 from .comparison import ComparePane
 from .inspector import ProtocolPane
@@ -58,7 +60,7 @@ class PayloadViews:
 
 class AnalysisWindow(tk.Toplevel,Actions):
     def __init__(self,app):
-        super().__init__(app);self.app=app;self.data=b"";self.label="";self.event_key=None
+        super().__init__(app);self.app=app;self.data=b"";self.label="";self.event_key=None;self.event=None
         self.title("Probe · Analyze traffic")
         self.geometry(f"{min(1000,max(920,app.winfo_screenwidth()-80))}x{min(760,max(700,app.winfo_screenheight()-90))}")
         self.minsize(920,700)
@@ -69,6 +71,7 @@ class AnalysisWindow(tk.Toplevel,Actions):
         ttk.Label(body,text="Analyze traffic",font=(app.ui_font,19,"bold")).pack(anchor="w")
         ttk.Label(body,textvariable=self.source,wraplength=870).pack(anchor="w",pady=(3,6))
         actions=ttk.Frame(body);actions.pack(fill="x",pady=(0,6))
+        ttk.Button(actions,text="Save analysis…",command=lambda:self.action(self.save_analysis)).pack(side="left")
         ttk.Button(actions,text="Copy hex",command=lambda:self.action(self.copy_hex)).pack(side="left",padx=6)
         ttk.Button(actions,text="Save bytes…",command=lambda:self.action(self.save_bytes)).pack(side="left")
         ttk.Button(actions,text="Load into composer",command=lambda:self.action(self.load_composer)).pack(side="right")
@@ -108,6 +111,12 @@ class AnalysisWindow(tk.Toplevel,Actions):
         if not self.data:raise ValueError("Choose a message first.")
         self.clipboard_clear();self.clipboard_append(self.data.hex(" ").upper());self.feedback.set("Copied every original byte as hex.")
 
+    def save_analysis(self):
+        if not self.event or self.event['data']!=self.data:raise ValueError('Select a traffic message first.')
+        report=inspect_event(self.event,self.protocol.definitions)
+        path=filedialog.asksaveasfilename(parent=self,defaultextension='.json',filetypes=[('Analysis report','*.json')])
+        if path:Path(path).write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False),encoding='utf-8')
+
     def save_bytes(self):
         path=filedialog.asksaveasfilename(parent=self,defaultextension=".bin",filetypes=[("Binary bytes","*.bin")])
         if path:Path(path).write_bytes(self.data);self.feedback.set(f"Saved {len(self.data)} original bytes.")
@@ -129,6 +138,7 @@ def open_analysis(app,tab=None,*,event=None,event_key=None):
             if row.get("direction")==event.get("direction") and row.get("peer")==event.get("peer"):previous=row
     win=getattr(app,"analysis_window",None)
     if win is None or not win.winfo_exists():win=AnalysisWindow(app)
+    win.event=event
     key=event_key if event_key is not None else app.table.selection()[0] if event else None
     if app.plugins.entries or event and 'original_hex' in event:
         if str(win.plugins) not in win.tabs.tabs():win.tabs.add(win.plugins,text="Plugins")

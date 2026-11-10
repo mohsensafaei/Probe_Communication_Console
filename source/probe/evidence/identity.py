@@ -11,7 +11,7 @@ def namespace():
 
 def restore(row):
     result = {}
-    for key in ('event_id',):
+    for key in ('event_id','clock_id'):
         if key in row:
             if not isinstance(row[key], str) or not ID.fullmatch(row[key]):raise ValueError('Invalid event ID.')
             result[key] = row[key]
@@ -30,6 +30,9 @@ def restore(row):
         if type(row['source_refs_complete']) is not bool:raise ValueError('Invalid source reference status.')
         result['source_refs_complete'] = row['source_refs_complete']
     return result
+
+
+CLOCK_ID = namespace()
 
 
 class Origins:

@@ -33,3 +33,14 @@ class EvidenceUI(unittest.TestCase):
         self.app.analyze();self.assertIn(row['event_id'],self.app.analysis_window.source.get())
         with patch('probe.ui.traffic.messagebox.showinfo') as info:
             self.assertIsNone(self.app.find_event_id('not-retained'));info.assert_called_once()
+
+    def test_analysis_report_contains_selected_identity_and_never_sends(self):
+        import json
+        key=next(iter(self.app.events));self.app.table.selection_set(key)
+        self.app.analyze();pane=self.app.analysis_window
+        path=Path(self.directory.name)/'analysis.json'
+        with patch('probe.ui.analysis.filedialog.asksaveasfilename',return_value=str(path)):
+            pane.save_analysis()
+        report=json.loads(path.read_text())
+        self.assertEqual(report['event_id'],self.app.events[key]['event_id'])
+        self.assertEqual(report['byte_count'],3);self.assertIsNone(self.app.engine)

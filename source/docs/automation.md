@@ -21,3 +21,15 @@ chunks are not necessarily retained alongside the displayed message.
 These identifiers and host timestamps do not establish physical causality or
 wire timing. Hex bytes remain authoritative. No AI provider or network upload is
 involved in any of these operations.
+
+## Structured analysis
+
+Analyze → **Save analysis…** exports `probe-analysis` version 1 JSON. It reuses the
+same inspector and configured protocol fields as the UI. Checks include actual /
+expected length or checksum, the field byte range and the bytes used to validate it.
+Truncated fields and unavailable parsing are distinct from validated mismatches.
+Offsets are zero-based and end-exclusive. No device failure is inferred.
+
+Raw events also carry `clock_id`: a process-specific clock scope. Observation
+intervals use monotonic timestamps only within the same scope; otherwise they are
+explicitly wall-time differences. Neither establishes wire latency or causality.
