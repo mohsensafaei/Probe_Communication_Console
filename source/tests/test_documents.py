@@ -35,3 +35,11 @@ class DocumentTests(unittest.TestCase):
         case=build_case([dict(name='Device',rows=[event])]);case.pop('events')
         Draft202012Validator(schemas['case']).validate(case)
         with self.assertRaises(Exception):Draft202012Validator(schemas['sequence']).validate(dict(format='probe-sequence',version=3,steps=[dict(text='x',timeout_ms=-1)]))
+
+    def test_sequence_preview_matches_editor_defaults_and_actual_reply_gating(self):
+        value=dict(format='probe-sequence',version=3,steps=[dict(text='PING',flow=dict(on_true=dict(action='stop')))])
+        description=describe(value,'sequence')
+        self.assertIn('interval 100 ms',description)
+        self.assertIn('no reply check',description)
+        value['steps'][0]['wait_for_reply']=True
+        self.assertIn('reply timeout 2000 ms',describe(value,'sequence'))

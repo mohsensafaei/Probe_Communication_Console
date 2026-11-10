@@ -1,15 +1,16 @@
 from ..protocol import validate_fields
 from ..scenario import compile_steps, sequence_from_dict
+from ..sequence_flow import needs_reply
 from ..simulation import model_from_dict
 
 
 def describe(value, kind):
     if kind=='sequence':
-        rows,cycles=sequence_from_dict(value);steps=compile_steps(rows)
+        rows,cycles=sequence_from_dict(value);steps=compile_steps(rows,100)
         lines=[f'{len(steps)} messages; '+(f'{cycles} cycles.' if cycles else 'Repeats until stopped.')]
         for i,step in enumerate(steps[:50],1):
             lines.append(f'{i}. {step.name[:80]} | {len(step.payload)} preview bytes | repeat {step.repeat} | interval {step.delay_ms} ms | '+
-                         (f'reply timeout {step.timeout_ms} ms' if step.wait_for_reply or step.expect or step.flow else 'no reply check'))
+                         (f'reply timeout {step.timeout_ms} ms' if needs_reply(step) else 'no reply check'))
         if len(steps)>50:lines.append('Preview shows the first 50 messages; all validated messages will be imported.')
         lines.append('Templates and response routes remain dynamic. A valid file does not prove device behavior.')
     elif kind=='simulator':
