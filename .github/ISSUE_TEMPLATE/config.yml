@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/mohsensafaei/Probe_Communication_Console/tree/main/docs
+    about: Setup, connections, plugins and developer guides.
+  - name: Security policy
+    url: https://github.com/mohsensafaei/Probe_Communication_Console/security/policy
+    about: Report vulnerabilities privately.

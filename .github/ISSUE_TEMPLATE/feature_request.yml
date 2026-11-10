@@ -1,0 +1,18 @@
+name: Feature request
+description: Describe a workflow Probe could make easier.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What task is difficult today?
+      description: Describe your hardware/software workflow without private data.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Keep the normal workflow simple. Include alternatives you tried.
+    validations:
+      required: true

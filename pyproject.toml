@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "probe-communication-console"
+dynamic = ["version"]
+description = "A portable communications workbench for TCP, serial and USB HID debugging"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/*.txt", "src/probe/assets/fonts/*-OFL.txt", "src/probe/drivers/windows/*txt"]
+authors = [{name = "Probe contributors"}]
+keywords = ["serial", "tcp", "debugging", "hid", "terminal", "hardware"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Hardware",
+]
+dependencies = [
+    "pyserial==3.5",
+    "pyte==0.8.2",
+    "wcwidth==0.2.13",
+    "hidapi==0.15.0; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = ["build==1.3.0", "pyinstaller==6.22.3", "ruff==0.17.4"]
+
+[project.scripts]
+probe = "probe.cli:main"
+
+[project.gui-scripts]
+probe-gui = "probe.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mohsensafaei/Probe_Communication_Console"
+Documentation = "https://github.com/mohsensafaei/Probe_Communication_Console/tree/main/docs"
+Issues = "https://github.com/mohsensafaei/Probe_Communication_Console/issues"
+Changelog = "https://github.com/mohsensafaei/Probe_Communication_Console/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = {attr = "probe.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = false
+
+[tool.setuptools.package-data]
+probe = ["assets/*", "assets/fonts/*", "drivers/windows/*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F"]

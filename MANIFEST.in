@@ -1,0 +1,8 @@
+include LICENSE THIRD_PARTY_NOTICES.md CHANGELOG.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md
+recursive-include docs *.md *.png
+recursive-include examples *.py *.json *.hex
+recursive-include packaging *.py *.spec
+recursive-include scripts *.py
+recursive-include tests *.py
+recursive-include benchmarks *.py
+global-exclude __pycache__ *.py[cod] *.log

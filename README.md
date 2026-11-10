@@ -1,141 +1,97 @@
-# Probe for Linux 1.7.0
+# Probe
 
-User Python plugins: **Traffic → Plugins…**, with results in Analyze / Live plot and explicit opt-in message transforms. See [the plugin guide](source/PLUGINS.md).
+[![CI](https://github.com/mohsensafaei/Probe_Communication_Console/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mohsensafaei/Probe_Communication_Console/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-TCP, UDP and USB/serial communications console with an ANSI terminal, binary
-inspector, capture/replay, serial proxy and Serial-to-TCP bridge.
+A portable communications workbench for Windows and Linux. Connect to hardware,
+inspect bytes, reproduce conversations and follow a message through several points
+in your application. Written in Python with a native Tk interface.
 
-```sh
-./source/start_linux.sh
-```
+## Download
 
-The launcher selects an installed Python 3.10+ with Tkinter, creates a local
-virtual environment and installs the pinned runtime dependencies on first use.
-Internet access is needed for that initial install. On Debian/Ubuntu, install
-`python3-tk` and `python3-venv` if needed. Set `PROBE_PYTHON=/path/to/python`
-to choose an interpreter explicitly.
+Get the native ZIP for your system from [Releases](https://github.com/mohsensafaei/Probe_Communication_Console/releases/latest):
 
-For a hardware-free serial check, select **USB / Serial**, enter `loop://`,
-and connect. To test the runtime from a terminal:
+| System | Portable archive | Start |
+| --- | --- | --- |
+| Windows x64 | `Probe-<version>-windows-x86_64.zip` | Extract, then open `Probe.exe` |
+| Linux x64 | `Probe-<version>-linux-x86_64.zip` | Extract, then run `./start-probe.sh` |
 
-```sh
-./source/start_linux.sh --self-test
-```
+Portable builds include Python and runtime dependencies. Normal operation does not
+request administrator access. HID capture may require a driver or elevated helper;
+see [HID monitoring](docs/hid.md). Downloads include SHA-256 checksums. If no release
+asset is available yet, use [source installation](docs/installation.md) or a
+[CI build artifact](https://github.com/mohsensafaei/Probe_Communication_Console/actions/workflows/ci.yml).
 
-For USB hardware, enter `/dev/ttyUSB0`, `/dev/ttyACM0` or the stable path under
-`/dev/serial/by-id/`, with the device's baud and line settings. The listed
-`/dev/ttyS*` entries may be unused motherboard UARTs, not USB adapters.
+## What you can do
 
-If opening a port reports **Permission denied**, inspect its owning group with
-`ls -l /dev/ttyUSB0`. On Debian/Ubuntu the usual fix is:
+| Task | Tools |
+| --- | --- |
+| Communicate | TCP client/server/proxy, UDP, USB serial, serial proxy and Serial ↔ TCP |
+| Inspect | Traffic search in text/hex, decoded text, hex + ASCII, byte inspector and protocol fields |
+| Compare | Capture Diff, multi-select export and Trace path across up to eight probes |
+| Reproduce | Raw recording, capture import/replay, timed or reply-driven sequences |
+| Replace a device | TCP/virtual-serial simulator with recorded conversations, field rules and faults |
+| Watch values | ANSI terminal with pop-out and live plots with Auto, Custom or plugin sources |
+| Extend | User Python plugins for analysis, editing, metrics and explicitly enabled transforms |
+| Observe USB HID | Read-only USBPcap/usbmon capture with report descriptor decoding |
 
-```sh
-sudo usermod -aG dialout "$USER"
-```
+TCP/serial traffic is a byte stream: read chunks are not necessarily complete
+messages. Choose framing for your protocol. Probe is a host-side debug instrument;
+it does not promise hard real-time timing or recover traffic lost before the OS
+exposes it. See [traffic and captures](docs/traffic.md) and [testing](docs/testing.md).
 
-Log out of the desktop session and back in before restarting Probe. Group
-changes do not affect already running desktop applications. Probe reports the
-actual owning group in its permission error. See the
-[pySerial permission documentation](https://pyserial.readthedocs.io/en/latest/appendix.html#permission-denied-errors).
+## Start from source
 
-Build a native portable Linux bundle (Python is included):
-
-```sh
-./source/build_linux.sh
-```
-
-Extract `source/dist/Probe-linux-<architecture>.zip` and run `./start-probe.sh`.
-The build runs real serial loopback, Linux PTY, TCP, UDP, terminal and capture
-checks against the frozen executable before packaging it. Build on the oldest
-Linux distribution you intend to support.
-
-Only Linux source, assets, runtime/build scripts, documentation and regression
-tests are tracked on this branch. Local settings, environments, build output,
-portable binaries and Windows launchers are excluded.
-
-See [the full guide](source/README.md) and [validation results](source/VALIDATION.md).
-
-Opt-in tests for an attached AT-capable USB serial device (including supported
-phone CDC ACM interfaces) are available under `source/tests/test_serial_hardware.py`.
-From `source`, select the device explicitly:
+Python 3.10+ with Tkinter is required. On Debian/Ubuntu, install `python3-tk` and
+`python3-venv` first.
 
 ```sh
-PROBE_TEST_SERIAL_PORT=/dev/ttyACM0 PROBE_TEST_GUI=1 xvfb-run -a \
-  .venv/bin/python -m unittest discover -s tests -p test_serial_hardware.py -v
+git clone --branch main https://github.com/mohsensafaei/Probe_Communication_Console.git
+cd Probe_Communication_Console
+python -m venv .venv
 ```
 
-They check direct serial, PTY proxy, injection, byte-exact captures, Serial-to-TCP
-and the actual GUI using only the read-only `AT` attention command. Normal test
-runs skip these tests. USB serial proxying does not intercept a phone's separate
-MTP file-transfer interface.
+Activate the environment with `.venv\Scripts\activate` on Windows, or
+`source .venv/bin/activate` on Linux, then:
 
-## Hardware test lab
+```sh
+python -m pip install -e .
+python -m probe
+```
 
-Open **Test lab** at the bottom of the control panel.
+The `probe` and `probe-gui` commands also start the application. No package is
+currently published to PyPI; install from this repository or a release source archive.
 
-* **Device simulator:** record TX/RX with the real device using Record, then load
-  that JSONL/CSV capture (or use retained traffic history). Choose one peer and
-  expose the model as a TCP socket or a Linux virtual serial PTY. Connect the
-  other application to the displayed endpoint. The original hardware is not
-  opened. Exact requests produce their recorded replies and timing. Save a model
-  to reuse it later; rules and reply bytes can also be edited manually.
-* **Test sequences:** add a composer payload or create steps in Text/Hex/Escaped/
-  Decimal/Hercules format. Set a separate delay after each step in milliseconds,
-  per-step repeats, optional expected reply bytes and a timeout. Choose a finite
-  cycle count or 0 to run until stopped. Reorder, duplicate, import and export
-  complete sequences. Connect a transport in the main window before running.
+For a first hardware-free check, select **USB / Serial**, enter `loop://`, connect
+and send `Hello`. For a complete local TCP example, see [connections](docs/connections.md).
 
-The simulator preserves conversation order by default, including different replies
-for repeated identical requests. Match requests mode supports independent rules
-in any order and rejects ambiguous rules. Unknown request bytes are ignored and
-reported. Leading RX chatter is excluded when building from a capture; dynamic
-transaction IDs, cryptographic handshakes and device-specific state need explicit
-models. Timings are best effort on the host OS, not hard real-time.
+```sh
+python -m probe --self-test
+```
 
-Try `source/examples/device-model.json` with `source/examples/test-sequence.json`
-using two Probe instances: one simulates a TCP device, the other runs the sequence
-as a TCP Client. These are synthetic PING/BUY examples; replace their payloads with
-the actual protocol bytes for your own hardware.
+## Documentation
 
-## Updated workbench
+Start with the [documentation index](docs/README.md):
 
-All shared features through Windows commit `660536e` are available on Linux:
-reply-gated sequences, RX/TX capture selection, dynamic variables and routing,
-Protocol Inspector, Capture Diff, and the simplified Traffic / Live plot / Terminal workspace.
-Single-click selects a transaction; double-click opens Analyze with Decoded text,
-Hex + ASCII and Every byte. Export offers Hex and Decoded text checkboxes.
-Capture Diff compares Reference (A) with Message (B) automatically and shows
-hex and decoded text for the selected difference.
+- [Install and update](docs/installation.md) · [Connections and proxies](docs/connections.md)
+- [Traffic, Analyze and Capture Diff](docs/traffic.md) · [Terminal and plots](docs/terminal-and-plots.md)
+- [Sequences](docs/sequences.md) · [Device simulator](docs/simulator.md)
+- [HID monitoring](docs/hid.md) · [Python plugins](docs/plugins.md)
+- [File formats](docs/formats.md) · [Troubleshooting](docs/troubleshooting.md)
+- [Development](docs/development.md) · [Architecture](docs/architecture.md)
+- [Testing](docs/testing.md) · [Build portable apps](docs/building.md) · [Release process](docs/releasing.md)
 
-Live plot accepts numeric RX lines ending in LF (for example `1,2,3\n`).
-Terminal displays RX immediately; enable **Send keyboard** to transmit keys.
-Linux automatic PTY support and the native portable build scripts are retained.
+## Contribute
 
-## Probe visual identity
+`main` is the canonical, cross-platform source branch, initially based on stable
+Linux commit `3a31b4d4877089ce519c979976f98c6f571b2eeb`. The existing `linux` and
+`windows` branches retain their historical layouts. New changes should target `main`.
 
-The interface uses an original hardware test-probe emblem, satin-edged blue
-instrument panels and mint readouts. Geometric Michroma headings, Rajdhani
-controls and Share Tech Mono data fonts are bundled with OFL notices.
-The light palette preserves the same controls and message workflows.
-No vendor logo or proprietary skin is used.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+[Report a bug or suggest a feature](https://github.com/mohsensafaei/Probe_Communication_Console/issues/new/choose).
+Please include a small reproducible capture with sensitive data removed.
+For vulnerabilities, follow [SECURITY.md](SECURITY.md).
 
-
-## Simulator rules and faults (1.4)
-
-Double-click a simulator rule to match JSON/TLV/text/byte fields and configure
-repeatable faults. Request framing validates complete messages and checksums.
-Use the Request & reply tab for normal behavior and Fault injection for recovery
-tests. See `source/README.md` and `source/examples/simulator-*.json`. Legacy
-exact-byte models still load.
-
-## Follow a message across probes
-
-Use **Trace path…** at the top, or right-click a message → **Follow across probes…**.
-Choose a target probe; compare matching stream bytes or enter an optional JSON ID
-like `sessionId` and press **Find matches**. **Compare selected…** reuses Capture
-Diff. Repeated matches require selection; manual same-flow chunk selection is also
-available. **Refresh traffic** takes a new read-only snapshot. No traffic is sent.
-
-Traffic search applies only with **Search** or **Enter**. Changing the search type
-resets the applied filter; typing alone never hides rows. Invalid input preserves
-the previous results. **Reset** clears the search; RX/TX filtering still applies.
+Probe code is [MIT licensed](LICENSE). Bundled dependencies, fonts and optional
+USB capture components retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
+The [changelog](CHANGELOG.md) records user-visible changes.

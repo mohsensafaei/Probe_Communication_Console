@@ -1,0 +1,38 @@
+name: Bug report
+description: Report a reproducible problem in Probe.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Remove secrets and private traffic. For vulnerabilities, follow SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Probe version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS, installation method and Python version (if source)
+      placeholder: Windows 11 x64, portable ZIP
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps and connection settings
+      description: Identify the mode, peers, framing and real hardware versus loopback.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized sample, screenshot or diagnostic report
+      description: A minimal capture is more useful than a long private log.
