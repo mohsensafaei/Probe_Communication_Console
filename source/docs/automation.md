@@ -67,3 +67,23 @@ preview after editing options.
 Each message's analysis is limited to 64 KiB input and 32 fields/checks in a case;
 larger or truncated results are labeled. Use Save analysis for a fuller individual
 report. Observation gaps do not infer missing replies or the component at fault.
+
+## Generate and review configuration files
+
+The `schemas` folder publishes self-contained JSON Schema 2020-12 contracts for
+Sequence (versions 1–3), Simulator (1–2), Protocol profile (1), diagnostic case
+metadata and structured analysis. Give the relevant schema and an example to your
+external assistant. No AI service is built into Probe.
+
+Use **Load…** in Sequences, **Load model** in the simulator, or **Load profile** in
+the protocol editor. Probe validates with its existing execution/analysis services
+and shows an Apply / Cancel preview before replacing anything. A sequence preview
+includes messages, repetitions, delays/reply checks and the current destination.
+Dynamic variables/routing are still resolved at execution time. Import never
+starts a connection, simulator or sequence. Cancel leaves the current setup intact.
+
+Schemas describe authoring structure; Probe remains authoritative for hex parsing,
+combined byte limits, numeric-string bounds, checksum ranges and branch targets.
+No second runtime validator or runtime dependency is added. Legacy input formats
+remain supported. Automated schema/example checks use the development dependency
+in `requirements-dev.txt`; install it before running the complete test suite.

@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Probe structured analysis version 1",
+  "description": "Authoring contract. Probe also validates byte encodings, cross-field rules, totals and references before applying. Schemas do not execute or send anything.",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "event_id",
+    "status",
+    "fields",
+    "checks"
+  ],
+  "properties": {
+    "format": {
+      "const": "probe-analysis"
+    },
+    "version": {
+      "const": 1
+    },
+    "event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "inspected",
+        "unavailable",
+        "not_checked_redacted"
+      ]
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "offset",
+          "size",
+          "value",
+          "kind",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "Info",
+              "Valid",
+              "Mismatch",
+              "Truncated"
+            ]
+          },
+          "selector": {
+            "type": "string"
+          },
+          "actual": {
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ]
+          },
+          "expected": {
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ]
+          },
+          "checked_start": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "checked_end": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "minItems": 0,
+      "maxItems": 2000
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule",
+          "field",
+          "status",
+          "actual",
+          "expected",
+          "range",
+          "checked_range"
+        ],
+        "properties": {
+          "rule": {
+            "enum": [
+              "length",
+              "checksum",
+              "field_bounds"
+            ]
+          },
+          "field": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "valid",
+              "mismatch",
+              "truncated"
+            ]
+          },
+          "actual": {
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ]
+          },
+          "expected": {
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ]
+          },
+          "range": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "checked_range": {
+            "type": "array",
+            "items": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      },
+      "minItems": 0,
+      "maxItems": 2000
+    },
+    "byte_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "partial": {
+      "type": "boolean"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    }
+  }
+}

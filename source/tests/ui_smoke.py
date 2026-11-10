@@ -671,7 +671,7 @@ class UISmoke(unittest.TestCase):
                 pane.save_file()
             self.app.macros=[]
             with patch("probe.ui.testlab.filedialog.askopenfilename",return_value=str(path)):
-                pane.load_file()
+                pane.load_file();pane.import_preview.apply_button.invoke()
             self.assertEqual(len(self.app.macros),2)
             self.assertEqual(self.app.vars["sequence_cycles"].get(),"2")
         self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
@@ -735,7 +735,7 @@ class UISmoke(unittest.TestCase):
             original=[dict(name="A",text="41",send_mode="Hex",delay_ms=7,repeat=3,expect="42",timeout_ms=90),
                       dict(name="B",text="43",send_mode="Hex",delay_ms=80)]
             path.write_text(json.dumps(dict(format="probe-sequence",version=1,cycles=0,steps=original)))
-            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
+            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file();pane.import_preview.apply_button.invoke()
             self.assertTrue(pane.individual.get())
             self.assertEqual(pane.repeat_mode.get(),pane.REPEATS[2])
             self.assertEqual(pane.effective_rows(),original)
@@ -744,7 +744,7 @@ class UISmoke(unittest.TestCase):
             pane.individual.set(True)
             self.assertEqual(pane.effective_rows(),original)
             path.write_text(json.dumps([dict(name="Legacy",text="00 FF",send_mode="Hex")]))
-            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)),patch("probe.ui.sequence.messagebox.askyesno",return_value=True):pane.load_file()
+            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file();pane.import_preview.apply_button.invoke()
             self.assertFalse(pane.individual.get())
             self.assertEqual(pane.interval.get(),"100")
             self.assertEqual(pane.effective_rows()[0]["delay_ms"],100)
@@ -811,7 +811,7 @@ class UISmoke(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text())["version"],2)
             self.app.macros=[]
             pane.advance.set("After interval")
-            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
+            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file();pane.import_preview.apply_button.invoke()
             self.assertEqual(pane.advance.get(),"After a reply")
             self.assertEqual(pane.reply_timeout.get(),"500")
             self.assertEqual(pane.effective_rows(),expected)
@@ -879,7 +879,7 @@ class UISmoke(unittest.TestCase):
             path=Path(directory)/"protocol.json"
             with patch("probe.ui.analysis.filedialog.asksaveasfilename",return_value=str(path)):pane.save_profile()
             pane.set_fields([])
-            with patch("probe.ui.analysis.filedialog.askopenfilename",return_value=str(path)):pane.load_profile()
+            with patch("probe.ui.analysis.filedialog.askopenfilename",return_value=str(path)):pane.load_profile();pane.import_preview.apply_button.invoke()
             self.assertEqual(pane.fields[0].name,"Size")
         self.assertIsNone(self.app.engine)
 
@@ -937,7 +937,7 @@ class UISmoke(unittest.TestCase):
             with patch("probe.ui.sequence.filedialog.asksaveasfilename",return_value=str(path)):pane.save_file()
             document=json.loads(path.read_text());self.assertEqual(document["version"],3);self.assertIn("amount",document["variables"])
             self.app.macros=[]
-            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file()
+            with patch("probe.ui.sequence.filedialog.askopenfilename",return_value=str(path)):pane.load_file();pane.import_preview.apply_button.invoke()
             self.assertEqual(compile_steps(pane.effective_rows())[1].flow.on_true.target,target)
 
     def test_sequence_variables_and_branch_run_over_real_tcp(self):

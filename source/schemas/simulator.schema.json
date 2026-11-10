@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Probe device model versions 1\u20132",
+  "description": "Authoring contract. Probe also validates byte encodings, cross-field rules, totals and references before applying. Schemas do not execute or send anything.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "format": {
+      "const": "probe-device"
+    },
+    "version": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "framing": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "JSON",
+            "Delimiter",
+            "Fixed length",
+            "Length prefix"
+          ]
+        },
+        "delimiter": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "size": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "minimum": 1,
+          "maximum": 65536,
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "prefix_size": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "minimum": 1,
+          "maximum": 12,
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "prefix_format": {
+          "enum": [
+            "ASCII",
+            "Unsigned LE",
+            "Unsigned BE"
+          ]
+        },
+        "check": {
+          "enum": [
+            "None",
+            "SUM8",
+            "XOR8",
+            "LRC8",
+            "CRC16 Modbus",
+            "CRC16 CCITT",
+            "CRC32"
+          ]
+        },
+        "check_start": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "minimum": 0,
+          "maximum": 65536,
+          "pattern": "^(0|[1-9][0-9]*)$"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "exchanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "request": {
+            "type": "string",
+            "maxLength": 262144
+          },
+          "replies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "hex": {
+                  "type": "string",
+                  "maxLength": 25165824
+                },
+                "delay_ms": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 3600000
+                }
+              },
+              "required": [
+                "hex"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 2000
+          },
+          "match": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "enum": [
+                    "JSON",
+                    "TLV",
+                    "BER-TLV",
+                    "Text",
+                    "Bytes"
+                  ]
+                },
+                "selector": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "operator": {
+                  "enum": [
+                    "equals",
+                    "not equals",
+                    "contains",
+                    "greater than",
+                    "less than",
+                    "exists"
+                  ]
+                },
+                "value": {
+                  "type": "string",
+                  "maxLength": 65536
+                },
+                "offset": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "minimum": 0,
+                  "maximum": 65536,
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                },
+                "length": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "minimum": 1,
+                  "maximum": 65536,
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "format": {
+                  "enum": [
+                    "Text",
+                    "Hex",
+                    "Unsigned LE",
+                    "Unsigned BE"
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 16
+          },
+          "fault": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "Delay",
+                  "No reply",
+                  "Error reply",
+                  "Disconnect",
+                  "Truncate",
+                  "Corrupt byte",
+                  "Duplicate",
+                  "Split"
+                ]
+              },
+              "trigger": {
+                "enum": [
+                  "Every match",
+                  "Once on match N",
+                  "Every Nth match"
+                ]
+              },
+              "nth": {
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "minimum": 1,
+                "maximum": 1000000,
+                "pattern": "^[1-9][0-9]*$"
+              },
+              "delay_ms": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3600000
+              },
+              "payload": {
+                "type": "string",
+                "maxLength": 25165824
+              },
+              "count": {
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "minimum": 0,
+                "maximum": 8388608,
+                "pattern": "^(0|[1-9][0-9]*)$"
+              },
+              "gap_ms": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3600000
+              },
+              "offset": {
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "minimum": -1,
+                "maximum": 8388608,
+                "pattern": "^-?(0|[1-9][0-9]*)$"
+              },
+              "xor_mask": {
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "minimum": 1,
+                "maximum": 255,
+                "pattern": "^[1-9][0-9]*$"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "replies"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 2000
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "exchanges"
+  ],
+  "additionalProperties": false
+}

@@ -217,7 +217,11 @@ class SimulatorPane(Pane):
     def load_model(self):
         path = filedialog.askopenfilename(parent=self, filetypes=[("Probe device model", "*.json")])
         if path:
-            self.install(model_from_dict(read_json(path)))
+            from ..configuration.documents import describe
+            from .importing import ImportPreview
+            document=read_json(path)
+            self.import_preview=ImportPreview(self,self.app,describe(document,'simulator')+'\n\nReplaces the model; start the simulator separately.',lambda:self.install(model_from_dict(document)))
+            return self.import_preview
 
     def save_model(self):
         if not self.app.simulator_model:
