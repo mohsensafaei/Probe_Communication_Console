@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve CSV capture timestamps across time zones and avoid Windows conversion errors for early timestamps.
+
 - Add read-only live TCP Monitor with a port filter, loopback capture and raw PCAP export through system libpcap/Npcap.
 
 - Open PCAP/PCAPNG files in Traffic, reassemble TCP streams and keep capture gaps separate from reusable messages.
