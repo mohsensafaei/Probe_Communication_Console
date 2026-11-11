@@ -65,6 +65,8 @@ def compile_capture(events: Iterable[dict[str, Any]], peer: str | None = None,
         raise ValueError("Choose TX or RX as the recorded request direction.")
     aliases = {"App → device", "Injected to app"} if len(peers) == 1 else set()
     rows = [e for e in rows if str(e.get("peer", "")) == peer or e.get("peer") in aliases]
+    from .capture import validate_tcp_selection
+    validate_tcp_selection(rows)
     exchanges: list[Exchange] = []
     request = bytearray()
     replies: list[Reply] = []
