@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep connection controls visible in short windows with a compact transport selector.
+
 - Observe CDC ACM and standard single-port FTDI serial traffic without opening the COM/tty port, using USBPcap or usbmon.
 
 - Preserve CSV capture timestamps across time zones and avoid Windows conversion errors for early timestamps.
