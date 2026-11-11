@@ -65,15 +65,19 @@ def parse_extcap_devices(root, text):
                  bus=root,device=int(row['value'])) for row in rows if int(row['value'])>0]
 
 
-def windows_devices():
+def windows_sources():
     command=usbpcap_command()
     if command is None:raise OSError('USBPcap is not installed. Use Install USBPcap (offline), then restart Windows.')
-    devices=[]
     for line in run_command([command,'--extcap-interfaces']).splitlines():
         match=re.search(r'\{value=(\\\\\.\\USBPcap\d+)\}',line)
-        if match:
-            root=match[1];text=run_command([command,'--extcap-interface',root,'--extcap-config'])
-            devices.extend(parse_extcap_devices(root,text))
+        if match:yield match[1]
+
+
+def windows_devices():
+    devices=[]
+    for root in windows_sources():
+        text=run_command([usbpcap_command(),'--extcap-interface',root,'--extcap-config'])
+        devices.extend(parse_extcap_devices(root,text))
     if not devices:raise OSError('No USB capture devices found. Restart Windows after USBPcap installation, then Refresh devices.')
     return devices
 
@@ -165,13 +169,14 @@ def read_exact(stream,size):
     return bytes(chunks)
 
 
-def pcap_packets(stream):
+def pcap_packets(stream,ready=None):
     header=read_exact(stream,24)
     if header is None:raise OSError('USBPcap did not produce capture data. Check driver installation and permissions.')
     magics={b'\xd4\xc3\xb2\xa1':('<',1e6),b'\xa1\xb2\xc3\xd4':('>',1e6),b'\x4d\x3c\xb2\xa1':('<',1e9),b'\xa1\xb2\x3c\x4d':('>',1e9)}
     if header[:4] not in magics:raise ValueError('Invalid USBPcap pcap header.')
     endian,scale=magics[header[:4]]
     if struct.unpack_from(endian+'I',header,20)[0]!=249:raise ValueError('Capture is not USBPcap (link type 249).')
+    if ready:ready()
     while (record:=read_exact(stream,16)) is not None:
         sec,fraction,size,original=struct.unpack(endian+'IIII',record)
         if size>MAX_PACKET or size<USBPCAP_HEADER.size:raise ValueError('USB capture packet exceeds limits.')

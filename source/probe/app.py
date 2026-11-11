@@ -153,7 +153,8 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
 
 
     def validate(self,cfg):
-        validate_config(cfg,self.simulator_model,getattr(self,"hid_devices",{}),getattr(self,'tcp_devices',{}))
+        validate_config(cfg,self.simulator_model,getattr(self,"hid_devices",{}),getattr(self,'tcp_devices',{}),
+                        getattr(self,'usb_serial_ports',{}))
 
     def new_framer(self):
         return display_framer(self.values())

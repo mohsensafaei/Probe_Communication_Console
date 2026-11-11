@@ -2,10 +2,10 @@ import math
 
 from ..codec import Framer
 from ..serial_endpoints import VirtualPair, simulator_transports
-from . import MODES
+from . import MODES, MONITOR_MODES
 
 
-def validate(cfg, simulator_model=None, hid_devices=None, tcp_devices=None):
+def validate(cfg, simulator_model=None, hid_devices=None, tcp_devices=None, usb_serial_ports=None):
     mode=cfg["mode"]
     if mode not in MODES: raise ValueError("Choose a supported transport mode.")
     if mode in ("TCP Client","TCP Proxy","UDP"):
@@ -27,7 +27,7 @@ def validate(cfg, simulator_model=None, hid_devices=None, tcp_devices=None):
             VirtualPair(cfg["simulator_port"], cfg["simulator_peer_port"]).validate()
     if mode == "Serial Proxy" and cfg["app_port"] != "Auto PTY":
         VirtualPair(cfg["app_port"], cfg["app_peer_port"]).validate(cfg["serial_port"])
-    if "Serial" in mode:
+    if "Serial" in mode and mode not in MONITOR_MODES:
         if not cfg["serial_port"]: raise ValueError("Choose or enter a physical serial port.")
         if int(cfg["baud"])<1: raise ValueError("Baud must be positive.")
     if mode == "HID Monitor":
@@ -41,6 +41,11 @@ def validate(cfg, simulator_model=None, hid_devices=None, tcp_devices=None):
         if not source:raise ValueError('Refresh interfaces and choose a TCP capture interface.')
         if not 1 <= int(cfg['tcp_port']) <= 65535:raise ValueError('TCP capture port must be 1–65535.')
         cfg['tcp_source'] = source
+    if mode == 'USB Serial Monitor':
+        from ..usb_serial import validate_port
+        port = (usb_serial_ports or {}).get(cfg['usb_serial_device'])
+        if not port:raise ValueError('Refresh ports and select the USB serial port to monitor.')
+        cfg['usb_serial_port'] = validate_port(port)
     display_framer(cfg)
 
 

@@ -57,7 +57,7 @@ class Engine:
         if kind=='data':
             self.event_sequence += 1
             event.update(event_version=1, event_id=f'{self.session}:{self.workspace}:{self.event_sequence}')
-            if not fields.get('tcp_capture'):
+            if not (fields.get('tcp_capture') or fields.get('usb_serial')):
                 event.update(clock_id=CLOCK_ID, monotonic_ns=time.perf_counter_ns())
             event['session']=self.session
             scheduled=SCHEDULED_NS.get()
@@ -321,6 +321,8 @@ class Engine:
         if mode in MONITOR_MODES:
             if mode == 'TCP Monitor':
                 from .tcp_monitor import run_monitor
+            elif mode == 'USB Serial Monitor':
+                from .usb_serial_monitor import run_monitor
             else:
                 from .hid_monitor import run_monitor
             worker=asyncio.create_task(asyncio.to_thread(run_monitor,self))

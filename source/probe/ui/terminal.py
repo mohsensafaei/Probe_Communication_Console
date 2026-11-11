@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..terminal import TerminalModel, key_bytes
+from ..transports import MONITOR_MODES
 
 PALETTE={"black":"#10141d","red":"#ed778a","green":"#49d6b4","brown":"#dfb56c",
  "blue":"#78afff","magenta":"#c7a0fa","cyan":"#71d9e7","white":"#e7edf7",
@@ -95,7 +96,7 @@ class TerminalPane(ttk.Frame):
 
     def update_hint(self):
         mode=self.app.vars['mode'].get()
-        monitor=mode in ('HID Monitor','TCP Monitor')
+        monitor=mode in MONITOR_MODES
         self.keyboard_check.configure(state="disabled" if monitor else "normal")
         self.paste_button.configure(state="disabled" if monitor else "normal")
         if monitor:self.keyboard.set(False)

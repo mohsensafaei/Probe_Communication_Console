@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Observe CDC ACM and standard single-port FTDI serial traffic without opening the COM/tty port, using USBPcap or usbmon.
+
 - Preserve CSV capture timestamps across time zones and avoid Windows conversion errors for early timestamps.
 
 - Add read-only live TCP Monitor with a port filter, loopback capture and raw PCAP export through system libpcap/Npcap.

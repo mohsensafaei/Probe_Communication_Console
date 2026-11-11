@@ -243,6 +243,9 @@ class WorkbenchLayout:
         if mode == 'TCP Monitor':
             from .tcp_monitor import build_panel
             build_panel(self,field)
+        if mode == 'USB Serial Monitor':
+            from .usb_serial import build_panel
+            build_panel(self,field)
         if mode == "Device Simulator":
             field("Expose device as", "simulator_transport", simulator_transports(), True)
             if os.name == "nt":
@@ -252,7 +255,7 @@ class WorkbenchLayout:
             self.label(self.config_frame, f"{count} recorded exchanges loaded.\nNo physical device is needed.", 9,
                        color=c["muted"], wraplength=200, justify="left").pack(anchor="w", pady=8)
             ttk.Button(self.config_frame, text="Open Test lab", command=self.test_lab).pack(fill="x", pady=6)
-        if "Serial" in mode:
+        if "Serial" in mode and mode not in MONITOR_MODES:
             self.port_combo=field("Physical port / serial URL","serial_port",[],False)
             ttk.Button(self.config_frame,text="Refresh ports",command=self.refresh_ports).pack(anchor="e",pady=4)
             field("Baud rate","baud",["300","1200","2400","4800","9600","19200","38400","57600","115200","230400","460800","921600"],False)
@@ -299,6 +302,8 @@ class WorkbenchLayout:
             self.hid_combo.configure(state="disabled" if locked else "readonly")
         if self.vars['mode'].get()=='TCP Monitor':
             self.tcp_combo.configure(state='disabled' if locked else 'readonly')
+        if self.vars['mode'].get()=='USB Serial Monitor':
+            self.usb_serial_combo.configure(state='disabled' if locked else 'readonly')
         for b in self.nav: b.configure(state="disabled" if locked else "normal")
 
 

@@ -49,10 +49,10 @@ def receive_message(sock):
     return message
 
 
-def capture_linux(source,send,stop):
+def capture_linux(source,send,stop,endpoints=None):
     import ctypes.util
     bus,device=validate_source(source,False);bus=int(bus)
-    metadata=linux_metadata(source)
+    metadata=linux_metadata(source) if endpoints is None else None
     path=Path(f'/dev/usbmon{bus}')
     if not path.exists():
         modprobe=next((p for p in ('/usr/sbin/modprobe','/sbin/modprobe','/usr/bin/modprobe') if Path(p).is_file()),None)
@@ -66,7 +66,8 @@ def capture_linux(source,send,stop):
     getx=(1<<30)|(ctypes.sizeof(Get)<<16)|(0x92<<8)|10
     stats=(2<<30)|(8<<16)|(0x92<<8)|3;last_stats=time.monotonic()
     try:
-        send(dict(kind='metadata',**metadata));send(dict(kind='ready'))
+        if metadata is not None:send(dict(kind='metadata',**metadata))
+        send(dict(kind='ready'))
         while not stop.is_set():
             if not select.select([fd],[],[],.2)[0]:continue
             if libc.ioctl(fd,getx,ctypes.byref(arg))<0:
@@ -75,7 +76,7 @@ def capture_linux(source,send,stop):
                 raise OSError(code,os.strerror(code))
             captured=struct.unpack_from('<I',header.raw,36)[0]
             packet=parse_usbmon(header.raw,data.raw[:min(captured,MAX_PACKET)])
-            if packet['bus']==bus and packet['device']==device:
+            if packet['bus']==bus and packet['device']==device and selected(packet,endpoints):
                 packet['payload']=packet['payload'].hex();send(dict(kind='packet',packet=packet))
             if time.monotonic()-last_stats>1:
                 counts=(ctypes.c_uint32*2)()
@@ -84,11 +85,16 @@ def capture_linux(source,send,stop):
     finally:os.close(fd)
 
 
-def capture_windows(source,send,stop):
+def selected(packet,endpoints):
+    return endpoints is None or packet['transfer']=='bulk' and packet['endpoint'] in endpoints
+
+
+def capture_windows(source,send,stop,endpoints=None):
     root,device=validate_source(source,True);command=usbpcap_command()
     if command is None:raise OSError('USBPcap is not installed. Install the bundled offline driver and restart Windows.')
     # Never capture all/new devices. The address filter is fixed to the user's selection.
-    process=subprocess.Popen([str(command),'-d',root,'--devices',str(device),'--inject-descriptors','-s',str(MAX_PACKET),'-b',str(8*1024*1024),'-o','-'],
+    descriptors=['--inject-descriptors'] if endpoints is None else []
+    process=subprocess.Popen([str(command),'-d',root,'--devices',str(device),*descriptors,'-s',str(MAX_PACKET),'-b',str(8*1024*1024),'-o','-'],
                              stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,creationflags=0x08000000)
     errors=[]
     def stderr():
@@ -103,12 +109,9 @@ def capture_windows(source,send,stop):
     reader=threading.Thread(target=stderr,daemon=True);reader.start()
     canceller=threading.Thread(target=cancel,daemon=True);canceller.start()
     try:
-        # First packet validates both the pcap header and the driver startup.
-        ready=False
-        for packet in pcap_packets(process.stdout):
+        for packet in pcap_packets(process.stdout,lambda:send(dict(kind='ready'))):
             if stop.is_set():break
-            if not ready:send(dict(kind='ready'));ready=True
-            if packet['device']==device:
+            if packet['device']==device and selected(packet,endpoints):
                 packet['payload']=packet['payload'].hex();send(dict(kind='packet',packet=packet))
         if not stop.is_set():raise OSError('USB capture ended. '+ ' '.join(errors)[-1000:])
     except (OSError,ValueError) as exc:
@@ -125,14 +128,18 @@ def capture_windows(source,send,stop):
 
 def helper_main(port,token,action,source):
     if not 1<=port<=65535 or not re.fullmatch('[0-9a-f]{64}',token):raise ValueError('Invalid HID helper channel.')
-    if action not in ('list','capture','check'):raise ValueError('Unsupported helper action.')
+    if action not in ('list','capture','check','serial'):raise ValueError('Unsupported helper action.')
     if action=='capture':validate_source(source)
+    if action=='serial':
+        from .usb_serial import validate_port
+        validate_port(source)
     stop=threading.Event()
     with socket.create_connection(('127.0.0.1',port),timeout=10) as sock:
         send_message(sock,dict(token=token));reply=receive_message(sock)
         if reply.get('token')!=token:return
         sock.settimeout(10)
         lock=threading.Lock()
+        target=None
         def send(message):
             with lock:send_message(sock,message)
         def controls():
@@ -141,6 +148,11 @@ def helper_main(port,token,action,source):
                     # Parent sends heartbeat every second; EOF/timeout revokes capture.
                     command=receive_message(sock)
                     if command!={'kind':'ping'}:break
+                    if target:
+                        try:attached=target.attached()
+                        except OSError:attached=False
+                        if not attached:
+                            send(dict(kind='error',message='USB serial device disconnected or changed. Refresh ports and start again.'));break
                     send(dict(kind='heartbeat'))
             except (OSError,EOFError,ValueError):pass
             finally:stop.set()
@@ -148,8 +160,19 @@ def helper_main(port,token,action,source):
         try:
             if action=='check':send(dict(kind='checked',capture_started=False))
             elif action=='list':send(dict(kind='devices',devices=windows_devices() if os.name=='nt' else linux_devices()))
-            elif os.name=='nt':capture_windows(source,send,stop)
-            else:capture_linux(source,send,stop)
+            else:
+                if action=='serial':
+                    if os.name=='nt':
+                        from .usb_serial_windows import windows_target
+                        target=windows_target(source)
+                    else:
+                        from .usb_serial import linux_target
+                        target=linux_target(source)
+                    if not target.attached():raise OSError('USB serial device changed before capture.')
+                    source=target.source
+                    send(dict(kind='serial_metadata',profile=target.profile,endpoints=target.endpoints))
+                capture=capture_windows if os.name=='nt' else capture_linux
+                capture(source,send,stop,target.endpoints if target else None)
         except Exception as exc:
             with contextlib.suppress(OSError):send(dict(kind='error',message=str(exc)[:2000]))
         finally:
