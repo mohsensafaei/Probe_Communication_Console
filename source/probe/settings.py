@@ -13,7 +13,7 @@ DEFAULTS = dict(mode="TCP Client", host="127.0.0.1", port="9000", bind="127.0.0.
                 target="All clients", side="Device / upstream", profile="Default", auto="Off",
                 theme="Probe Dark", sequence_cycles="1", sequence_interval="100", sequence_timing="auto",
                 sequence_advance="After interval", sequence_reply_timeout="2000", sequence_variables="{}",
-                hid_device="", plot_mode="Auto", plot_config="{}", protocol_fields="[]", simulator_transport="TCP socket",
+                hid_device="", tcp_device="", tcp_port="9000", plot_mode="Auto", plot_config="{}", protocol_fields="[]", simulator_transport="TCP socket",
                 simulator_matching="Conversation order", simulator_timing="1")
 
 BOOL_DEFAULTS = {'dtr': False, 'rts': False, 'autoscroll': True, 'repeat': False, 'reconnect': False, 'sequence_loop': False, 'simulator_repeat': True}

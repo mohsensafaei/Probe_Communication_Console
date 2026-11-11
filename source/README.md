@@ -246,6 +246,29 @@ The raw traffic table and recordings still contain the original ANSI bytes. Paus
 
 ### Capture import and replay
 
+**TCP Monitor** observes an existing connection without opening its socket or
+changing either endpoint. Select **Refresh interfaces**, choose the physical
+interface or **Loopback**, enter the service's TCP port, then **Start capture**.
+TX is toward that port and RX is from it. Start before the application connects
+if you need its handshake and complete application frames. Set **Delimiter** or
+**Fixed length** framing before starting if you want to reuse complete frames.
+After changing framing or losing rows in the display queue, reopen the raw
+capture to recover the framing from the start. The mode cannot send bytes.
+
+Select **Save raw PCAP…** before starting to save matching packets to a new file.
+Open the saved file with **Open Capture…** in Probe or with Wireshark. **Traffic
+→ Record** continues to save reconstructed payload rows as JSONL. Stop shows
+the packet count, skipped packets and driver drop counts when available. Gaps
+that remain buffered are resolved or marked at Stop; original packets remain
+in the PCAP. A zero drop count does not prove that all packets were captured.
+
+Live capture requires [Npcap](https://npcap.com/) on Windows or the system
+**libpcap** runtime (e.g. `libpcap0.8t64` on Debian 13) and capture permissions on
+Linux. Probe neither installs these dependencies nor elevates its GUI. Follow
+the OS or administrator's capture setup for your interface. **Open Capture…**
+needs neither library nor capture permissions. Monitor only interfaces and
+connections you are permitted to observe.
+
 **Import capture** opens `.pcap` and `.pcapng` from Wireshark or other capture
 tools without an installed capture driver. Traffic shows client → server as TX
 and server → client as RX, based on the handshake when available. Midstream

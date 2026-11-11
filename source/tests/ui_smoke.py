@@ -14,6 +14,22 @@ from probe.app import Probe
 from probe.engine import MODES
 
 class UISmoke(unittest.TestCase):
+    def test_tcp_monitor_opens_packet_capture_without_driver(self):
+        from test_tcp_capture import pcap, wire
+        self.app.choose_mode('TCP Monitor')
+        self.app.vars['framing'].set('Delimiter')
+        self.app.vars['delimiter'].set('0A')
+        self.assertEqual(self.app.connection_button.cget('text'),'Start capture')
+        self.assertFalse(self.app.composer.winfo_ismapped())
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'traffic.pcap'
+            path.write_bytes(pcap([wire(1,flags=2),wire(2,b'ping\n')]))
+            button=next(w for w in self.app.config_frame.winfo_children() if isinstance(w,ttk.Button) and w.cget('text')=='Open Capture…')
+            with patch('probe.ui.tcp_monitor.filedialog.askopenfilename',return_value=str(path)):button.invoke()
+        row,=self.app.events.values()
+        self.assertEqual(row['data'],b'ping\n');self.assertTrue(row['tcp_complete'])
+        self.assertFalse(self.app.active);self.assertIn('No bytes were sent',self.app.status.cget('text'))
+
     def test_clear_removes_imported_replay_source(self):
         with tempfile.TemporaryDirectory() as d:
             path=Path(d)/'old.jsonl'

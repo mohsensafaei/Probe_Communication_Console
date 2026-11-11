@@ -14,6 +14,7 @@ class Packet:
     link: int
     data: bytes
     interface: tuple = (0, 0)
+    wire_size: int = 0
 
 
 def read(stream, size, eof=False):
@@ -46,7 +47,7 @@ def packets(stream, raw=None):
         data = read(stream, size)
         if raw is not None:
             raw.write(record + data)
-        yield Packet(sec + fraction / scale, link & 0xffff, data)
+        yield Packet(sec + fraction / scale, link & 0xffff, data, wire_size=original)
 
 
 def interface_options(body, endian):
@@ -117,5 +118,15 @@ def pcapng(stream, kind):
             timestamp = stamp / resolution + offset if block != 3 else 0
             if not 0 <= timestamp < 253402300799:
                 raise ValueError('PCAPNG packet timestamp is outside the supported range.')
-            yield Packet(timestamp, link, body[start:start + size], (section, index))
+            yield Packet(timestamp, link, body[start:start + size], (section, index), original)
         kind = read(stream, 4, eof=True)
+
+
+def write_header(stream, link, snaplen):
+    stream.write(struct.pack('<IHHIIII', 0xa1b2c3d4, 2, 4, 0, 0, snaplen, link))
+
+
+def write_packet(stream, packet):
+    sec, fraction = divmod(round(packet.time * 1e6), 1_000_000)
+    size = len(packet.data)
+    stream.write(struct.pack('<IIII', sec, fraction, size, max(size, packet.wire_size)) + packet.data)

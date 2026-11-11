@@ -127,6 +127,7 @@ class TrafficWorkspace:
 
     def clear(self):
         self.last_capture=[]
+        if self.active and self.vars['mode'].get()=='TCP Monitor':self.tcp_display_gap+=1
         self.history.clear();self.queue.reset_stats();self.dropped=0
         self.plugins.results.clear();self.plugins.bytes=0
         self.display_framing.clear();self.plot.clear()

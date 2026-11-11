@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add read-only live TCP Monitor with a port filter, loopback capture and raw PCAP export through system libpcap/Npcap.
+
 - Open PCAP/PCAPNG files in Traffic, reassemble TCP streams and keep capture gaps separate from reusable messages.
 
 - Let Python `respond()` plugins generate and automatically send Device Simulator replies from complete matched requests.

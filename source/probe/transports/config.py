@@ -5,7 +5,7 @@ from ..serial_endpoints import VirtualPair, simulator_transports
 from . import MODES
 
 
-def validate(cfg, simulator_model=None, hid_devices=None):
+def validate(cfg, simulator_model=None, hid_devices=None, tcp_devices=None):
     mode=cfg["mode"]
     if mode not in MODES: raise ValueError("Choose a supported transport mode.")
     if mode in ("TCP Client","TCP Proxy","UDP"):
@@ -36,6 +36,11 @@ def validate(cfg, simulator_model=None, hid_devices=None):
         cfg["hid_source"]=source
         from ..hid_capture import validate_source
         validate_source(source)
+    if mode == 'TCP Monitor':
+        source = (tcp_devices or {}).get(cfg['tcp_device'])
+        if not source:raise ValueError('Refresh interfaces and choose a TCP capture interface.')
+        if not 1 <= int(cfg['tcp_port']) <= 65535:raise ValueError('TCP capture port must be 1–65535.')
+        cfg['tcp_source'] = source
     display_framer(cfg)
 
 
