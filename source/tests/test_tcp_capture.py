@@ -97,7 +97,9 @@ class TcpCaptureTests(unittest.TestCase):
         for suffix in ('.jsonl', '.csv'):
             path = self.path.with_suffix(suffix)
             with path.open('w', encoding='utf-8', newline='') as out:write_export(out, rows, suffix)
-            with self.assertRaisesRegex(ValueError, 'complete framed TCP'):replay_plan(load_capture(path))
+            imported = load_capture(path)
+            self.assertEqual(imported[0]['time'], rows[0]['time'])
+            with self.assertRaisesRegex(ValueError, 'complete framed TCP'):replay_plan(imported)
 
     def test_pcap_recording_copies_exact_packet_bytes(self):
         data = pcap([wire(1, b'hello')], endian='>')
