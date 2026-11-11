@@ -41,6 +41,11 @@ def load_capture(path,max_events=2000,max_bytes=8*1024*1024):
             event.update({key:row[key] for key in ('session','client_peer','modified_by','plugin_error','source_time',
                           'source_monotonic_ns','plugin_elapsed_ns','display_partial','display_reason') if key in row})
             event.update(restore(row))
+            if row.get('tcp_capture') in (True, 'True'):
+                event['tcp_capture'] = True
+                event['tcp_complete'] = row.get('tcp_complete') is True and bool(data) and not row.get('display_partial')
+                for key in ('tcp_epoch', 'tcp_gap', 'tcp_unreliable'):
+                    if type(row.get(key)) in (int, bool):event[key] = row[key]
             if event.get('source_refs_complete') and sum(ref['end']-ref['start'] for ref in event.get('source_refs',()))!=len(data):raise ValueError('Source byte ranges do not cover the message.')
             event.setdefault('event_id',f'import-{origin}:{ordinal}')
             event.setdefault('event_version',1)
@@ -51,9 +56,17 @@ def load_capture(path,max_events=2000,max_bytes=8*1024*1024):
             events.append(event)
     return events
 
+def validate_tcp_selection(events):
+    if not any(e.get('tcp_capture') for e in events):return
+    if (any(not e.get('tcp_capture') or not e.get('tcp_complete') or e.get('display_partial') for e in events)
+        or len({(e.get('session'), e['peer'], e.get('tcp_epoch',0)) for e in events}) != 1):
+        raise ValueError('Select only complete framed TCP messages from one connection without capture gaps.')
+
+
 def replay_plan(events,speed=1.0,direction="TX"):
     if not math.isfinite(speed) or not .1<=speed<=10:raise ValueError("Replay speed must be 0.1–10×.")
     selected=[e for e in events if e["direction"]==direction]
+    validate_tcp_selection(selected)
     if not selected:return []
     first=selected[0]["time"]
     previous=0.0;plan=[]

@@ -246,6 +246,26 @@ The raw traffic table and recordings still contain the original ANSI bytes. Paus
 
 ### Capture import and replay
 
+**Import capture** opens `.pcap` and `.pcapng` from Wireshark or other capture
+tools without an installed capture driver. Traffic shows client → server as TX
+and server → client as RX, based on the handshake when available. Midstream
+captures use the first observed direction when the role cannot be determined.
+Streams are separated by interface and connection; retransmissions are deduplicated
+and out-of-order segments are reordered in a bounded buffer. Missing bytes are
+shown as gaps. The raw capture remains available for packet analysis in Wireshark.
+
+To reuse messages, set **Delimiter** or **Fixed length** framing before import,
+then select complete rows from one connection. Right-click to replay the selection
+on an explicitly connected transport or build a simulator model from both directions.
+Partial, midstream and post-gap rows remain available for Analyze, Diff and Trace,
+but are excluded from these actions. JSONL retains the reuse metadata; CSV is
+for inspection. Capture time is host observation time, not wire timing.
+
+Import accepts Ethernet, loopback, raw IP and Linux cooked links, IPv4 and IPv6
+TCP. IP fragments and unsupported link types are skipped and reported. Limits
+are 32 MiB, 100,000 packets and the normal Traffic row and byte budgets. Filter
+larger captures in Wireshark before importing. TLS payloads remain encrypted.
+
 Open **Tools → Import capture**, or right-click a traffic row. While disconnected, load Probe JSONL or CSV into the history for inspection; importing sends no traffic. Import limits are 2000 events, 8 MiB decoded bytes and 24 MiB file size. Streaming full recordings can exceed these limits and may need splitting before import.
 
 Connect and choose a target/side, then **Replay TX** (the replay dialog also offers RX). Replay sends exact recorded bytes, without composer transformations, at the original relative timing scaled by 0.1–10×. Negative/backward timing is clamped to preserve order. Stop replay cancels future sends; bytes already queued cannot be recalled. Disconnecting cancels replay. Repeat, sequence and replay runners stop one another when a new runner starts. Replay duration is bounded to 24 hours.

@@ -93,7 +93,12 @@ class DisplayFraming:
         if self._chunks:
             yield event
             return
-        key = tuple(event.get(k, '') for k in ('direction', 'peer', 'client_peer', 'session'))
+        key = tuple(event.get(k, '') for k in ('direction', 'peer', 'client_peer', 'session', 'tcp_epoch'))
+        if event.get('tcp_gap'):
+            if key in self.streams:
+                yield from self._flush(self.streams.pop(key), 'TCP capture gap')
+            yield event
+            return
         if key not in self.streams:
             framer = self.factory()
             if framer.mode == "Chunks":
@@ -136,6 +141,8 @@ class DisplayFraming:
             row = self._row(metadata, data)
             if partial:
                 row.update(display_partial=True, display_reason="frame buffer limit")
+            if row.get('tcp_capture') and not (partial or row.get('tcp_unreliable')) and framer.mode in ('Delimiter', 'Fixed length'):
+                row['tcp_complete'] = True
             yield row
         self.streams[key] = (framer, metadata, use_monotonic)
 

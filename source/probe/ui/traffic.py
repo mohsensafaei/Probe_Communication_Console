@@ -68,6 +68,7 @@ class TrafficWorkspace:
             payload=f"{text}   ·   {data[:128].hex(' ').upper()}" if view=="Text + Hex" else text
         if len(data)>512:payload+=" …"
         if event.get("display_partial"):payload+=" · [partial: "+event["display_reason"]+"]"
+        elif event.get('tcp_unreliable'):payload+=' · [TCP stream starts mid-connection or after a gap]'
         if "original_hex" in event:payload=("[Blocked] " if event.get('plugin_error') else "[Modified] ")+payload
         return (idx,dt.datetime.fromtimestamp(event["time"]).strftime("%H:%M:%S.%f")[:-3],event["direction"],event["peer"],len(data),payload)
 
@@ -226,6 +227,10 @@ class TrafficWorkspace:
         menu.add_command(label="Share diagnostic case…",state=state,command=lambda:self.share_case(selection))
         menu.add_command(label="Copy message IDs",state=state,command=lambda:self.copy_event_ids(selection))
         menu.add_command(label="Find message by ID…",command=self.find_event_id)
+        selected=[event for _,event in selection]
+        if selected and all(e.get('tcp_complete') for e in selected):
+            menu.add_command(label='Replay selected TCP messages…',command=lambda:self.replay_capture(selected))
+            menu.add_command(label='Build simulator from selected TCP messages…',command=lambda:self.simulate_tcp_selection(selected))
         if count>1:return menu
         menu.add_separator()
         menu.add_command(label="Follow across probes…",state=state,command=lambda:self.window.trace_path(self))
@@ -282,23 +287,40 @@ class TrafficWorkspace:
 
     def import_capture(self,path=None):
         if self.active:self.set_status("Disconnect before loading an offline capture.",True);return
-        path=path or filedialog.askopenfilename(parent=self,filetypes=[("Probe capture","*.jsonl *.csv")])
+        path=path or filedialog.askopenfilename(parent=self,filetypes=[("All captures","*.jsonl *.csv *.pcap *.pcapng"),
+                                                                     ("TCP packet capture","*.pcap *.pcapng"),("Probe capture","*.jsonl *.csv")])
         if not path:return
         try:
-            rows=load_capture(path)
+            skipped = 0
+            if Path(path).suffix.lower() in ('.pcap', '.pcapng'):
+                from ..tcp_stream import open_capture
+                rows, skipped = open_capture(path, self.new_framer, max_rows=self.MAX_ROWS, max_bytes=self.MAX_BYTES)
+            else:
+                rows=load_capture(path)
             self.clear();self.engine=None;self.terminal.reset();self.last_capture=rows
             self.tx_total=sum(len(e["data"]) for e in rows if e["direction"]=="TX")
             self.rx_total=sum(len(e["data"]) for e in rows if e["direction"]=="RX")
             self.paused=False;self.pause_button.configure(text="Pause")
-            for event in rows:self.add_event(event);self.terminal.feed(event);self.plot.feed(event)
-            self.terminal.render(force=True);self.set_status(f"Imported {len(rows)} events. No bytes were sent.")
+            self.add_events(rows)
+            for event in rows:self.terminal.feed(event);self.plot.feed(event)
+            note = f' {skipped} unsupported or malformed packets skipped.' if skipped else ''
+            self.terminal.render(force=True);self.set_status(f"Imported {len(rows)} events. No bytes were sent.{note}")
         except Exception as exc:self.set_status(f"Import failed: {exc}",True)
 
 
-    def replay_capture(self):
+    def simulate_tcp_selection(self, rows):
+        from ..capture import validate_tcp_selection
+        try:
+            validate_tcp_selection(rows)
+            self.test_lab();self.simulator_panel.capture_rows(rows)
+        except ValueError as exc:self.set_status(str(exc),True)
+
+    def replay_capture(self, selected=None):
         if not self.engine or not self.engine.ready:self.set_status("Connect before replaying traffic.",True);return
-        rows=self.last_capture or [self.events[i] for i in self.order]
+        rows=selected if selected is not None else self.last_capture or [self.events[i] for i in self.order]
         if not rows:self.set_status("Import a capture or collect traffic first.",True);return
+        if selected is None and any(row.get('tcp_capture') for row in rows):
+            self.set_status('Select complete TCP messages, then right-click → Replay selected TCP messages.',True);return
         win=self.dialog("Replay captured traffic","440x260")
         self.label(win,"Replay exact bytes",17,True).pack(anchor="w",padx=20,pady=20)
         direction=tk.StringVar(self, value="TX");speed=tk.StringVar(self, value="1.0")

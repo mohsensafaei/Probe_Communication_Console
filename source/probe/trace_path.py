@@ -5,7 +5,7 @@ from .traffic_search import field_keys, json_body
 
 
 def flow(event):
-    return tuple(event.get(key, '') for key in ('direction', 'peer', 'client_peer', 'session'))
+    return tuple(event.get(key, '') for key in ('direction', 'peer', 'client_peer', 'session', 'tcp_epoch'))
 
 
 def message(keys, event, data=None, method='Selected manually', span=''):
