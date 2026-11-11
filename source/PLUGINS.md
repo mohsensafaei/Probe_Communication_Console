@@ -93,6 +93,36 @@ required. Do not rely on process() being called before transform(): analysis run
 later on a bounded display snapshot, while transforms must finish before writing.
 Repeated manual Run analysis calls are additional invocations of process().
 
+## Send automatic replies from Device Simulator
+
+Add an optional hook to build a reply from the **current, complete request**:
+
+```python
+def respond(request, reply, context):
+    return request  # Echo the request to the same connected application.
+```
+
+Enable the plugin for **RX** or **Both**, turn on **Allow message changes**, then
+apply while disconnected. In **Device Simulator**, a matching request calls
+`respond` before fault injection. Probe sends returned `bytes` automatically to
+the requesting peer, including when the model has no default reply. `None`
+keeps the model's reply and timing; `b''` clears the normal reply. The first
+plugin that returns bytes wins. Existing faults and outgoing transforms still
+apply. An exception or invalid result blocks that reply and reports the error.
+
+`request` is the matched wire frame, including configured framing bytes.
+`reply` is the concatenated default reply, or `b''` if none was configured.
+A replacement is sent as one chunk with the first configured delay. The
+context includes `rule_name`, zero-based `rule_index`, `match_number` and the
+usual per-peer `state`. Request and default reply together may be at most
+1 MiB; replacement bytes have the same limit.
+
+To try it, add `examples/plugins/simulator_reply.py`, enable its changes, and
+load `examples/simulator-plugin-reply.json` under **Test lab → Device simulator**.
+Start the simulator, connect a TCP client, and send `{"requestId":"test-1"}`.
+It automatically returns `{"requestId":"test-1","ok":true}` followed by LF.
+The hook runs on matched simulator requests, not on the display/analysis queue.
+
 ## Message boundaries
 
 TCP/serial chunks are not messages. **Analysis follows the existing Traffic framing**:

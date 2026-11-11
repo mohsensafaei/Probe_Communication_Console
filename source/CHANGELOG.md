@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let Python `respond()` plugins generate and automatically send Device Simulator replies from complete matched requests.
+
 - Fix Save analysis to honor the inspector’s selected Auto/Raw Bytes mode instead of applying a saved custom profile implicitly.
 
 - Fix Sequence import preview to show the editor’s 100 ms default and actual reply-gating rules.

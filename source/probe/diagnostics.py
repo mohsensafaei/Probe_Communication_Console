@@ -23,9 +23,10 @@ def wait_for(predicate, events=(), timeout=5):
 
 
 @contextlib.contextmanager
-def session(mode, **options):
+def session(mode, *, plugins=None, **options):
     events = []
     engine = Engine(events.append)
+    engine.plugins = plugins
     cfg = dict(mode=mode, host="127.0.0.1", port=9000,
                bind="127.0.0.1", listen_port=0, baud=115200)
     cfg.update(options)
@@ -61,7 +62,7 @@ def self_test():
     from .plugins import PluginWorker
     with tempfile.TemporaryDirectory() as directory:
         path=Path(directory)/'main.py'
-        path.write_text('import hashlib, hmac, struct\ndef process(data, context):\n return {"fields":{"digest":hashlib.sha256(data).hexdigest()}}\ndef transform(data, context):\n return data.upper()\n')
+        path.write_text('import hashlib, hmac, struct\ndef process(data, context):\n return {"fields":{"digest":hashlib.sha256(data).hexdigest()}}\ndef transform(data, context):\n return data.upper()\ndef respond(request, reply, context):\n return request + reply\n')
         worker=PluginWorker([dict(id='self-test',path=str(path),enabled=True,changes=True)])
         try:
             fields=worker.submit('process',b'abc',dict(direction='RX',peer='test')).result(20)
@@ -71,10 +72,16 @@ def self_test():
                 wait_for(lambda:len(received(events))==3,events)
                 expect_equal(received(events),b'ABC')
                 if not any(e.get('original_hex')=='616263' for e in events):raise RuntimeError('Plugin original bytes were not retained')
+            from .simulation import DeviceModel, Exchange, Reply
+            model = DeviceModel((Exchange(b'ping', (Reply(b'pong'),)),))
+            with session('Device Simulator', plugins=worker, simulator_model=model) as (_,_,ready):
+                with socket.create_connection(ready['address'][:2], timeout=5) as app, app.makefile('rb') as reader:
+                    app.sendall(b'ping')
+                    expect_equal(reader.read(8), b'PINGPONG')
         finally:
             worker.close()
             if worker.thread:worker.thread.join(3)
-    print('PASS user Python plugin process, bundled standard-library imports and transformed serial loopback')
+    print('PASS Python plugin analysis, transformed serial loopback and automatic simulator reply')
     with session("USB / Serial", serial_port="loop://") as (engine, events, _):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "capture.jsonl"

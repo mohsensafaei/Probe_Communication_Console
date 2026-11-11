@@ -156,7 +156,7 @@ class RequestMatcher:
                 if full:
                     rule = self.index if self.ordered else next(i for i,e in enumerate(self.model.exchanges) if e is full)
                     self.hits[rule] += 1
-                    self.details.append((rule, self.hits[rule]))
+                    self.details.append((rule, self.hits[rule], full.request))
                     matches.append(full)
                     self.buffer.clear()
                     if self.ordered:
@@ -232,7 +232,7 @@ class FramedMatcher:
                 continue
             index = found[0]
             self.hits[index] += 1
-            self.details.append((index, self.hits[index]))
+            self.details.append((index, self.hits[index], raw))
             result.append(self.model.exchanges[index])
             if self.ordered:
                 self.index += 1
@@ -288,7 +288,6 @@ def model_from_dict(value: Any) -> DeviceModel:
         if conditions: used += sum(len(c.value.encode())+len(c.selector.encode()) for c in conditions)
         if used>MAX_MODEL_BYTES: raise ValueError("Device model exceeds 8 MiB.")
         exchanges.append(item)
-    if not any(e.replies or e.fault for e in exchanges): raise ValueError("Add at least one device reply or fault.")
     model = DeviceModel(tuple(exchanges), framing=framing)
     RequestMatcher(model)  # Validate framing without opening a transport.
     return model

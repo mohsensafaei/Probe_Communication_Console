@@ -139,7 +139,7 @@ class RuleEditor(Editor):
         self.field(main,'reply','Reply payload',b''.join(r.data for r in item.replies).hex(' ').upper())
         self.initial_delay=f'{sum(r.delay_ms for r in item.replies):g}'
         self.field(main,'delay','Reply delay (ms)',self.initial_delay)
-        ttk.Label(main,text='Replies are static payloads. Existing capture chunks and delays are retained unless\nyou change the reply or delay. Empty reply = accept the request without replying.',wraplength=690).pack(anchor='w',pady=8)
+        ttk.Label(main,text='A respond() plugin can build the reply, even when this payload is empty. Otherwise Probe uses the configured reply and timing.',wraplength=690).pack(anchor='w',pady=8)
         self.fault_original=item.fault or Fault('Delay')
         self.field(fault,'fault','Inject a fault',item.fault.kind if item.fault else 'None',('None',)+FAULTS).bind('<<ComboboxSelected>>',self.update_fault)
         self.fault_box=ttk.Frame(fault);self.fault_box.pack(fill='x')
@@ -220,7 +220,7 @@ class RuleEditor(Editor):
         payload=v['reply'].get().encode('utf-8') if v['reply_format'].get()=='Text (UTF-8)' else parse_hex(v['reply'].get())
         delay=milliseconds(v['delay'].get())
         unchanged=v['reply_format'].get()=='Hex' and payload==b''.join(r.data for r in item.replies) and v['delay'].get()==self.initial_delay
-        replies=item.replies if unchanged else (Reply(payload,delay),) if payload else ()
+        replies=item.replies if unchanged else (Reply(payload,delay),) if payload or delay else ()
         kind=v['fault'].get();fault=None
         if kind!='None':
             get=lambda key,default:v[key].get() if key in v else default

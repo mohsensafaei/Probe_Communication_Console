@@ -109,13 +109,13 @@ def _worker(pipe, entries):
                                 states[flow]['buffers'].clear()
                     if pending:raise ValueError(f'{pending} incomplete plugin frame bytes were not forwarded; original chunks remain in Traffic / capture.')
                     pipe.send((True, []));continue
-                output = []; changed = []
+                output = None if operation == 'respond' else []; changed = []
                 for entry, info, module, states in plugins:
                     if not options.get('plugin') and entry.get('direction', 'Both') not in ('Both', context.get('direction', 'RX')):
                         continue
                     if options.get('plugin') and entry['id'] != options['plugin']:
                         continue
-                    if operation == 'transform' and not entry.get('changes'):
+                    if operation in ('transform', 'respond') and not entry.get('changes'):
                         continue
                     function = getattr(module, operation, None)
                     if function is None:
@@ -134,6 +134,13 @@ def _worker(pipe, entries):
                     try:
                         if operation == 'rebuild': value = function(data, options['fields'], ctx)
                         elif operation == 'action': value = function(options['action'], data, ctx)
+                        elif operation == 'respond':
+                            value = function(data, options['reply'], ctx)
+                            if value is None:continue
+                            if not isinstance(value, bytes) or len(value) > MAX_DATA:
+                                raise ValueError('respond() must return None or bytes, at most 1 MiB.')
+                            output = value
+                            break
                         elif operation == 'transform':
                             frames=[data];framing=info.get('framing',{})
                             if framing:
@@ -179,14 +186,17 @@ class PluginWorker:
     def __init__(self, entries, timeout=2):
         self.entries = [dict(e) for e in entries if e.get('enabled')]
         self.changes = any(e.get('changes') for e in self.entries)
+        self.responds = any(e.get('changes') and e.get('direction', 'Both') in ('RX', 'Both')
+                            and 'respond' in metadata(e['path'])['hooks'] for e in self.entries)
         self.timeout = timeout; self.failed = ''; self.closed = False
         self.requests = queue.PriorityQueue(maxsize=32); self.pending = 0; self.serial=0; self.lock = threading.Lock()
         self.process = None; self.thread = None
 
     def submit(self, operation, data, context, **options):
         future = Future()
+        size = len(data) + (len(options['reply']) if operation == 'respond' else 0)
         with self.lock:
-            if self.closed or self.failed or len(data) > MAX_DATA or self.pending + len(data) > 8 * MAX_DATA:
+            if self.closed or self.failed or size > MAX_DATA or self.pending + size > 8 * MAX_DATA:
                 future.set_exception(RuntimeError(self.failed or 'Plugin unavailable or input exceeds its 1 MiB / queue limit.'))
                 return future
             if self.thread is None:
@@ -194,8 +204,8 @@ class PluginWorker:
                 self.thread.start()
             try:
                 self.serial+=1
-                self.requests.put_nowait((1 if operation=='process' else 0,self.serial,(future, operation, bytes(data), dict(context), options)))
-                self.pending += len(data)
+                self.requests.put_nowait((1 if operation=='process' else 0,self.serial,(future, operation, bytes(data), dict(context), options, size)))
+                self.pending += size
             except queue.Full:
                 future.set_exception(RuntimeError('Plugin queue full; analysis is incomplete.'))
         return future
@@ -221,7 +231,7 @@ class PluginWorker:
             while not self.closed:
                 try: request = self.requests.get(timeout=.05)[2]
                 except queue.Empty: continue
-                future, operation, data, context, options = request
+                future, operation, data, context, options, size = request
                 try:
                     pipe.send((operation, data, context, options))
                     # A plugin error is recoverable; a hung/dead worker is not.
@@ -234,7 +244,7 @@ class PluginWorker:
                     if not future.done(): future.set_exception(RuntimeError(str(exc) or 'Plugin worker exited.'))
                     raise
                 finally:
-                    with self.lock: self.pending -= len(data)
+                    with self.lock: self.pending -= size
         except BaseException as exc:
             self.failed = str(exc) or 'Plugin worker exited.'
         finally:
@@ -245,7 +255,7 @@ class PluginWorker:
             with self.lock:
                 self.closed = True
                 while not self.requests.empty():
-                    future, _, data, _, _ = self.requests.get_nowait()[2]; self.pending -= len(data)
+                    future, _, _, _, _, size = self.requests.get_nowait()[2]; self.pending -= size
                     if not future.done(): future.set_exception(RuntimeError(self.failed or 'Plugins stopped.'))
 
     def close(self):

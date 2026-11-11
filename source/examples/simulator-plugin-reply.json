@@ -1,0 +1,13 @@
+{
+  "format": "probe-device",
+  "version": 2,
+  "framing": {"mode": "JSON"},
+  "exchanges": [
+    {
+      "name": "Echo request ID",
+      "request": "",
+      "match": [{"source": "JSON", "selector": "requestId", "operator": "exists"}],
+      "replies": []
+    }
+  ]
+}

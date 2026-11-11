@@ -265,7 +265,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                 self.set_status(event["message"], event["state"] == "failed")
             elif kind == "simulator":
                 self.simulator_info.set(self.simulator_endpoint + " · " + event["message"])
-                self.set_status(event["message"], event["state"] == "unmatched")
+                self.set_status(event["message"], event["state"] in ("unmatched", "error"))
         now=time.monotonic()
         if self.queue.empty():
             ready=self.display_framing.tick()
