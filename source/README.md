@@ -246,6 +246,26 @@ The raw traffic table and recordings still contain the original ANSI bytes. Paus
 
 ### Capture import and replay
 
+**USB Serial Monitor** observes a USB-backed COM/tty port while another app owns
+it. Choose **Refresh ports**, select the port your app is using and **Start
+capture**. Probe does not open the serial port or send data through it. TX is
+computer → device, RX is device → computer. Analyze, Trace Path and JSONL
+recording work with the extracted serial bytes.
+
+Supported devices are CDC ACM (`usbser` on Windows, `cdc_acm` on Linux) and
+standard single-port FTDI (`0403:6001` with the corresponding FTDI driver).
+Probe identifies the physical USB device and its bulk endpoint pair, refuses
+ambiguous mappings, and stops when it detects a device change or incomplete
+transfer data. FTDI modem/status headers are removed from each input packet.
+This observes host USB transfers, not UART timing or electrical line states.
+Internal UART, Bluetooth COM, virtual COM pairs and other bridge drivers are
+outside this mode.
+
+Windows uses the same bundled offline USBPcap installer as HID Monitor and
+requests elevation for the capture helper only. Linux uses the system usbmon;
+the helper requests elevation only if the selected bus cannot already be read.
+Refresh ports and regular Probe use remain unelevated.
+
 **TCP Monitor** observes an existing connection without opening its socket or
 changing either endpoint. Select **Refresh interfaces**, choose the physical
 interface or **Loopback**, enter the service's TCP port, then **Start capture**.

@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--hid-helper",action="store_true",help=argparse.SUPPRESS)
     parser.add_argument("--hid-port",type=int,default=0,help=argparse.SUPPRESS)
     parser.add_argument("--hid-token",default="",help=argparse.SUPPRESS)
-    parser.add_argument("--hid-action",choices=("list","capture","check"),default="capture",help=argparse.SUPPRESS)
+    parser.add_argument("--hid-action",choices=("list","capture","check","serial"),default="capture",help=argparse.SUPPRESS)
     parser.add_argument("--hid-source",default="",help=argparse.SUPPRESS)
     args=parser.parse_args()
     if args.hid_helper:

@@ -14,6 +14,17 @@ from probe.app import Probe
 from probe.engine import MODES
 
 class UISmoke(unittest.TestCase):
+    def test_usb_serial_monitor_selects_port_without_elevation(self):
+        port='COM34' if os.name=='nt' else '/dev/ttyACM0'
+        self.app.choose_mode('USB Serial Monitor')
+        self.assertEqual(self.app.connection_button.cget('text'),'Start capture')
+        self.assertFalse(self.app.composer.winfo_ismapped())
+        refresh=next(w for w in self.app.config_frame.winfo_children() if isinstance(w,ttk.Button) and w.cget('text')=='Refresh ports')
+        with patch('serial.tools.list_ports.comports',return_value=[SimpleNamespace(device=port,vid=1,description='USB device')]), \
+             patch('probe.hid_helper.launch_helper') as launch:
+            refresh.invoke();launch.assert_not_called()
+        self.assertEqual(list(self.app.usb_serial_ports.values()),[port]);self.assertFalse(self.app.active)
+
     def test_tcp_monitor_opens_packet_capture_without_driver(self):
         from test_tcp_capture import pcap, wire
         self.app.choose_mode('TCP Monitor')

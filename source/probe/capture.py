@@ -46,6 +46,8 @@ def load_capture(path,max_events=2000,max_bytes=8*1024*1024):
                 event['tcp_complete'] = row.get('tcp_complete') is True and bool(data) and not row.get('display_partial')
                 for key in ('tcp_epoch', 'tcp_gap', 'tcp_unreliable'):
                     if type(row.get(key)) in (int, bool):event[key] = row[key]
+            if row.get('usb_serial') is True and row.get('usb_profile') in ('CDC ACM','FTDI') and type(row.get('usb_endpoint')) is int and 1<=row['usb_endpoint']<=255:
+                event.update(usb_serial=True,usb_profile=row['usb_profile'],usb_endpoint=row['usb_endpoint'])
             if event.get('source_refs_complete') and sum(ref['end']-ref['start'] for ref in event.get('source_refs',()))!=len(data):raise ValueError('Source byte ranges do not cover the message.')
             event.setdefault('event_id',f'import-{origin}:{ordinal}')
             event.setdefault('event_version',1)
