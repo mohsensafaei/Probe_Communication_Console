@@ -132,7 +132,7 @@ class PluginManager(tk.Toplevel):
         combo.pack(side='left',padx=10); combo.bind('<<ComboboxSelected>>',self.edit)
         ttk.Checkbutton(options,text='Allow message changes',variable=self.changes,command=self.edit).pack(side='left')
         ttk.Button(options,text='Settings…',command=self.settings).pack(side='right')
-        self.feedback=tk.StringVar(value='Analysis is read-only. Allowed transforms run before sending / forwarding and can add latency.')
+        self.feedback=tk.StringVar(value='Allow message changes enables transforms and automatic simulator replies. Analysis alone is read-only.')
         ttk.Label(body,textvariable=self.feedback,wraplength=660).pack(anchor='w',pady=6)
         bar=ttk.Frame(body); bar.pack(fill='x')
         add=ttk.Menubutton(bar,text='Add…'); add.pack(side='left'); menu=tk.Menu(add,tearoff=False); add.configure(menu=menu)

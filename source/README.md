@@ -482,8 +482,9 @@ rule. The **Request & reply** tab starts with exact request bytes. Choose
 TLV / BER-TLV tags, UTF-8 text or a selected payload byte range. All conditions
 must match. Use **exists** for required fields, or numeric comparisons for ranges.
 Changing unrelated fields such as transaction IDs no longer prevents a match.
-Replies remain explicitly configured static bytes; this release does not infer
-state machines or generate dynamic fields/checksums in replies.
+Replies use the configured bytes by default. An optional
+[`respond()` plugin](PLUGINS.md#send-automatic-replies-from-device-simulator)
+can build and automatically send a reply from the actual matched request.
 
 A new all-JSON field model automatically uses JSON request framing. For binary,
 TLV or text protocols, choose **Request framing…** before adding rules. Boundaries

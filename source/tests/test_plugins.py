@@ -1,12 +1,14 @@
 import json
+import os
 from pathlib import Path
 import socket
 import tempfile
-import time
 import unittest
 
-from probe.diagnostics import expect_equal, session, wait_for
+from probe.diagnostics import expect_equal, received, session, wait_for
 from probe.plugins import MAX_DATA, PluginWorker, metadata, result
+from probe.simulation import DeviceModel, Exchange, Reply, model_from_dict, model_to_dict
+from probe.simulator_rules import Fault
 
 
 SAMPLE = '''
@@ -70,6 +72,66 @@ class PluginTests(unittest.TestCase):
         e.update(changes=True,direction='RX');w=self.worker([e])
         self.assertEqual(self.call(w,'transform')['data'],b'abc')
         self.assertEqual(self.call(w,'transform',context=dict(self.context,direction='RX'))['data'],b'ABC')
+
+    def test_respond_permission_order_and_bounds(self):
+        code='def respond(request, reply, context):return request + reply'
+        decline=self.entry('def respond(*args):return None',changes=True)
+        w=self.worker([self.entry(code),self.entry(code,changes=True,direction='TX'),decline])
+        rx=dict(self.context,direction='RX')
+        self.assertIsNone(self.call(w,'respond',context=rx,reply=b'reply'))
+        w=self.worker([decline,self.entry(code,changes=True,direction='RX'),self.entry('def respond(*args):return b"wrong"',changes=True)])
+        self.assertEqual(self.call(w,'respond',context=rx,reply=b'default'),b'abcdefault')
+        with self.assertRaisesRegex(RuntimeError,'input exceeds'):
+            self.call(w,'respond',context=rx,reply=b'x'*MAX_DATA)
+        w=self.worker([self.entry('def respond(*args):return "invalid"',changes=True)])
+        with self.assertRaisesRegex(RuntimeError,'return None or bytes'):
+            self.call(w,'respond',context=rx,reply=b'')
+
+    def test_simulator_auto_replies_to_complete_requests_and_correct_client(self):
+        examples=Path(__file__).resolve().parents[1]/'examples'
+        model=model_from_dict(json.loads((examples/'simulator-plugin-reply.json').read_text()))
+        w=self.worker([dict(id='responder',path=str(examples/'plugins'/'simulator_reply.py'),enabled=True,changes=True)])
+        with session('Device Simulator',plugins=w,simulator_model=model) as (_,events,ready):
+            address=ready['address'][:2]
+            with socket.create_connection(address,timeout=5) as a, socket.create_connection(address,timeout=5) as b:
+                first=b'{"requestId":"alpha"}'
+                a.sendall(first[:8]);wait_for(lambda:any(e.get('state')=='waiting' for e in events),events)
+                b.sendall(b'{"requestId":"beta"}')
+                with b.makefile('rb') as reader:self.assertEqual(json.loads(reader.readline()),{'requestId':'beta','ok':True})
+                a.sendall(first[8:]+b'{"requestId":"gamma"}')
+                with a.makefile('rb') as reader:
+                    self.assertEqual([json.loads(reader.readline())['requestId'] for _ in range(2)],['alpha','gamma'])
+            wait_for(lambda:len([e for e in events if e.get('direction')=='RX'])==3,events)
+            self.assertEqual(len({e['peer'] for e in events if e.get('direction')=='RX'}),2)
+
+    def test_simulator_respond_declines_suppresses_and_preserves_faults(self):
+        w=self.worker([self.entry('def respond(request, reply, context):\n return {b"A": None, b"B": b"", b"C": b"123"}[request]',changes=True)])
+        model=DeviceModel((Exchange(b'A',(Reply(b'D'),Reply(b'E'))),Exchange(b'B',(Reply(b'WRONG'),)),
+                           Exchange(b'C',(),fault=Fault('Truncate',count=2))))
+        with session('Device Simulator',plugins=w,simulator_model=model) as (_,events,ready):
+            with socket.create_connection(ready['address'][:2],timeout=5) as app, app.makefile('rb') as reader:
+                app.sendall(b'ABC');self.assertEqual(reader.read(4),b'DE12')
+                wait_for(lambda:any(e.get('matches')==3 for e in events),events)
+            self.assertEqual(received(events),b'DE12')
+
+    def test_simulator_plugin_error_blocks_default_reply(self):
+        w=self.worker([self.entry('def respond(*args):raise ValueError("bad reply")',changes=True)])
+        model=DeviceModel((Exchange(b'A',(Reply(b'WRONG'),)),))
+        with session('Device Simulator',plugins=w,simulator_model=model) as (_,events,ready):
+            with socket.create_connection(ready['address'][:2],timeout=5) as app:
+                app.sendall(b'A');wait_for(lambda:any('Reply blocked' in e.get('message','') for e in events),events)
+                app.settimeout(.08)
+                with self.assertRaises(socket.timeout):app.recv(1)
+            self.assertEqual(received(events),b'')
+
+    @unittest.skipUnless(os.name=='posix','Requires POSIX PTY')
+    def test_simulator_plugin_only_reply_over_pty(self):
+        import serial
+        w=self.worker([self.entry('def respond(request, reply, context):return request[::-1]',changes=True)])
+        model=model_from_dict(model_to_dict(DeviceModel((Exchange(b'abc',()),))))
+        with session('Device Simulator',plugins=w,simulator_model=model,simulator_transport='Virtual serial (PTY)') as (_,_,ready):
+            with serial.Serial(ready['app_path'],115200,timeout=5) as app:
+                app.write(b'a');app.write(b'bc');self.assertEqual(app.read(3),b'cba')
 
     def test_transform_order_and_relative_helper_imports(self):
         a=self.entry('def transform(data, context):return data+b"1"',changes=True)

@@ -26,12 +26,12 @@ class SemanticRules(unittest.TestCase):
         prefix=f'{len(body):06}'.encode()
         self.assertEqual(m.feed(prefix+body[:10]),[])
         self.assertEqual(len(m.feed(body[10:]+request())),2)
-        self.assertEqual(m.details,[(0,1),(0,2)])
+        self.assertEqual(m.details,[(0,1,prefix+body),(0,2,request())])
         self.assertEqual(m.feed(request('02')),[])
         self.assertIn('data.service',m.errors[0])
         self.assertEqual(m.feed(b'000001'+body),[])
         self.assertIn('length',m.errors[0])
-        m.reset();self.assertEqual(len(m.feed(request())),1);self.assertEqual(m.details,[(0,1)])
+        m.reset();self.assertEqual(len(m.feed(request())),1);self.assertEqual(m.details,[(0,1,request())])
 
     def test_required_fields_types_and_numeric_predicates(self):
         conditions=[Condition(selector='data.amount',operator='greater than',value='99'),Condition(selector='data.session',operator='exists')]

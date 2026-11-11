@@ -2,10 +2,12 @@
 import asyncio
 import contextlib
 import os
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from .plugins import MAX_DATA
 from .serial_endpoints import VirtualPair
-from .simulation import MAX_DELAY_MS, DeviceModel, RequestMatcher
+from .simulation import MAX_DELAY_MS, DeviceModel, Reply, RequestMatcher
 from .simulator_rules import reply_plan
 from .timing import sleep_at_least, wait_for
 from .transports import serial
@@ -18,6 +20,9 @@ async def serve_simulator(engine: "Engine") -> None:
     model = engine.cfg.get("simulator_model")
     if not isinstance(model, DeviceModel):
         raise ValueError("Build a device model from a capture in Test lab first.")
+    responder = engine.plugins if engine.plugins and engine.plugins.responds else None
+    if not responder and not any(e.fault or any(r.data for r in e.replies) for e in model.exchanges):
+        raise ValueError('Add a reply or enable an RX/Both respond() plugin with Allow message changes.')
     ordered = engine.cfg.get("simulator_matching", "Conversation order") == "Conversation order"
     repeat = bool(engine.cfg.get("simulator_repeat", True))
     scale = float(engine.cfg.get("simulator_timing", 1))
@@ -57,10 +62,26 @@ async def serve_simulator(engine: "Engine") -> None:
             engine.event("simulator", state="unmatched", message=f"{peer}: {reason}")
         if not exchanges and matcher.buffer and not matcher.errors:
             engine.event("simulator", state="waiting", message=f"Waiting for a complete request from {peer} · {len(matcher.buffer)} bytes buffered.")
-        for exchange, (rule, hit) in zip(exchanges, matcher.details):
-            plan = reply_plan(exchange, hit)
+        for exchange, (rule, hit, request) in zip(exchanges, matcher.details):
+            label = exchange.name or f'Rule {rule+1}'
+            try:
+                if responder:
+                    context = dict(direction='RX', peer=peer, session=engine.session, workspace=engine.workspace,
+                                   mode='Device Simulator', rule_name=exchange.name, rule_index=rule, match_number=hit)
+                    if len(request) + sum(len(r.data) for r in exchange.replies) > MAX_DATA:
+                        raise ValueError('Plugin request and default reply together exceed 1 MiB.')
+                    default = b''.join(r.data for r in exchange.replies)
+                    reply = await asyncio.wrap_future(responder.submit('respond', request, context, reply=default))
+                    if signal.is_set():return False
+                    if reply is not None:
+                        delay = exchange.replies[0].delay_ms if exchange.replies else 0
+                        exchange = replace(exchange, replies=(Reply(reply, delay),) if reply else ())
+                plan = reply_plan(exchange, hit)
+            except (RuntimeError, ValueError) as exc:
+                engine.event('simulator', state='error', message=f'{label} · {peer} · Reply blocked: {exc}')
+                continue
             if plan.description:
-                engine.event("simulator", state="fault", message=f"{exchange.name or 'Rule '+str(rule+1)} · {plan.description} · {peer}")
+                engine.event("simulator", state="fault", message=f"{label} · {plan.description} · {peer}")
             for payload, delay_ms in plan.chunks:
                 delay = delay_ms * scale / 1000
                 if delay:
@@ -73,7 +94,7 @@ async def serve_simulator(engine: "Engine") -> None:
             if signal.is_set(): return False
             matches += 1
             engine.event("simulator", state="matched", matches=matches,
-                         message=f"Device simulator · {matches} requests matched · {exchange.name or 'Rule '+str(rule+1)} / hit {hit} · {plan.description or 'Normal reply'} · {peer}")
+                         message=f"Device simulator · {matches} requests matched · {label} / hit {hit} · {plan.description or 'Normal reply'} · {peer}")
             if plan.disconnect: return True
         return False
 
