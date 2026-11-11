@@ -8,7 +8,7 @@ import time
 from .recording import CaptureWriter
 from .evidence.identity import CLOCK_ID, namespace
 from .timing import SCHEDULED_NS
-from .transports import MODES as MODES
+from .transports import MODES as MODES, MONITOR_MODES
 from .transports import network, serial
 
 
@@ -56,11 +56,12 @@ class Engine:
         event = {"kind": kind, "time": time.time(), **fields}
         if kind=='data':
             self.event_sequence += 1
-            event.update(event_version=1, clock_id=CLOCK_ID, event_id=f'{self.session}:{self.workspace}:{self.event_sequence}')
-            event['monotonic_ns']=time.perf_counter_ns()
+            event.update(event_version=1, event_id=f'{self.session}:{self.workspace}:{self.event_sequence}')
+            if not fields.get('tcp_capture'):
+                event.update(clock_id=CLOCK_ID, monotonic_ns=time.perf_counter_ns())
             event['session']=self.session
             scheduled=SCHEDULED_NS.get()
-            if scheduled is not None:
+            if scheduled is not None and 'monotonic_ns' in event:
                 event['scheduled_ns']=scheduled;event['dispatch_lateness_ns']=max(0,event['monotonic_ns']-scheduled)
         if kind == "data":
             data = fields["data"]
@@ -176,7 +177,7 @@ class Engine:
         except RuntimeError: coro.close();return False
 
     def send(self, data, target="All clients", side="Device / upstream"):
-        if self.cfg.get("mode")=="HID Monitor":raise RuntimeError("HID Monitor is capture-only. Sending and replay are disabled.")
+        if self.cfg.get("mode") in MONITOR_MODES:raise RuntimeError("This mode is capture-only. Sending and replay are disabled.")
         if not self.ready: raise RuntimeError("Connect before sending.")
         if len(data) > 16 * 1024 * 1024: raise ValueError("A payload is limited to 16 MiB. Use Send file for larger data.")
         if not self.pending_sends.acquire(blocking=False):
@@ -204,7 +205,7 @@ class Engine:
     async def _send(self, data, target, side):
         try:
             mode = self.cfg["mode"]
-            if mode == "HID Monitor":raise RuntimeError("HID Monitor is capture-only.")
+            if mode in MONITOR_MODES:raise RuntimeError("This mode is capture-only.")
             if mode == "Device Simulator":
                 await self._transfer(data,"RX",target,lambda out:self.simulator_send(out,target))
             elif mode == "UDP":
@@ -277,7 +278,7 @@ class Engine:
     def start_scenario(self, steps, cycles=1, target="All clients", side="Device / upstream", variables=None):
         from .scenario import integer, run_scenario
         from .sequence_flow import needs_reply
-        if self.cfg.get("mode")=="HID Monitor":raise ValueError("HID Monitor is capture-only. Sequences cannot transmit here.")
+        if self.cfg.get("mode") in MONITOR_MODES:raise ValueError("This mode is capture-only. Sequences cannot transmit here.")
         if not self.ready: raise RuntimeError("Connect before running a test sequence.")
         if self.cfg["mode"] == "Device Simulator":
             raise ValueError("Run sequences from an application transport; the simulator replies to its clients.")
@@ -317,8 +318,11 @@ class Engine:
 
     async def _run(self):
         mode=self.cfg["mode"]
-        if mode == "HID Monitor":
-            from .hid_monitor import run_monitor
+        if mode in MONITOR_MODES:
+            if mode == 'TCP Monitor':
+                from .tcp_monitor import run_monitor
+            else:
+                from .hid_monitor import run_monitor
             worker=asyncio.create_task(asyncio.to_thread(run_monitor,self))
             try:await asyncio.shield(worker)
             except asyncio.CancelledError:

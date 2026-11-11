@@ -5,6 +5,7 @@ from tkinter import messagebox, ttk
 
 from .. import __version__
 from ..engine import MODES
+from ..transports import MONITOR_MODES
 from ..serial_endpoints import simulator_transports
 from ..traffic_search import MODES as SEARCH_MODES
 from .plot import LivePlotPane
@@ -239,6 +240,9 @@ class WorkbenchLayout:
         if mode == "HID Monitor":
             from .hid import build_panel
             build_panel(self,field)
+        if mode == 'TCP Monitor':
+            from .tcp_monitor import build_panel
+            build_panel(self,field)
         if mode == "Device Simulator":
             field("Expose device as", "simulator_transport", simulator_transports(), True)
             if os.name == "nt":
@@ -277,7 +281,7 @@ class WorkbenchLayout:
             ttk.Checkbutton(self.config_frame,text="Reconnect on disconnect",variable=self.vars["reconnect"]).pack(anchor="w",pady=8)
         self.connection_button.configure(text="Start proxy" if "Proxy" in mode else "Listen" if mode in ("TCP Server","Serial ↔ TCP","UDP") else "Connect")
         if mode == "Device Simulator": self.connection_button.configure(text="Start simulator")
-        if mode == "HID Monitor":
+        if mode in MONITOR_MODES:
             self.connection_button.configure(text="Start capture")
             self.composer.grid_remove()
         else:self.composer.grid()
@@ -293,6 +297,8 @@ class WorkbenchLayout:
             else: w.configure(state="normal")
         if self.vars["mode"].get()=="HID Monitor" and hasattr(self,"hid_combo"):
             self.hid_combo.configure(state="disabled" if locked else "readonly")
+        if self.vars['mode'].get()=='TCP Monitor':
+            self.tcp_combo.configure(state='disabled' if locked else 'readonly')
         for b in self.nav: b.configure(state="disabled" if locked else "normal")
 
 

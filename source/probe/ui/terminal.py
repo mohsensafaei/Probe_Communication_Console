@@ -94,13 +94,14 @@ class TerminalPane(ttk.Frame):
         self.update_hint()
 
     def update_hint(self):
-        monitor=self.app.vars["mode"].get()=="HID Monitor"
+        mode=self.app.vars['mode'].get()
+        monitor=mode in ('HID Monitor','TCP Monitor')
         self.keyboard_check.configure(state="disabled" if monitor else "normal")
         self.paste_button.configure(state="disabled" if monitor else "normal")
         if monitor:self.keyboard.set(False)
         connected=self.app.engine is not None and self.app.engine.ready
         if self.error:message=self.error
-        elif monitor:message="HID Monitor is view-only. Double-click a report in Traffic to inspect its HID fields and original bytes."
+        elif monitor:message=f"{mode} is view-only. Select a row in Traffic to inspect the observed bytes."
         elif not connected:message="Disconnected · choose a connection and Connect. Received text stays visible; opening Terminal sends nothing."
         elif self.app.vars["mode"].get() in ("TCP Server","TCP Proxy") and not self.app.engine.clients:
             message="Listening · waiting for a TCP client. Previous received text stays visible."

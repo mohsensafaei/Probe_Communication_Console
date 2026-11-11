@@ -1,2 +1,3 @@
+MONITOR_MODES = ("HID Monitor", "TCP Monitor")
 MODES = ("TCP Client", "TCP Server", "TCP Proxy", "UDP", "USB / Serial",
-         "Serial Proxy", "Serial ↔ TCP", "Device Simulator", "HID Monitor")
+         "Serial Proxy", "Serial ↔ TCP", "Device Simulator", *MONITOR_MODES)

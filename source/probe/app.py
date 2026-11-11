@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox
 
 from .codec import encode
 from .engine import MODES, Engine
+from .transports import MONITOR_MODES
 from .event_buffer import DisplayEventBuffer
 from .serial_endpoints import simulator_transports
 from .settings import (
@@ -152,7 +153,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
 
 
     def validate(self,cfg):
-        validate_config(cfg,self.simulator_model,getattr(self,"hid_devices",{}))
+        validate_config(cfg,self.simulator_model,getattr(self,"hid_devices",{}),getattr(self,'tcp_devices',{}))
 
     def new_framer(self):
         return display_framer(self.values())
@@ -172,21 +173,23 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             if self.plugins.worker is None and any(e.get('enabled') and e.get('changes') for e in self.plugins.entries):
                 raise ValueError('A message-changing plugin is unavailable. Fix or disable it in Plugins before connecting.')
             if cfg["mode"] == "Device Simulator": cfg["simulator_model"] = self.simulator_model
+            if cfg['mode'] == 'TCP Monitor':cfg['tcp_pcap'] = getattr(self,'tcp_pcap',None)
             if self.engine and self.engine.thread and self.engine.thread.is_alive():
                 raise RuntimeError("Previous session is still stopping.")
             self.flush_frames(); self.started=time.monotonic()
             self.last_error=""
+            self.tcp_summary='';self.tcp_display_gap=0
             self.manual_disconnect=False
             self.engine=Engine(self.emit)
             self.engine.plugins=self.plugins.worker
             self.engine.workspace=self.slot
             self.terminal.reset()
-            if cfg["mode"]!="HID Monitor":self.apply_auto()
+            if cfg["mode"] not in MONITOR_MODES:self.apply_auto()
             if self.record_path:self.engine.record(self.record_path)
             if self.raw_path:self.engine.record(self.raw_path,raw=True)
             self.active=True
             self._lock_config(True)
-            self.connection_button.configure(text="Stop capture" if cfg["mode"]=="HID Monitor" else "Disconnect")
+            self.connection_button.configure(text="Stop capture" if cfg["mode"] in MONITOR_MODES else "Disconnect")
             self.stat_labels["state"].configure(text="Connecting…")
             self.engine.start(cfg)
         except Exception as exc:
@@ -211,6 +214,8 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                     self.flush_frames("display data lost")
                     self.terminal.reset();self.plot.clear()
                     event={key:value for key,value in event.items() if key!="_display_gap"}
+                if event.get('tcp_capture') and getattr(self,'tcp_display_gap',0):
+                    event=dict(event,tcp_unreliable=True,session=f"{event['session']}:display-{self.tcp_display_gap}")
                 self.terminal.feed(event)
                 direction=event["direction"]
                 if direction=="TX": self.tx_total+=len(event["data"])
@@ -233,11 +238,11 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                 else:
                     if self.vars["mode"].get() == "Device Simulator": self.simulator_info.set("Simulator stopped.")
                     self.flush_frames(); self.active=False; self._lock_config(False)
-                    self.connection_button.configure(text="Start capture" if self.vars["mode"].get()=="HID Monitor" else "Connect",state="normal")
+                    self.connection_button.configure(text="Start capture" if self.vars["mode"].get() in MONITOR_MODES else "Connect",state="normal")
                     self.stop_repeat(); self.stop_sequence();self.stop_replay()
                     self.target_combo.configure(values=["All clients"]); self.vars["target"].set("All clients")
                     self.pressed=False;self.file_button.configure(text="Send file")
-                    self.set_status(self.last_error or "Disconnected. Recordings closed; paths stay armed for your next connection.",bool(self.last_error))
+                    self.set_status(self.last_error or getattr(self,'tcp_summary','') or "Disconnected. Recordings closed; paths stay armed for your next connection.",bool(self.last_error))
                     mode=self.vars["mode"].get()
                     if self.vars["reconnect"].get() and not self.manual_disconnect and mode in ("TCP Client","USB / Serial"):
                         def retry(m=mode):
@@ -255,6 +260,10 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             elif kind in ("error","info"):
                 if kind=="error":self.last_error=event.get("message","")
                 self.set_status(event.get("message",""),kind=="error")
+            elif kind == 'tcp_summary':
+                self.tcp_summary=event['message'];self.set_status(self.tcp_summary)
+                self.tcp_pcap=None
+                if hasattr(self,'tcp_save'):self.tcp_save.configure(text='Save raw PCAP…')
             elif kind=="recording_error":
                 self.record_path=self.raw_path=None;self.record_button.configure(text="● Record")
                 self.set_status(event["message"],True)
@@ -296,6 +305,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         return f"{n/1048576:.1f} MiB"
 
     def flush_frames(self,reason="session ended"):
+        if self.active and self.vars['mode'].get()=='TCP Monitor':self.tcp_display_gap+=1
         self.add_events(self.display_framing.flush(reason))
 
 
