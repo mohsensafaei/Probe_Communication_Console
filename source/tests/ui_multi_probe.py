@@ -35,7 +35,7 @@ class MultiProbeTests(unittest.TestCase):
         probe.choose_mode(mode)
         if mode=='TCP Server':probe.vars['listen_port'].set('0')
         else:probe.vars['serial_port'].set('loop://')
-        probe.toggle();self.spin(lambda:probe.engine.ready)
+        probe.toggle();self.spin(lambda:self.window.states.get(probe)=='Connected')
 
     def test_plus_independent_settings_and_named_tabs(self):
         first=self.window.current_probe
