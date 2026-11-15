@@ -450,6 +450,12 @@ class UISmoke(unittest.TestCase):
         self.assertLess(self.app.send_button.winfo_rooty()+self.app.send_button.winfo_height(),self.app.winfo_rooty()+self.app.winfo_height())
         self.assertTrue(self.app.status.winfo_ismapped())
         self.assertGreaterEqual(self.app.table.winfo_height(),85)
+        follow=next(w for w in self.app.traffic_options.winfo_children() if isinstance(w,ttk.Checkbutton))
+        self.assertTrue(follow.winfo_ismapped())
+        self.assertGreaterEqual(follow.winfo_width(),follow.winfo_reqwidth())
+        previous=self.app.vars['autoscroll'].get()
+        follow.invoke()
+        self.assertNotEqual(self.app.vars['autoscroll'].get(),previous)
 
     def test_serial_send_capture_inspector(self):
         self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
