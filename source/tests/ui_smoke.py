@@ -473,6 +473,28 @@ class UISmoke(unittest.TestCase):
         self.assertTrue(flow.instate(("readonly","!disabled")))
         self.assertTrue(self.app.port_combo.instate(("!readonly","!disabled")))
 
+    def test_start_by_task_selects_transport_or_opens_capture(self):
+        self.window.geometry("1060x740");self.app.update()
+        connect,watch,opened=self.app.task_buttons
+        for button in (connect,watch,opened):self.assertTrue(button.winfo_viewable())
+        self.app.nametowidget(str(connect.cget("menu"))).invoke(0)
+        self.assertEqual(self.app.vars["mode"].get(),"USB / Serial")
+        monitor=self.app.nametowidget(str(watch.cget("menu")))
+        monitor.invoke(0)
+        self.assertEqual(self.app.vars["mode"].get(),"TCP Monitor")
+        monitor.invoke(1)
+        self.assertEqual(self.app.connection_button.cget("text"),"Start capture")
+        self.assertEqual(self.app.vars["mode"].get(),"USB Serial Monitor")
+        self.app.notebook.select(self.app.plot)
+        path=Path(self.app.settings_path).with_name("sample.jsonl")
+        path.write_text(json.dumps(dict(kind="data",time=1,direction="RX",peer="device",hex="A4FF"))+"\n")
+        with patch("probe.ui.traffic.filedialog.askopenfilename",return_value=str(path)):
+            opened.invoke()
+        self.app.update()
+        self.assertEqual(self.app.notebook.select(),str(self.app.traffic_tab))
+        self.assertEqual([event["data"] for event in self.app.events.values()],[b"\xa4\xff"])
+        self.assertIsNone(self.app.engine)
+
     def test_compact_proxy_settings_and_traffic_have_working_scrollbars(self):
         self.window.geometry("1060x740")
         self.app.choose_mode("Serial Proxy")
