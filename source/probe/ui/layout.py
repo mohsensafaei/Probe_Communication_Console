@@ -284,22 +284,25 @@ class WorkbenchLayout:
             self.label(self.config_frame,"USB here means a COM / tty serial device. Use loop:// to test without hardware.",9,color=c["muted"],wraplength=220,justify="left").pack(anchor="w",pady=10)
         if mode in ("TCP Client","USB / Serial"):
             ttk.Checkbutton(self.config_frame,text="Reconnect on disconnect",variable=self.vars["reconnect"]).pack(anchor="w",pady=8)
-        self.connection_button.configure(text="Start proxy" if "Proxy" in mode else "Listen" if mode in ("TCP Server","Serial ↔ TCP","UDP") else "Connect")
-        if mode == "Device Simulator": self.connection_button.configure(text="Start simulator")
+        self.connection_button.configure(text=self._connection_action())
         if mode in MONITOR_MODES:
-            self.connection_button.configure(text="Start capture")
             self.composer.grid_remove()
         else:self.composer.grid()
         self.terminal.update_hint()
         self.side_combo.configure(state="readonly" if mode in ("TCP Proxy","Serial Proxy","Serial ↔ TCP") else "disabled")
         self.vars["side"].set("Device / upstream")
 
+    def _connection_action(self):
+        mode=self.vars["mode"].get()
+        if mode in MONITOR_MODES:return "Start capture"
+        if mode=="Device Simulator":return "Start simulator"
+        if "Proxy" in mode:return "Start proxy"
+        if mode in ("TCP Server","Serial ↔ TCP","UDP"):return "Listen"
+        return "Connect"
 
     def _lock_config(self,locked):
         for w in self.config_controls:
-            if locked: w.configure(state="disabled")
-            elif isinstance(w,ttk.Combobox): w.configure(state="normal")
-            else: w.configure(state="normal")
+            w.state(("disabled" if locked else "!disabled",))
         if self.vars["mode"].get()=="HID Monitor" and hasattr(self,"hid_combo"):
             self.hid_combo.configure(state="disabled" if locked else "readonly")
         if self.vars['mode'].get()=='TCP Monitor':

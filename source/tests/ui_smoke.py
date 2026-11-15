@@ -457,6 +457,22 @@ class UISmoke(unittest.TestCase):
         follow.invoke()
         self.assertNotEqual(self.app.vars['autoscroll'].get(),previous)
 
+    def test_disconnect_restores_transport_action_and_readonly_settings(self):
+        self.app.choose_mode("TCP Proxy")
+        self.app.vars["listen_port"].set("0")
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        self.app.toggle();self.spin(lambda:not self.app.active)
+        self.assertEqual(self.app.connection_button.cget("text"),"Start proxy")
+
+        self.app.choose_mode("USB / Serial")
+        self.app.vars["serial_port"].set("loop://")
+        flow=next(w for w in self.app.config_controls if isinstance(w,ttk.Combobox) and "RTS/CTS" in w.cget("values"))
+        self.app.toggle();self.spin(lambda:self.app.engine.ready)
+        self.assertTrue(flow.instate(("disabled",)))
+        self.app.toggle();self.spin(lambda:not self.app.active)
+        self.assertTrue(flow.instate(("readonly","!disabled")))
+        self.assertTrue(self.app.port_combo.instate(("!readonly","!disabled")))
+
     def test_serial_send_capture_inspector(self):
         self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
         with tempfile.TemporaryDirectory() as directory:
