@@ -77,8 +77,8 @@ class HidReportPane(ttk.Frame):
         self.view=ttk.Treeview(box,columns=('field','value','bits','mode'),show='headings',selectmode='browse')
         for key,label,width in [('field','Field',260),('value','Value',300),('bits','Bit range',100),('mode','Meaning',110)]:
             self.view.heading(key,text=label);self.view.column(key,width=width,minwidth=70)
-        self.view.pack(side='left',fill='both',expand=True)
         scroll=ttk.Scrollbar(box,command=self.view.yview);scroll.pack(side='right',fill='y');self.view.configure(yscrollcommand=scroll.set)
+        self.view.pack(side='left',fill='both',expand=True)
 
     def set_event(self,event):
         self.data=event['data'];self.metadata=dict(event.get('hid',{}))

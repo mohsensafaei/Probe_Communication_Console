@@ -66,9 +66,9 @@ class SequencePane(ttk.Frame):
                                   ("preview", "Payload preview", 340)):
             self.table.heading(key, text=title)
             self.table.column(key, width=width, minwidth=50, stretch=key in ("name", "preview"))
-        self.table.pack(side="left", fill="both", expand=True)
         scrollbar = ttk.Scrollbar(tablebox, command=self.table.yview)
         scrollbar.pack(side="right", fill="y")
+        self.table.pack(side="left", fill="both", expand=True)
         self.table.configure(yscrollcommand=scrollbar.set)
         self.table.bind("<Double-1>", lambda event: self.action(self.edit_selected))
         self.table.bind("<Return>", lambda event: self.action(self.edit_selected))
