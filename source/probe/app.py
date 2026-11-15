@@ -67,7 +67,8 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         self.last_capture=[]
         self.simulator_model = None
         self.simulator_endpoint = ""
-        self.simulator_info = tk.StringVar(self, value="Simulator stopped. Build or load a device model to start.")
+        self.simulator_address = ""
+        self.simulator_info = tk.StringVar(self, value="The connection address appears here after you start.")
         self.sequence_info = tk.StringVar(self, value="Sequence idle. Connect a transport, add steps, then Run sequence.")
         self.sequence_values = {}
         self.terminal_popup=None
@@ -235,14 +236,21 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                 if state=="Connected":
                     self.set_status(event.get("message","Connected"))
                     if self.vars["mode"].get() == "Device Simulator":
-                        self.simulator_endpoint = event.get("message", "Simulator ready")
+                        self.simulator_address = event.get("app_path","")
+                        if "address" in event:
+                            host,port=event["address"][:2]
+                            host={"0.0.0.0":"127.0.0.1","::":"::1"}.get(host,host)
+                            self.simulator_address=f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+                        self.simulator_endpoint = f"Connect your app to {self.simulator_address}."
                         self.simulator_info.set(self.simulator_endpoint)
                     if "app_path" in event:
                         self.set_status("App-side port: "+event["app_path"]+(" · simulated device; no hardware connected." if self.vars["mode"].get()=="Device Simulator" else " · app uses this port; Probe owns the physical device."))
                         self.clipboard_clear(); self.clipboard_append(event["app_path"])
                 else:
-                    if self.vars["mode"].get() == "Device Simulator": self.simulator_info.set("Simulator stopped.")
                     self.flush_frames(); self.active=False; self._lock_config(False)
+                    if self.vars["mode"].get() == "Device Simulator":
+                        self.simulator_address=""
+                        self.simulator_info.set(self.last_error or "Simulator stopped.")
                     self.connection_button.configure(text=self._connection_action(),state="normal")
                     self.stop_repeat(); self.stop_sequence();self.stop_replay()
                     self.target_combo.configure(values=["All clients"]); self.vars["target"].set("All clients")

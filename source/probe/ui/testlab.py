@@ -82,21 +82,22 @@ class SimulatorPane(Pane):
     def __init__(self, parent, app):
         super().__init__(parent, padding=12)
         self.app = app
-        self.feedback = tk.StringVar(value="Record both directions with the real device, then load the capture here.")
+        self.feedback = tk.StringVar(value="Use a recording with both requests and replies, add a rule, or try the example.")
         self.rows = []
         self.peer = tk.StringVar()
         self.request_direction = tk.StringVar(value="TX")
         self.request = tk.StringVar()
         self.reply = tk.StringVar()
         self.delay = tk.StringVar(value="0")
-        ttk.Label(self, text="1. Build a device model", font=(app.ui_font, 16, "bold")).pack(anchor="w")
-        self.buttons(self, [("Load capture…", self.load_capture_file), ("Use traffic history", self.use_history),
-                            ("Load model…", self.load_model), ("Save model…", self.save_model), ("Demo model", self.demo)])
-        source = ttk.Frame(self)
-        source.pack(fill="x", pady=4)
-        self.peer_combo = self.field(source, "Recorded peer", self.peer, 0, [], 30)
-        self.field(source, "Request direction", self.request_direction, 1, ["TX", "RX"], 7)
-        ttk.Button(source, text="Build from selected peer", command=lambda: self.action(self.build)).grid(row=0, column=2, sticky="s")
+        ttk.Label(self, text="1. Choose what the device should reply", font=(app.ui_font, 16, "bold")).pack(anchor="w")
+        self.buttons(self, [("Use recent traffic", self.use_history), ("Open a capture…", self.load_capture_file),
+                            ("Open a saved model…", self.load_model), ("Try an example", self.demo)])
+        source = self.capture_source = ttk.Frame(self)
+        self.peer_combo = self.field(source, "Device in the recording", self.peer, 0, [], 30)
+        self.field(source, "Requests in the recording", self.request_direction, 1, ["TX", "RX"], 8)
+        ttk.Button(source, text="Use these messages", command=lambda: self.action(self.build)).grid(row=0, column=2, sticky="s")
+        footer = ttk.Frame(self)
+        footer.pack(side="bottom", fill="x")
         tablebox = ttk.Frame(self)
         tablebox.pack(fill="both", expand=True, pady=6)
         self.table = ttk.Treeview(tablebox, columns=("request", "reply", "delay"), show="headings", height=2, selectmode="browse")
@@ -109,39 +110,87 @@ class SimulatorPane(Pane):
         self.table.configure(yscrollcommand=scrollbar.set)
         self.table.bind("<<TreeviewSelect>>", lambda event: self.action(self.select))
         self.table.bind("<Double-1>", lambda event: self.action(self.edit_rule))
-        self.buttons(self, [("New rule…", lambda: self.edit_rule(True)), ("Edit rule…", self.edit_rule),
+        self.rule_bar=self.buttons(self, [("Add request & reply…", lambda: self.edit_rule(True)), ("Edit rule…", self.edit_rule),
                             ("Remove", self.remove), ("↑", lambda: self.move(-1)), ("↓", lambda: self.move(1)),
-                            ("Request framing…", self.edit_framing)])
-        self.framing_info = tk.StringVar()
-        ttk.Label(self, textvariable=self.framing_info, wraplength=950).pack(anchor="w")
-        ttk.Label(self, text="2. Expose the simulated device", font=(app.ui_font, 16, "bold")).pack(anchor="w", pady=(8, 4))
-        settings = ttk.Frame(self)
+                            ("Save model…", self.save_model)])
+        ttk.Label(self, textvariable=self.feedback, wraplength=900).pack(anchor="w", pady=(0,6))
+
+        ttk.Label(footer, text="2. Choose how your app will connect", font=(app.ui_font, 16, "bold")).pack(anchor="w", pady=(6,4))
+        settings = ttk.Frame(footer)
         settings.pack(fill="x")
-        self.field(settings, "Application connects to", app.vars["simulator_transport"], 0,
-                   simulator_transports(), 22)
-        self.field(settings, "Listen address", app.vars["bind"], 1, width=15)
-        self.field(settings, "TCP port (0 = auto)", app.vars["listen_port"], 2, width=16)
-        self.field(settings, "Matching", app.vars["simulator_matching"], 3,
-                   ["Conversation order", "Match requests"], 22)
+        transport = app.vars["simulator_transport"]
+        self.field(settings, "Connect via", transport, 0, simulator_transports(), 22)
+        self.tcp_fields=(
+            self.field(settings, "Listen address", app.vars["bind"], 1, width=18).master,
+            self.field(settings, "TCP port (0 = auto)", app.vars["listen_port"], 2, width=16).master,
+        )
+        self.pair_settings = None
         if "Virtual COM pair" in simulator_transports():
-            pair = ttk.Frame(self)
-            pair.pack(fill="x", pady=4)
+            self.pair_settings = pair = ttk.Frame(footer)
             self.field(pair, "Probe-side virtual COM", app.vars["simulator_port"], 0, width=16)
             self.field(pair, "App-side partner COM", app.vars["simulator_peer_port"], 1, width=16)
-            ttk.Label(pair, text="Install a COM pair first.\nApp opens its partner.").grid(row=0, column=2, padx=8, sticky="s")
+            ttk.Label(pair, text="Install a COM pair first.\nYour app opens the partner port.").grid(row=0, column=2, padx=8, sticky="s")
             ttk.Button(pair, text="COM settings…", command=lambda: self.action(self.com_settings)).grid(row=0, column=3, sticky="s")
-        row = ttk.Frame(self)
-        row.pack(fill="x", pady=8)
-        ttk.Label(row, text="Reply timing × (0 = immediate)").pack(side="left")
-        ttk.Entry(row, textvariable=app.vars["simulator_timing"], width=5).pack(side="left", padx=6)
-        ttk.Checkbutton(row, text="Repeat conversation", variable=app.vars["simulator_repeat"]).pack(side="left", padx=8)
-        ttk.Button(row, text="Start simulator", style="Accent.TButton", command=lambda: self.action(self.start)).pack(side="right")
-        ttk.Button(row, text="Stop", command=self.stop).pack(side="right", padx=6)
-        ttk.Button(row, text="Reset matching", command=self.reset).pack(side="right")
-        ttk.Label(self, textvariable=app.simulator_info, wraplength=950).pack(anchor="w", pady=2)
-        ttk.Label(self, textvariable=self.feedback, wraplength=950).pack(anchor="w", pady=2)
-        ttk.Label(self, text="Double-click a rule to edit matching or inject faults. Field rules require complete request framing. Startup RX is excluded.", wraplength=950).pack(anchor="w")
+        self.transport_hint=tk.StringVar(self)
+        self.endpoint_hint=ttk.Label(footer,textvariable=self.transport_hint,wraplength=900)
+        self.endpoint_hint.pack(anchor="w",pady=4)
+
+        row = ttk.Frame(footer)
+        row.pack(fill="x", pady=6)
+        advanced = ttk.Frame(footer)
+        show_advanced=tk.BooleanVar(self)
+        ttk.Checkbutton(row,text="Advanced options",variable=show_advanced,
+                        command=lambda:advanced.pack(fill="x",before=row,pady=4) if show_advanced.get() else advanced.pack_forget()).pack(side="left")
+        self.field(advanced, "Matching", app.vars["simulator_matching"], 0, ["Conversation order", "Match requests"], 21)
+        self.field(advanced, "Reply timing ×", app.vars["simulator_timing"], 1, width=6)
+        ttk.Checkbutton(advanced, text="Repeat conversation", variable=app.vars["simulator_repeat"]).grid(row=0,column=2,sticky="s",padx=(0,8))
+        ttk.Button(advanced,text="Request framing…",command=lambda:self.action(self.edit_framing)).grid(row=0,column=3,sticky="s",padx=(0,6))
+        ttk.Button(advanced,text="Reset matching",command=self.reset).grid(row=0,column=4,sticky="s")
+        self.framing_info = tk.StringVar()
+        ttk.Label(advanced,textvariable=self.framing_info,wraplength=900).grid(row=1,columnspan=5,sticky="w",pady=(4,0))
+        self.start_button=ttk.Button(row,text="Start simulator",style="Accent.TButton",
+                                     command=lambda:self.action(self.stop if self.running() else self.start))
+        self.start_button.pack(side="right")
+        self.copy_button=ttk.Button(row,text="Copy address",command=self.copy_address)
+        ttk.Label(footer, textvariable=app.simulator_info, wraplength=900).pack(anchor="w", pady=2)
+        traces=[(var,var.trace_add("write",lambda *_, fn=fn:fn())) for var,fn in
+                ((transport,self.show_transport),(app.simulator_info,self.update_actions))]
+        self.bind("<Destroy>",lambda e:[v.trace_remove("write",t) for v,t in traces] if e.widget is self else None,add="+")
+        self.show_transport()
         self.refresh()
+
+    def show_transport(self):
+        mode=self.app.vars["simulator_transport"].get()
+        tcp=mode=="TCP socket"
+        for field in self.tcp_fields:
+            if tcp:field.grid()
+            else:field.grid_remove()
+        if self.pair_settings:
+            if mode=="Virtual COM pair":self.pair_settings.pack(fill="x",before=self.endpoint_hint)
+            else:self.pair_settings.pack_forget()
+        self.transport_hint.set("Use the address shown below after starting." if tcp else
+                                "Use the virtual port shown below after starting.")
+        self.copy_button.configure(text="Copy address" if tcp else "Copy port")
+
+    def running(self):
+        return self.app.active and self.app.vars["mode"].get()=="Device Simulator"
+
+    def update_actions(self):
+        running=self.running()
+        states=(running,bool(self.app.simulator_model),bool(self.app.simulator_address))
+        if states==getattr(self,"action_states",None):return
+        self.action_states=states
+        self.start_button.configure(text="Stop simulator" if running else "Start simulator",
+                                    style="TButton" if running else "Accent.TButton")
+        self.start_button.state(("!disabled" if running or self.app.simulator_model else "disabled",))
+        if self.app.simulator_address:self.copy_button.pack(side="right",padx=(0,6))
+        else:self.copy_button.pack_forget()
+
+    def copy_address(self):
+        if self.app.simulator_address:
+            self.clipboard_clear()
+            self.clipboard_append(self.app.simulator_address)
+            self.feedback.set("Address copied. Use it in the app you want to test.")
 
     def edit_rule(self, new=False):
         self.ensure_editable()
@@ -183,6 +232,10 @@ class SimulatorPane(Pane):
         model = self.app.simulator_model
         framing = model.framing if model else getattr(self, "pending_framing", None)
         self.framing_info.set("Request framing: " + (framing.mode if framing else "Exact stream · legacy byte matching"))
+        self.update_actions()
+        for button in self.rule_bar.winfo_children()[1:]:
+            if model:button.pack(side="left",padx=(0,6))
+            else:button.pack_forget()
         if model:
             for index, item in enumerate(model.exchanges):
                 reply = b"".join(r.data for r in item.replies)
@@ -195,10 +248,13 @@ class SimulatorPane(Pane):
         peers = capture_peers(rows)
         self.peer_combo.configure(values=peers)
         self.peer.set(peers[0] if len(peers) == 1 else "")
+        if peers:self.capture_source.pack(fill="x",before=self.table.master,pady=4)
+        else:self.capture_source.pack_forget()
         if len(peers) == 1:
             self.build()
         else:
-            self.feedback.set("Choose one recorded peer, then Build from selected peer.")
+            self.feedback.set("Choose the device in the recording, then Use these messages." if peers else
+                              "No messages in this recording. Choose a capture with requests and replies.")
 
     def load_capture_file(self):
         path = filedialog.askopenfilename(parent=self, filetypes=[("Probe captures", "*.jsonl *.csv")])
@@ -220,7 +276,10 @@ class SimulatorPane(Pane):
             from ..configuration.documents import describe
             from .importing import ImportPreview
             document=read_json(path)
-            self.import_preview=ImportPreview(self,self.app,describe(document,'simulator')+'\n\nReplaces the model; start the simulator separately.',lambda:self.install(model_from_dict(document)))
+            def apply():
+                self.install(model_from_dict(document))
+                self.capture_source.pack_forget()
+            self.import_preview=ImportPreview(self,self.app,describe(document,'simulator')+'\n\nReplaces the model; start the simulator separately.',apply)
             return self.import_preview
 
     def save_model(self):
@@ -234,6 +293,8 @@ class SimulatorPane(Pane):
     def demo(self):
         self.install(DeviceModel((Exchange(b"PING\r\n", (Reply(b"PONG\r\n", 10),)),
                                   Exchange(b"BUY:1000\r\n", (Reply(b"APPROVED\r\n", 25),)))))
+        self.capture_source.pack_forget()
+        self.feedback.set("Example ready. Start the simulator, then connect your app and send PING with a CRLF ending.")
 
     def selected_index(self):
         selected = self.table.selection()
@@ -302,10 +363,10 @@ class SimulatorPane(Pane):
         self.app.toggle()
         if not self.app.active:
             raise ValueError(self.app.status.cget("text"))
-        self.feedback.set("Starting simulated device…")
+        self.app.simulator_info.set("Starting simulated device…")
 
     def stop(self):
-        if self.app.active and self.app.vars["mode"].get() == "Device Simulator":
+        if self.running():
             self.app.toggle()
 
     def reset(self):
