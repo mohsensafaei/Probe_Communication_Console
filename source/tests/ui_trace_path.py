@@ -91,6 +91,8 @@ class TraceUITests(unittest.TestCase):
         self.assertEqual(trace.base['data'],b'selected')
         self.assertIs(trace.other,self.second)
         self.assertEqual(trace.view.selection(),('0',))
+        trace.geometry('920x580');self.window.update()
+        self.assertLessEqual(sum(trace.view.column(c,'width') for c in trace.view.cget('columns')),trace.view.winfo_width())
 
     def test_draft_search_never_filters_and_invalid_submit_keeps_results(self):
         self.window.probe_tabs.select(self.first);self.window.update()
