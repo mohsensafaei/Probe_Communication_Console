@@ -58,7 +58,7 @@ class TraceWindow(tk.Toplevel,Actions):
         ttk.Label(body,textvariable=self.note,wraplength=970).pack(anchor='w',pady=4)
         ttk.Label(body,textvariable=self.feedback,wraplength=970).pack(side='bottom',anchor='w',pady=6)
         ttk.Label(body,text='Intervals use recorded timestamps, not device latency. Matching bytes/IDs are evidence, not proof of causality.',wraplength=970).pack(side='bottom',anchor='w')
-        self.view=table(body,(('keys','Traffic # / byte span',210),('flow','Flow / peer',170),('size','Bytes',60),('interval','Observed interval',115),('state','Comparison',95),('method','Matched by',170),('preview','Payload',200)))
+        self.view=table(body,(('keys','Traffic # / byte span',180),('flow','Flow / peer',155),('size','Bytes',60),('interval','Observed interval',115),('state','Comparison',95),('preview','Payload',200)))
         self.view.configure(selectmode='extended')
         self.view.bind('<<TreeviewSelect>>',lambda _:self.selection_changed())
         self.view.bind('<Double-1>',lambda _:self.action(self.compare))
@@ -106,7 +106,7 @@ class TraceWindow(tk.Toplevel,Actions):
             known=not manual;state=('Unchanged' if event['data']==base['data'] else 'Changed') if known else 'Select to compare'
             self.view.insert('','end',iid=key,values=(event['span'] or ', '.join('#'+k for k in event['keys']),
                 f"{event['direction']} · {event.get('peer','')}"+(f" · {event['client_peer']}" if event.get('client_peer') else ''),len(event['data']),
-                f"{(event['time']-base['time'])*1000:+.3f} ms",state,event['method'],visible(event['data'][:100])),tags=(state,))
+                f"{(event['time']-base['time'])*1000:+.3f} ms",state,visible(event['data'][:100])),tags=(state,))
         count=len(self.matches)
         if manual:summary='Pick a message, or select consecutive chunks in the same flow.'
         elif not self.rows:summary='This probe has no traffic yet. Capture or open a file there, then refresh.'
