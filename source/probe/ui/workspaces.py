@@ -45,7 +45,6 @@ class WorkspaceWindow(tk.Tk):
         self.add_button=ttk.Button(self.probe_tabs,text='+',width=3,command=self.new_probe)
         self.probe_tabs.bind('<Configure>',self._place_add_button)
         self.add_button.bind('<Configure>',self._place_add_button)
-        self.probe_tabs.bind('<<NotebookTabChanged>>',self._selected)
         self.probe_tabs.bind('<ButtonPress-1>',self._close_press)
         self.probe_tabs.bind('<ButtonRelease-1>',self._close_release)
         self.probe_tabs.bind('<Double-1>',self._rename_tab)
@@ -80,23 +79,31 @@ class WorkspaceWindow(tk.Tk):
         if len(self.probes)>=self.MAX_PROBES:return
         slot=next(i for i in range(1,self.MAX_PROBES+1) if all(p.slot!=i for p in self.probes))
         probe=self.factory(self.probe_tabs,slot=slot,demo=demo)
-        size=self._close_icon.width();stroke=max(1,size//10)
-        for x in range(size//3, size-size//3):
-            for y in (x,size-1-x):self._close_icon.put(probe.colors['text'],to=(x,y,x+stroke,y+stroke))
+        if not self.probes:
+            self.configure(background=probe.colors['bg'])
+            self.style.configure('Probes.TNotebook',background=probe.colors['bg'])
+            size=self._close_icon.width();stroke=max(1,size//10)
+            for x in range(size//3, size-size//3):
+                for y in (x,size-1-x):self._close_icon.put(probe.colors['text'],to=(x,y,x+stroke,y+stroke))
         self.probes.append(probe);self.names[probe]=f'Probe {slot}'
-        self.probe_tabs.add(probe,text=self.names[probe])
+        self.probe_tabs.add(probe,text=self._probe_title(probe))
         self.probe_tabs.select(probe)
         probe.vars['mode'].trace_add('write',lambda *_:self.update_probe_title(probe))
-        self.update_probe_title(probe)
+        self._queue_add_button()
         self.add_button.configure(state='disabled' if len(self.probes)==self.MAX_PROBES else 'normal')
         return probe
 
     def update_probe_title(self,probe,state=None):
         if probe not in self.probes:return
         if state is not None:self.states[probe]=state
-        marker=' ●' if self.states.get(probe)=='Connected' else ''
-        self.probe_tabs.tab(probe,text=f'{self.names[probe]} · {probe.vars["mode"].get()}{marker}')
+        title=self._probe_title(probe)
+        if self.probe_tabs.tab(probe,'text')==title:return
+        self.probe_tabs.tab(probe,text=title)
         self._queue_add_button()
+
+    def _probe_title(self,probe):
+        marker=' ●' if self.states.get(probe)=='Connected' else ''
+        return f'{self.names[probe]} · {probe.vars["mode"].get()}{marker}'
 
     def _queue_add_button(self):
         if not self._closing and self._add_job is None:self._add_job=self.after_idle(self._place_add_button)
@@ -116,12 +123,6 @@ class WorkspaceWindow(tk.Tk):
             except tk.TclError:right=middle
             else:left=middle+1
         self.add_button.place(x=min(left+4,max(0,self.probe_tabs.winfo_width()-width-2)),y=0)
-
-    def _selected(self,event=None):
-        probe=self.current_probe
-        if probe:
-            probe.plot.dirty=True
-            probe.terminal.dirty=True
 
     def _close_at(self,event):
         if self.probe_tabs.identify(event.x,event.y)=='Probe.close':
