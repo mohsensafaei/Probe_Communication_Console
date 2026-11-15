@@ -19,8 +19,8 @@ def table(parent,columns,height=7):
     box=ttk.Frame(parent);box.pack(fill="both",expand=True,pady=6)
     view=ttk.Treeview(box,columns=tuple(key for key,_,_ in columns),show="headings",height=height,selectmode="browse")
     for key,title,width in columns:view.heading(key,text=title);view.column(key,width=width,minwidth=45,stretch=True)
-    view.pack(side="left",fill="both",expand=True)
     scroll=ttk.Scrollbar(box,command=view.yview);scroll.pack(side="right",fill="y");view.configure(yscrollcommand=scroll.set)
+    view.pack(side="left",fill="both",expand=True)
     return view
 
 

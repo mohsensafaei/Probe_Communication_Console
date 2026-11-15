@@ -103,9 +103,9 @@ class SimulatorPane(Pane):
         for name, title, width in (("request", "Request rule", 280), ("reply", "Recorded reply (hex)", 380), ("delay", "Timing / fault", 160)):
             self.table.heading(name, text=title)
             self.table.column(name, width=width)
-        self.table.pack(side="left", fill="both", expand=True)
         scrollbar = ttk.Scrollbar(tablebox, command=self.table.yview)
         scrollbar.pack(side="right", fill="y")
+        self.table.pack(side="left", fill="both", expand=True)
         self.table.configure(yscrollcommand=scrollbar.set)
         self.table.bind("<<TreeviewSelect>>", lambda event: self.action(self.select))
         self.table.bind("<Double-1>", lambda event: self.action(self.edit_rule))

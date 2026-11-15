@@ -473,6 +473,20 @@ class UISmoke(unittest.TestCase):
         self.assertTrue(flow.instate(("readonly","!disabled")))
         self.assertTrue(self.app.port_combo.instate(("!readonly","!disabled")))
 
+    def test_compact_proxy_settings_and_traffic_have_working_scrollbars(self):
+        self.window.geometry("1060x740")
+        self.app.choose_mode("Serial Proxy")
+        self.app.add_events([dict(kind="data",time=time.time(),direction="RX",peer="device",data=b"row")]*60)
+        self.app.update()
+        for content in (self.app.config_canvas,self.app.table):
+            scrollbar=next(w for w in content.master.winfo_children() if isinstance(w,ttk.Scrollbar))
+            self.assertTrue(scrollbar.winfo_ismapped())
+            self.assertGreaterEqual(scrollbar.winfo_width(),scrollbar.winfo_reqwidth())
+            self.assertLess(content.yview()[1],1)
+            self.app.tk.call(scrollbar.cget("command"),"moveto",1)
+            self.app.update()
+            self.assertEqual(content.yview()[1],1)
+
     def test_serial_send_capture_inspector(self):
         self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
         with tempfile.TemporaryDirectory() as directory:

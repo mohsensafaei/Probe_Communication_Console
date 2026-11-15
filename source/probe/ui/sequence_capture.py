@@ -33,8 +33,8 @@ class CapturePicker(tk.Toplevel):
         self.table = ttk.Treeview(box, columns=("direction", "peer", "bytes", "preview"), show="headings", selectmode="extended", height=6)
         for key, title, width in (("direction", "Source", 65), ("peer", "Peer", 180), ("bytes", "Bytes", 65), ("preview", "Payload preview", 490)):
             self.table.heading(key, text=title);self.table.column(key, width=width, minwidth=50, stretch=key in ("peer", "preview"))
-        self.table.pack(side="left", fill="both", expand=True)
         scroll = ttk.Scrollbar(box, command=self.table.yview);scroll.pack(side="right", fill="y");self.table.configure(yscrollcommand=scroll.set)
+        self.table.pack(side="left", fill="both", expand=True)
         self.table.bind("<<TreeviewSelect>>", lambda event: self.selection_changed())
         row = ttk.Frame(below);row.pack(fill="x", pady=4)
         ttk.Button(row, text="Select all", command=lambda: self.table.selection_set(self.table.get_children())).pack(side="left", padx=(0, 6))

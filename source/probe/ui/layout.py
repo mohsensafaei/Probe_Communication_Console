@@ -103,8 +103,8 @@ class WorkbenchLayout:
         self.config_title.pack(anchor="w",padx=16,pady=(15,8))
         config_wrap=self.frame(self.sidebar);config_wrap.pack(fill="both",expand=True,padx=16)
         self.config_canvas=tk.Canvas(config_wrap,bg=c["panel"],highlightthickness=0,height=150)
-        self.config_canvas.pack(side="left",fill="both",expand=True)
         config_scroll=ttk.Scrollbar(config_wrap,command=self.config_canvas.yview);config_scroll.pack(side="right",fill="y")
+        self.config_canvas.pack(side="left",fill="both",expand=True)
         self.config_canvas.configure(yscrollcommand=config_scroll.set)
         self.config_frame=self.frame(self.config_canvas)
         self.config_window=self.config_canvas.create_window((0,0),window=self.config_frame,anchor="nw")
@@ -176,8 +176,8 @@ class WorkbenchLayout:
         for col,title,width,stretch in [("id","#",46,False),("time","TIME",110,False),("dir","FLOW",55,False),
                                         ("peer","PEER",130,False),("size","BYTES",60,False),("payload","PAYLOAD",420,True)]:
             self.table.heading(col,text=title); self.table.column(col,width=width,minwidth=width if not stretch else 140,stretch=stretch)
-        self.table.pack(side="left",fill="both",expand=True)
         scroll=ttk.Scrollbar(tableframe,command=self.table.yview); scroll.pack(side="right",fill="y"); self.table.configure(yscrollcommand=scroll.set)
+        self.table.pack(side="left",fill="both",expand=True)
         self.table.tag_configure("RX",foreground=c["accent"]); self.table.tag_configure("TX",foreground=c["blue"])
         self.table.bind("<Double-1>",self.traffic_clicked)
         self.table.bind("<Return>",lambda e:(self.analyze(),"break")[1])
