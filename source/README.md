@@ -635,22 +635,22 @@ its existing bounded display queue/history; this multiplies the total memory
 budget by the number of probes. Hidden tabs keep the acquisition models updated
 and rebuild the retained table when selected, without formatting/inserting each
 hidden row or drawing hidden plots. Terminal pop-outs keep their own live view.
-**Trace path…** compares retained traffic between two probes on demand.
+**Follow a message…** compares retained traffic between two probes on demand.
 Timestamps use the same host clock; hardware timing
 and ordering between independent endpoints are not guaranteed.
 
 ## Trace path (1.6)
 
-Right-click one Traffic message → **Follow across probes…**, or use **Trace path…**
-at the top. Select the reference message and target probe. Matching bytes are found
+Right-click one Traffic message → **Follow in another probe…**, or use
+**Follow a message…** at the top. Choose the tab to look in. Matching bytes are found
 within each direction/peer/client stream, including split or coalesced reads; byte
-spans identify the exact portions. Alternatively enter a scalar JSON identifier,
+spans identify the exact portions. Under **Match by JSON field**, enter a scalar identifier,
 such as `sessionId` or `data.sessionId`, and press **Find matches**. Configure
 Traffic framing first if a JSON message spans reads. IDs preserve their JSON types.
 
 One match is selected automatically; repeated IDs/bytes require an explicit choice.
-**Compare selected…** opens the existing Capture Diff with the correct probe for
-each side. With **Show all target traffic**, Ctrl/Shift-select consecutive chunks
+**Compare messages…** opens the existing Capture Diff with the correct probe for
+each side. With **Browse other traffic**, Ctrl/Shift-select consecutive chunks
 of one flow to compare manually. Changed bytes do not necessarily mean corruption;
 expected protocol transformations must be interpreted by the user.
 

@@ -52,9 +52,12 @@ class TraceUITests(unittest.TestCase):
         self.add(self.first,b'ABC');self.add(self.second,b'AX');self.add(self.second,b'C')
         trace=self.window.trace_path(self.first);self.window.update()
         self.assertIn('No match yet',trace.note.get())
+        self.assertEqual(trace.view.get_children(),())
+        trace.all_rows.set(True);trace.render()
         trace.view.selection_set(trace.view.get_children())
         self.assertEqual(trace.compare().comparison.b,b'AXC')
         self.add(self.second,b'ABC');self.assertEqual(len(trace.rows),2)
+        trace.all_rows.set(False)
         trace.snapshot();self.assertEqual(len(trace.matches),1)
         trace.destroy();self.assertIsNone(self.window.trace_window)
         trace=self.window.trace_path(self.first);ref=weakref.ref(trace)
@@ -64,12 +67,30 @@ class TraceUITests(unittest.TestCase):
     def test_no_traffic_single_probe_and_invalid_id_are_explained(self):
         self.window.close_probe(self.second)
         trace=self.window.trace_path(self.first)
-        self.assertIn('two different probes',trace.feedback.get());trace.destroy()
-        self.second=self.window.new_probe()
+        self.assertIn('two different probes',trace.feedback.get())
+        trace.new_target_button.invoke();self.window.update()
+        self.assertFalse(trace.winfo_exists())
+        self.second=self.window.current_probe
+        self.assertIsNot(self.first,self.second)
+        self.assertEqual(len(self.window.probes),2)
         trace=self.window.trace_path(self.first)
         self.assertIn('No reference traffic',trace.feedback.get())
         self.add(self.first,b'not JSON');trace.snapshot();trace.field.set('sid');trace.action(trace.match)
         self.assertIn('Identifier not found',trace.feedback.get())
+
+    def test_follow_starts_with_selected_message(self):
+        self.window.probe_tabs.select(self.first);self.window.update()
+        self.add(self.first,b'selected');self.add(self.first,b'newer')
+        self.add(self.second,b'selected')
+        self.first.table.selection_set(self.first.order[0])
+        menu=self.first.make_traffic_menu(self.first.selected_traffic())
+        index=next(i for i in range(menu.index('end')+1) if menu.type(i)=='command' and
+                   menu.entrycget(i,'label')=='Follow in another probe…')
+        menu.invoke(index);self.window.update()
+        trace=self.window.trace_window
+        self.assertEqual(trace.base['data'],b'selected')
+        self.assertIs(trace.other,self.second)
+        self.assertEqual(trace.view.selection(),('0',))
 
     def test_draft_search_never_filters_and_invalid_submit_keeps_results(self):
         self.window.probe_tabs.select(self.first);self.window.update()

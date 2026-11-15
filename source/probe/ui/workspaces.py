@@ -28,8 +28,8 @@ class WorkspaceWindow(tk.Tk):
             self.iconphoto(True,self.icon_image)
         except tk.TclError:pass
         bar=ttk.Frame(self,padding=(12,6));bar.pack(fill='x')
-        ttk.Label(bar,text='Connections keep running in every tab').pack(side='left',padx=8)
-        ttk.Button(bar,text='Trace path…',command=self.trace_path).pack(side='left',padx=6)
+        ttk.Label(bar,text='Each tab watches a point in your link').pack(side='left',padx=8)
+        ttk.Button(bar,text='Follow a message…',command=self.trace_path).pack(side='left',padx=6)
         ttk.Button(bar,text='Rename…',command=self.rename_probe).pack(side='right',padx=6)
         size=max(14,round(self.winfo_fpixels('12p')))
         self._close_blank=tk.PhotoImage(master=self,width=size,height=size)

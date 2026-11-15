@@ -247,7 +247,7 @@ class TrafficWorkspace:
             menu.add_command(label='Build simulator from selected TCP messages…',command=lambda:self.simulate_tcp_selection(selected))
         if count>1:return menu
         menu.add_separator()
-        menu.add_command(label="Follow across probes…",state=state,command=lambda:self.window.trace_path(self))
+        menu.add_command(label="Follow in another probe…",state=state,command=lambda:self.window.trace_path(self))
         menu.add_command(label="Analyze message…",state=state,command=self.analyze)
         menu.add_command(label="Protocol Inspector…",state=state,command=lambda:self.analyze("Protocol"))
         menu.add_command(label="Load payload into composer",state=state,command=self.load_selected_payload)

@@ -130,11 +130,10 @@ exact-byte models still load.
 
 ## Follow a message across probes
 
-Use **Trace path…** at the top, or right-click a message → **Follow across probes…**.
-Choose a target probe; compare matching stream bytes or enter an optional JSON ID
-like `sessionId` and press **Find matches**. **Compare selected…** reuses Capture
-Diff. Repeated matches require selection; manual same-flow chunk selection is also
-available. **Refresh traffic** takes a new read-only snapshot. No traffic is sent.
+Right-click a message → **Follow in another probe…**. Choose the tab to look in;
+Probe searches for the exact stream bytes. If the bytes differ, use **Match by
+JSON field** (for example, `sessionId`) or **Browse other traffic** for a manual
+comparison. **Refresh traffic** takes a new snapshot. No traffic is sent.
 
 Traffic search applies only with **Search** or **Enter**. Changing the search type
 resets the applied filter; typing alone never hides rows. Invalid input preserves
