@@ -190,5 +190,28 @@ class MultiProbeTests(unittest.TestCase):
         self.assertTrue(second.engine.ready)
         second.engine.send(b'STILL CONNECTED');self.spin(lambda:second.engine.rx==15)
 
+    def test_every_tab_can_close_when_titles_are_narrow(self):
+        self.window.geometry('1060x740')
+        for _ in range(self.window.MAX_PROBES-1):self.window.new_probe()
+        for probe in self.window.probes:
+            self.window.names[probe]=f'Long connection name for probe {probe.slot}'
+            probe.choose_mode('USB Serial Monitor')
+            self.window.update_probe_title(probe,'Connected')
+        self.window.update()
+        tabs=self.window.probe_tabs
+        closers={}
+        for x in range(tabs.winfo_width()):
+            for y in range(6,32,3):
+                if tabs.identify(x,y)=='Probe.close':
+                    closers[tabs.index(f'@{x},{y}')]=(x,y)
+        self.assertEqual(set(closers),set(range(self.window.MAX_PROBES)))
+        active=self.window.current_probe
+        x,y=closers[0]
+        tabs.event_generate('<ButtonPress-1>',x=x,y=y)
+        tabs.event_generate('<ButtonRelease-1>',x=x,y=y)
+        self.window.update()
+        self.assertEqual(self.window.probes[0].slot,2)
+        self.assertIs(self.window.current_probe,active)
+
 
 if __name__=='__main__':unittest.main()

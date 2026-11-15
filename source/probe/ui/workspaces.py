@@ -38,8 +38,8 @@ class WorkspaceWindow(tk.Tk):
         self.style.layout('Probes.TNotebook.Tab',[('Notebook.tab',{'sticky':'nswe','children':[
             ('Notebook.padding',{'sticky':'nswe','children':[
                 ('Notebook.focus',{'sticky':'nswe','children':[
-                    ('Notebook.label',{'side':'left','sticky':''}),
-                    ('Probe.close',{'side':'right','sticky':''})]})]})]})])
+                    ('Probe.close',{'side':'right','sticky':''}),
+                    ('Notebook.label',{'side':'left','sticky':''})]})]})]})])
         self._close_pressed=None
         self.probe_tabs=ttk.Notebook(self,style='Probes.TNotebook');self.probe_tabs.pack(fill='both',expand=True)
         self.add_button=ttk.Button(self.probe_tabs,text='+',width=3,command=self.new_probe)
