@@ -317,6 +317,7 @@ class TrafficWorkspace:
             self.paused=False;self.pause_button.configure(text="Pause")
             self.add_events(rows)
             for event in rows:self.terminal.feed(event);self.plot.feed(event)
+            self.notebook.select(self.traffic_tab)
             note = f' {skipped} unsupported or malformed packets skipped.' if skipped else ''
             self.terminal.render(force=True);self.set_status(f"Imported {len(rows)} events. No bytes were sent.{note}")
         except Exception as exc:self.set_status(f"Import failed: {exc}",True)

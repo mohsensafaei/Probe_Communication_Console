@@ -88,17 +88,26 @@ class WorkbenchLayout:
         self.connection_button=ttk.Button(self.sidebar,text="Connect",style="Accent.TButton",command=self.toggle)
         self.connection_button.pack(side="bottom",fill="x",padx=16,pady=(10,8))
         brand = tk.Frame(self.sidebar,bg=c["metal"]); brand.pack(fill="x",padx=5,pady=(5,12))
-        self.label(brand,"CONNECTIONS",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(10,3))
-        self.label(brand,"Choose a transport",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,10))
-        self.nav=[]
-        for i,mode in enumerate(MODES):
-            button=tk.Button(self.sidebar,text=f"{i+1:02}    {mode}",anchor="w",relief="flat",bd=0,
-                bg=c["panel"],fg=c["muted"],activebackground=c["select"],activeforeground=c["accent"],
-                highlightthickness=0,
-                padx=13,pady=7,font=(self.ui_font,12,"bold"),cursor="hand2",command=lambda m=mode:self.choose_mode(m))
-            button.pack(fill="x",padx=12,pady=(0,4)); self.nav.append(button)
+        self.label(brand,"GET STARTED",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(10,3))
+        self.label(brand,"What do you want to do?",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,10))
+        self.task_buttons=[]
+        for title, tasks in (
+            ("Connect & send", (("USB serial device", "USB / Serial"), ("Connect to a network service", "TCP Client"),
+                                ("Wait for an app to connect", "TCP Server"))),
+            ("Watch live traffic", (("Network connection (TCP)", "TCP Monitor"),
+                                    ("USB serial connection", "USB Serial Monitor"), ("USB input device (HID)", "HID Monitor"))),
+        ):
+            button=ttk.Menubutton(self.sidebar,text=title)
+            menu=tk.Menu(button,tearoff=False)
+            for label,mode in tasks:menu.add_command(label=label,command=lambda mode=mode:self.choose_mode(mode))
+            button.configure(menu=menu)
+            self.task_buttons.append(button)
+        self.task_buttons.append(ttk.Button(self.sidebar,text="Open a capture…",command=self.import_capture))
+        for button in self.task_buttons:button.pack(fill="x",padx=16,pady=(0,4))
+        self.label(self.sidebar,"Connection mode · all options",9,color=c["muted"]).pack(anchor="w",padx=16,pady=(7,4))
         self.mode_picker=ttk.Combobox(self.sidebar,textvariable=self.vars['mode'],values=MODES,state='readonly')
         self.mode_picker.bind('<<ComboboxSelected>>',lambda _:self.choose_mode(self.mode_picker.get()))
+        self.mode_picker.pack(fill='x',padx=16)
         self.config_title=self.label(self.sidebar,"ENDPOINT CONFIGURATION",9,True,color=c["blue"])
         self.config_title.pack(anchor="w",padx=16,pady=(15,8))
         config_wrap=self.frame(self.sidebar);config_wrap.pack(fill="both",expand=True,padx=16)
@@ -224,9 +233,6 @@ class WorkbenchLayout:
 
     def _mode_changed(self):
         mode=self.vars["mode"].get(); c=self.colors
-        for button,m in zip(self.nav,MODES):
-            button.configure(bg=c["select"] if m==mode else c["input"],fg=c["accent"] if m==mode else c["muted"],
-                             relief="flat")
         for w in self.config_frame.winfo_children(): w.destroy()
         self.config_canvas.yview_moveto(0)
         self.config_controls=[]
@@ -310,7 +316,7 @@ class WorkbenchLayout:
         if self.vars['mode'].get()=='USB Serial Monitor':
             self.usb_serial_combo.configure(state='disabled' if locked else 'readonly')
         self.mode_picker.configure(state='disabled' if locked else 'readonly')
-        for b in self.nav: b.configure(state="disabled" if locked else "normal")
+        for button in self.task_buttons:button.state(("disabled" if locked else "!disabled",))
 
 
     def zoom(self,delta):
@@ -347,12 +353,6 @@ class WorkbenchLayout:
         for label in self.stat_labels.values():
             label.configure(font=(self.mono,14 if compact else 17))
             label.pack_configure(pady=(2,2) if compact else (4,4))
-        if compact:
-            for button in self.nav:button.pack_forget()
-            self.mode_picker.pack(before=self.config_title,fill='x',padx=12,pady=(0,4))
-        else:
-            self.mode_picker.pack_forget()
-            for button in self.nav:button.pack(before=self.config_title,fill='x',padx=12,pady=(0,4))
 
 
     def _redraw_skin(self, widget):
@@ -397,7 +397,7 @@ class WorkbenchLayout:
         win=self.dialog("Probe · Quick guide","780x620")
         text=self.text_widget(win,height=25,wrap="word");text.pack(fill="both",expand=True,padx=16,pady=16)
         self.put_text(text,f"PROBE {__version__}\n\n"
-            "GET STARTED\nChoose a mode, enter its endpoint, then Connect. Type a payload and press Ctrl+Enter. Double-click a traffic row (or select it and press Enter) to open Analyze for decoded text, hex/ASCII, every byte, protocol fields and comparison. One reusable window keeps all message views together.\n\n"
+            "GET STARTED\nUse Connect & send to talk to a device or app, Watch live traffic to observe an existing link without sending, or Open a capture to inspect a file offline. Use the connection mode list for every transport. Double-click a traffic row to open Analyze.\n\n"
             "TCP CLIENT / SERVER\nClient connects to a device. Server accepts up to 16 clients. Choose a client or All clients before sending. Bind to 0.0.0.0 to accept LAN connections.\n\n"
             "TCP PROXY\nSet Listen to 127.0.0.1:9001 and Upstream to the real server. Point the other app to 127.0.0.1:9001. TX = app to upstream; RX = upstream to app. Each client has its own upstream connection. Binary bytes and half-close are preserved. TLS traffic remains encrypted.\n\n"
             "USB / SERIAL\nSupports COM / tty serial devices, including USB CDC and USB-to-UART adapters. Refresh lists ports. Set baud, bits, parity, stop and flow. DTR/RTS start OFF. Use loop:// for a hardware-free check; rfc2217://host:port for remote serial. Use HID Monitor for read-only USB HID capture; arbitrary USB bulk terminals are not supported.\n\n"
