@@ -199,6 +199,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         except Exception as exc:
             if self.engine and (not self.engine.thread or not self.engine.thread.is_alive()):self.engine.stop();self.engine.join()
             self.active=False;self._lock_config(False);self.set_status(str(exc),True)
+            self.connection_button.configure(text=self._connection_action(),state="normal")
 
 
     def set_status(self,message,error=False):
@@ -242,7 +243,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                 else:
                     if self.vars["mode"].get() == "Device Simulator": self.simulator_info.set("Simulator stopped.")
                     self.flush_frames(); self.active=False; self._lock_config(False)
-                    self.connection_button.configure(text="Start capture" if self.vars["mode"].get() in MONITOR_MODES else "Connect",state="normal")
+                    self.connection_button.configure(text=self._connection_action(),state="normal")
                     self.stop_repeat(); self.stop_sequence();self.stop_replay()
                     self.target_combo.configure(values=["All clients"]); self.vars["target"].set("All clients")
                     self.pressed=False;self.file_button.configure(text="Send file")
