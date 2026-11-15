@@ -82,15 +82,33 @@ class TrafficWorkspace:
             for key in change.added:self.plugins.analyze(key,self.events[key])
         removed=tuple(key for key in change.removed if self.table.exists(key))
         if removed:self.table.delete(*removed);self._shown_count-=len(removed)
-        if self.paused or not self.winfo_ismapped() or not change.added:return change
+        if change.added and self.winfo_ismapped():self.sync_traffic()
+        return change
+
+    def sync_traffic(self):
+        if self.paused or self._traffic_cursor==self.history.sequence:return False
+        pending=[]
+        for key in reversed(self.events):
+            if int(key)<=self._traffic_cursor:break
+            pending.append(key)
+        before=self._shown_count
+        self.render_traffic(reversed(pending))
+        return self._shown_count>before
+
+    def resume_traffic(self):
+        if self.sync_traffic():
+            self.search_counts()
+            if self.vars["autoscroll"].get():self.table.yview_moveto(1)
+
+    def render_traffic(self,keys):
         matcher=self.search_filter()
         direction=self.vars["direction"].get()
         view,encoding=self.vars["view"].get(),self.vars["encoding"].get()
-        for idx in change.added:
+        for idx in keys:
             event=self.events[idx]
             if direction in ("All",event["direction"]) and matcher.matches(event):
                 self.table.insert("","end",iid=idx,values=self.row_values(idx,event,view,encoding),tags=(event["direction"],));self._shown_count+=1
-        return change
+        self._traffic_cursor=self.history.sequence
 
     def search_changed(self,*_):
         mode=self.vars['search_mode'].get();self._search_error=''
@@ -107,13 +125,7 @@ class TrafficWorkspace:
         selected=self.table.selection()
         focused=self.table.focus()
         self.table.delete(*self.table.get_children());self._shown_count=0
-        matcher=self.search_filter()
-        direction=self.vars["direction"].get()
-        view,encoding=self.vars["view"].get(),self.vars["encoding"].get()
-        for idx in self.order:
-            event=self.events[idx]
-            if direction in ("All",event["direction"]) and matcher.matches(event):
-                self.table.insert("","end",iid=idx,values=self.row_values(idx,event,view,encoding),tags=(event["direction"],));self._shown_count+=1
+        self.render_traffic(self.events)
         remaining=[row for row in selected if self.table.exists(row)]
         if remaining:self.table.selection_set(remaining)
         if focused and self.table.exists(focused):self.table.focus(focused)
@@ -132,6 +144,7 @@ class TrafficWorkspace:
         self.plugins.results.clear();self.plugins.bytes=0
         self.display_framing.clear();self.plot.clear()
         self.table.delete(*self.table.get_children());self._shown_count=0
+        self._traffic_cursor=self.history.sequence
         self.search_counts()
         self.set_status("Display cleared. Recorded files and session byte counters continue.")
 

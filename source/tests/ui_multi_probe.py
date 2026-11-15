@@ -127,6 +127,29 @@ class MultiProbeTests(unittest.TestCase):
         probe.pause()
         self.assertEqual(probe.table.get_children(),(probe.order[0],probe.order[-1]))
 
+    def test_tab_switch_keeps_drawn_rows_and_appends_only_missing_traffic(self):
+        first=self.window.current_probe
+        first.vars['autoscroll'].set(False)
+        rows=[dict(kind='data',time=time.time(),direction='RX',peer='device',data=b'A')]*60
+        first.add_events(rows)
+        selected=first.order[35]
+        first.table.selection_set(selected);first.table.focus(selected)
+        first.table.yview_moveto(.5);self.window.update()
+        top=first.table.yview()[0]
+        second=self.window.new_probe();self.window.update()
+        with patch.object(first.table,'insert',wraps=first.table.insert) as insert, \
+             patch.object(first.table,'delete',wraps=first.table.delete) as delete:
+            self.window.probe_tabs.select(first);self.window.update()
+            insert.assert_not_called();delete.assert_not_called()
+            self.assertEqual(first.table.yview()[0],top)
+            self.window.probe_tabs.select(second);self.window.update()
+            first.add_events(rows[:2]);insert.assert_not_called()
+            self.window.probe_tabs.select(first);self.window.update()
+            self.assertEqual(insert.call_count,2);delete.assert_not_called()
+            self.assertEqual(first.table.get_children(),first.order)
+            self.assertEqual(first.table.selection(),(selected,))
+            self.assertEqual(first.table.focus(),selected)
+
     def test_reopen_reuses_saved_settings_and_closes_owned_windows(self):
         second=self.window.new_probe();second.vars['port'].set('4567')
         popup=second.dialog('Owned window');self.window.update()

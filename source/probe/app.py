@@ -58,6 +58,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         self.profiles = {}; self.macros = []
         self.history = TrafficHistory(self.MAX_ROWS, self.MAX_BYTES)
         self._shown_count=0
+        self._traffic_cursor=0
         self.queue = DisplayEventBuffer()
         self.dropped = 0; self.pressed = False
         self.engine = None; self.active = False; self.paused = False
@@ -101,7 +102,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         self.plugins=Plugins(self)
         self.compact=False
         self.bind("<Configure>",self.resized,add="+")
-        self.bind("<Map>",lambda event:self.refresh(),add="+")
+        self.bind("<Map>",lambda event:self.resume_traffic(),add="+")
         self._mode_changed()
         self.after(40, self.poll)
         if demo: self.after(150, self.demo)
@@ -123,7 +124,9 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
     def _tab_changed(self,event=None):
         if not hasattr(self,"composer") or event is not None and event.widget is not self.notebook:return
         # Keep target and injection-side selectors reachable on every page.
-        self.plot.render(force=True);self.terminal.render(force=True)
+        selected=self.notebook.select()
+        if selected==str(self.plot):self.plot.render()
+        if selected==str(self.terminal):self.terminal.render()
         self.terminal.update_hint()
         if self.notebook.select()==str(self.terminal) and self.terminal.keyboard.get():self.terminal.text.focus_set()
 
