@@ -6,7 +6,6 @@ from tkinter import messagebox, ttk
 from .. import __version__
 from ..engine import MODES
 from ..transports import MONITOR_MODES
-from ..serial_endpoints import simulator_transports
 from ..traffic_search import MODES as SEARCH_MODES
 from .plot import LivePlotPane
 from .skin import Chassis, MeterStrip, Rail
@@ -84,7 +83,6 @@ class WorkbenchLayout:
         self.sidebar.pack_propagate(False)
         bottom=self.frame(self.sidebar); bottom.pack(side="bottom",fill="x",padx=16,pady=(0,12))
         ttk.Button(bottom,text="Help  F1",command=self.help).pack(side="left")
-        ttk.Button(bottom,text="Test lab",command=self.test_lab).pack(side="right")
         self.connection_button=ttk.Button(self.sidebar,text="Connect",style="Accent.TButton",command=self.toggle)
         self.connection_button.pack(side="bottom",fill="x",padx=16,pady=(10,8))
         brand = tk.Frame(self.sidebar,bg=c["metal"]); brand.pack(fill="x",padx=5,pady=(5,12))
@@ -103,6 +101,7 @@ class WorkbenchLayout:
             button.configure(menu=menu)
             self.task_buttons.append(button)
         self.task_buttons.append(ttk.Button(self.sidebar,text="Open a capture…",command=self.import_capture))
+        self.task_buttons.append(ttk.Button(self.sidebar,text="Simulate a device…",command=self.test_lab))
         for button in self.task_buttons:button.pack(fill="x",padx=16,pady=(0,4))
         self.label(self.sidebar,"Connection mode · all options",9,color=c["muted"]).pack(anchor="w",padx=16,pady=(7,4))
         self.mode_picker=ttk.Combobox(self.sidebar,textvariable=self.vars['mode'],values=MODES,state='readonly')
@@ -243,7 +242,7 @@ class WorkbenchLayout:
         if mode in ("TCP Client","TCP Proxy","UDP"):
             field("Upstream host" if mode=="TCP Proxy" else "Remote host","host")
             field("Upstream port" if mode=="TCP Proxy" else "Remote port","port")
-        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP","Device Simulator"):
+        if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP"):
             field("Listen address","bind"); field("Listen port (0 = automatic)","listen_port")
         if mode == "HID Monitor":
             from .hid import build_panel
@@ -255,14 +254,9 @@ class WorkbenchLayout:
             from .usb_serial import build_panel
             build_panel(self,field)
         if mode == "Device Simulator":
-            field("Expose device as", "simulator_transport", simulator_transports(), True)
-            if os.name == "nt":
-                field("Probe-side virtual COM", "simulator_port")
-                field("Application-side partner COM", "simulator_peer_port")
-            count = len(self.simulator_model.exchanges) if self.simulator_model else 0
-            self.label(self.config_frame, f"{count} recorded exchanges loaded.\nNo physical device is needed.", 9,
+            self.label(self.config_frame, "Set up replies and choose how your app connects. No physical device is needed.", 9,
                        color=c["muted"], wraplength=200, justify="left").pack(anchor="w", pady=8)
-            ttk.Button(self.config_frame, text="Open Test lab", command=self.test_lab).pack(fill="x", pady=6)
+            ttk.Button(self.config_frame, text="Open simulator setup…", command=self.test_lab).pack(fill="x", pady=6)
         if "Serial" in mode and mode not in MONITOR_MODES:
             self.port_combo=field("Physical port / serial URL","serial_port",[],False)
             ttk.Button(self.config_frame,text="Refresh ports",command=self.refresh_ports).pack(anchor="e",pady=4)
@@ -397,7 +391,7 @@ class WorkbenchLayout:
         win=self.dialog("Probe · Quick guide","780x620")
         text=self.text_widget(win,height=25,wrap="word");text.pack(fill="both",expand=True,padx=16,pady=16)
         self.put_text(text,f"PROBE {__version__}\n\n"
-            "GET STARTED\nUse Connect & send to talk to a device or app, Watch live traffic to observe an existing link without sending, or Open a capture to inspect a file offline. Use the connection mode list for every transport. Double-click a traffic row to open Analyze.\n\n"
+            "GET STARTED\nUse Connect & send to talk to a device or app, Watch live traffic to observe an existing link without sending, Open a capture to inspect a file offline, or Simulate a device to test an app without hardware. Use the connection mode list for every transport. Double-click a traffic row to open Analyze.\n\n"
             "TCP CLIENT / SERVER\nClient connects to a device. Server accepts up to 16 clients. Choose a client or All clients before sending. Bind to 0.0.0.0 to accept LAN connections.\n\n"
             "TCP PROXY\nSet Listen to 127.0.0.1:9001 and Upstream to the real server. Point the other app to 127.0.0.1:9001. TX = app to upstream; RX = upstream to app. Each client has its own upstream connection. Binary bytes and half-close are preserved. TLS traffic remains encrypted.\n\n"
             "USB / SERIAL\nSupports COM / tty serial devices, including USB CDC and USB-to-UART adapters. Refresh lists ports. Set baud, bits, parity, stop and flow. DTR/RTS start OFF. Use loop:// for a hardware-free check; rfc2217://host:port for remote serial. Use HID Monitor for read-only USB HID capture; arbitrary USB bulk terminals are not supported.\n\n"
@@ -415,6 +409,6 @@ class WorkbenchLayout:
             "LIVE PLOT\nOpen the Live plot workspace page. Receive LF/CRLF-terminated RX numbers or CSV, up to four channels: 1,2 followed by LF, then 3,4 followed by LF. Choose the RX peer or automatic selection. Auto accepts numeric lines. Custom extracts a JSON field, text column, named value or fixed binary value; configure message boundaries and the RX parameter. TX-only data is not plotted. Separate peer buffers and the last 300 samples keep plotting bounded.\n\n"
             "DYNAMIC SEQUENCES\nEdit message > Response & next step: Save reply values picks JSON/TLV/byte fields and names variables; Choose next step adds conditions and next/goto/finish/fail/timeout actions. Save rules, then Save message. Insert variable adds ${name}, ${name:json} (a JSON value without surrounding quotes) or ${name:hex}. Variables defines initial values and shows latest reply values. Outgoing frame can rebuild length/checksum after substitution. Missing values stop before sending. Version 3 exports retain rules; legacy files still load.\n\n"
             "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
-            "TEST LAB\nDevice simulator loads a two-direction JSONL/CSV capture or saved model. Select one recorded peer, then expose a TCP socket, Windows virtual COM pair or Linux virtual serial PTY. Connect the other application to that endpoint; no physical device is opened. Exact requests produce recorded replies and delays. Conversation order preserves stateful responses; Match requests accepts independent commands in any order. Unmatched bytes are ignored and reported. Startup RX chatter is excluded. Dynamic fields must be modeled explicitly.\n\n"
+            "TEST LAB\nIn Device simulator, choose replies from a recording, a saved model or the built-in example. Choose how your app connects, press Start simulator and copy the address shown. Matching, timing and request framing are under Advanced options. No physical device is needed.\n\n"
             "TEST SEQUENCES\nChoose messages, then Send next message: After interval or After a reply. Reply mode sends the first immediately and waits after every send, including the last, with no interval delay. Set Reply timeout; missing replies stop the run. Any nonempty incoming chunk from the destination counts, including unsolicited data. Edit message > Advanced > Expected reply can require specific hex bytes across chunks. Interval mode retains shared/individual delays and optional reply checks. Run once, Repeat a set number or Repeat until stopped. Stop cancels waits and pending sends. Save/Load preserves the effective behavior. Timing is best effort, not hard real-time.\n\n"
             "VENDOR FEATURES\nHW-group proprietary UDP discovery, device IP configuration and TEA/I/O extensions are not implemented without verified protocol/SDK information. STM32 programming is intentionally outside this application's scope. See FEATURE_MATRIX.md.\n")

@@ -475,7 +475,7 @@ class UISmoke(unittest.TestCase):
 
     def test_start_by_task_selects_transport_or_opens_capture(self):
         self.window.geometry("1060x740");self.app.update()
-        connect,watch,opened=self.app.task_buttons
+        connect,watch,opened=self.app.task_buttons[:3]
         for button in (connect,watch,opened):self.assertTrue(button.winfo_viewable())
         self.app.nametowidget(str(connect.cget("menu"))).invoke(0)
         self.assertEqual(self.app.vars["mode"].get(),"USB / Serial")
@@ -738,6 +738,35 @@ class UISmoke(unittest.TestCase):
             self.spin(lambda:"requests matched" in self.app.simulator_info.get())
         self.assertEqual(self.app.engine.serials,[])
         pane.stop();self.spin(lambda:not self.app.active)
+
+    def test_simulator_first_run_opens_example_and_copies_working_address(self):
+        import socket
+        entry=next(w for w in self.app.task_buttons if w.cget("text")=="Simulate a device…")
+        entry.invoke();self.app.update()
+        win=self.app.testlab_window;win.geometry("980x680")
+        pane=self.app.simulator_panel
+        self.assertFalse(pane.capture_source.winfo_ismapped())
+        self.assertTrue(pane.start_button.instate(("disabled",)))
+        self.assertFalse(pane.copy_button.winfo_ismapped())
+        sample=next(w for w in self.descendants(pane) if isinstance(w,ttk.Button) and w.cget("text")=="Try an example")
+        sample.invoke()
+        self.assertIn("PING",pane.feedback.get())
+        self.app.vars["listen_port"].set("0")
+        pane.start_button.invoke()
+        self.spin(lambda:bool(self.app.simulator_address))
+        self.assertEqual(pane.start_button.cget("text"),"Stop simulator")
+        self.assertTrue(pane.copy_button.winfo_ismapped())
+        pane.copy_button.invoke()
+        address=self.app.clipboard_get()
+        self.assertEqual(address,self.app.simulator_address)
+        host,port=address.rsplit(":",1)
+        with socket.create_connection((host,int(port)),timeout=2) as client,client.makefile("rb") as stream:
+            client.sendall(b"PING\r\n")
+            self.assertEqual(stream.readline(),b"PONG\r\n")
+        pane.start_button.invoke();self.spin(lambda:not self.app.active)
+        self.assertFalse(pane.copy_button.winfo_ismapped())
+        self.assertEqual(pane.start_button.cget("text"),"Start simulator")
+        self.assertFalse(pane.start_button.instate(("disabled",)))
 
     def test_lab_sequence_edit_export_import_and_run(self):
         self.app.macro_dialog()
