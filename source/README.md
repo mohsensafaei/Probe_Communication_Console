@@ -539,7 +539,7 @@ opens the context menu from the keyboard. These actions never send traffic.
 
 ## Semantic device rules and fault injection (1.4)
 
-Open **Simulate a device… → Add request & reply…**, or double-click an existing
+Open **Test lab → Device simulator → Add request & reply…**, or double-click an existing
 rule. The **Request & reply** tab starts with exact request bytes. Choose
 **Fields → Add condition…** to match JSON paths (`data.service`, `/data/service`),
 TLV / BER-TLV tags, UTF-8 text or a selected payload byte range. All conditions

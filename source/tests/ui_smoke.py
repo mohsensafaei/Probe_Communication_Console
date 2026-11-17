@@ -473,27 +473,21 @@ class UISmoke(unittest.TestCase):
         self.assertTrue(flow.instate(("readonly","!disabled")))
         self.assertTrue(self.app.port_combo.instate(("!readonly","!disabled")))
 
-    def test_start_by_task_selects_transport_or_opens_capture(self):
-        self.window.geometry("1060x740");self.app.update()
-        connect,watch,opened=self.app.task_buttons[:3]
-        for button in (connect,watch,opened):self.assertTrue(button.winfo_viewable())
-        self.app.nametowidget(str(connect.cget("menu"))).invoke(0)
+    def test_connections_use_direct_modes_and_compact_picker(self):
+        self.window.geometry("1360x920");self.app.update()
+        self.assertFalse(self.app.mode_picker.winfo_ismapped())
+        serial=self.app.nav[MODES.index("USB / Serial")]
+        self.assertTrue(serial.winfo_ismapped())
+        serial.invoke()
         self.assertEqual(self.app.vars["mode"].get(),"USB / Serial")
-        monitor=self.app.nametowidget(str(watch.cget("menu")))
-        monitor.invoke(0)
-        self.assertEqual(self.app.vars["mode"].get(),"TCP Monitor")
-        monitor.invoke(1)
+        self.assertEqual(serial.cget("bg"),self.app.colors["select"])
+        self.window.geometry("1060x740");self.app.update()
+        self.assertFalse(serial.winfo_ismapped())
+        self.assertTrue(self.app.mode_picker.winfo_ismapped())
+        self.app.mode_picker.current(MODES.index("USB Serial Monitor"))
+        self.app.mode_picker.event_generate("<<ComboboxSelected>>");self.app.update()
         self.assertEqual(self.app.connection_button.cget("text"),"Start capture")
         self.assertEqual(self.app.vars["mode"].get(),"USB Serial Monitor")
-        self.app.notebook.select(self.app.plot)
-        path=Path(self.app.settings_path).with_name("sample.jsonl")
-        path.write_text(json.dumps(dict(kind="data",time=1,direction="RX",peer="device",hex="A4FF"))+"\n")
-        with patch("probe.ui.traffic.filedialog.askopenfilename",return_value=str(path)):
-            opened.invoke()
-        self.app.update()
-        self.assertEqual(self.app.notebook.select(),str(self.app.traffic_tab))
-        self.assertEqual([event["data"] for event in self.app.events.values()],[b"\xa4\xff"])
-        self.assertIsNone(self.app.engine)
 
     def test_compact_proxy_settings_and_traffic_have_working_scrollbars(self):
         self.window.geometry("1060x740")
@@ -741,7 +735,7 @@ class UISmoke(unittest.TestCase):
 
     def test_simulator_first_run_opens_example_and_copies_working_address(self):
         import socket
-        entry=next(w for w in self.app.task_buttons if w.cget("text")=="Simulate a device…")
+        entry=next(w for w in self.descendants(self.app.sidebar) if isinstance(w,ttk.Button) and w.cget("text")=="Test lab")
         entry.invoke();self.app.update()
         win=self.app.testlab_window;win.geometry("980x680")
         pane=self.app.simulator_panel
