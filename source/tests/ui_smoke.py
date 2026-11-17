@@ -474,16 +474,16 @@ class UISmoke(unittest.TestCase):
         self.assertTrue(self.app.port_combo.instate(("!readonly","!disabled")))
 
     def test_connections_use_direct_modes_and_compact_picker(self):
-        self.window.geometry("1360x920");self.app.update()
-        self.assertFalse(self.app.mode_picker.winfo_ismapped())
+        self.app.resized(SimpleNamespace(widget=self.app,height=900))
+        self.assertEqual(self.app.mode_picker.winfo_manager(),"")
         serial=self.app.nav[MODES.index("USB / Serial")]
-        self.assertTrue(serial.winfo_ismapped())
+        self.assertEqual(serial.winfo_manager(),"pack")
         serial.invoke()
         self.assertEqual(self.app.vars["mode"].get(),"USB / Serial")
         self.assertEqual(serial.cget("bg"),self.app.colors["select"])
-        self.window.geometry("1060x740");self.app.update()
-        self.assertFalse(serial.winfo_ismapped())
-        self.assertTrue(self.app.mode_picker.winfo_ismapped())
+        self.app.resized(SimpleNamespace(widget=self.app,height=700))
+        self.assertEqual(serial.winfo_manager(),"")
+        self.assertEqual(self.app.mode_picker.winfo_manager(),"pack")
         self.app.mode_picker.current(MODES.index("USB Serial Monitor"))
         self.app.mode_picker.event_generate("<<ComboboxSelected>>");self.app.update()
         self.assertEqual(self.app.connection_button.cget("text"),"Start capture")
