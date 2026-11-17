@@ -26,3 +26,37 @@ per byte, at most 11,520 bytes/s **per direction** in full duplex. Frame transmi
 time is `bytes * 10 / 115200` seconds. Protocol overhead, inter-frame gaps, USB/driver
 latency and flow control reduce usable throughput. A software `loop://` or PTY does
 not enforce a physical 115200-baud line and is not accepted as hardware evidence.
+
+## Packet capture binding comparison
+
+Use an isolated Python environment and install `libpcap==1.11.0b29` from PyPI.
+From `source`, run the offline checks and timing without capture privileges:
+
+```sh
+python -m pip install libpcap==1.11.0b29
+python benchmarks/pcap_binding_benchmark.py --output pcap-binding-benchmark.json
+```
+
+Both bindings use the same native library. Use `--library /absolute/path/to/libpcap.so`
+to test a specific Linux build. Add `--live lo` on Linux when your environment
+permits capture on loopback. Windows additionally requires Npcap; pass the
+loopback device name (as reported by the Probe interface list) instead of `lo`.
+The live trial opens only local sockets and sends a known synthetic TCP payload
+and an unrelated UDP datagram. The Linux transport benchmark workflow also runs
+this comparison and saves the JSON report.
+
+| Check | What the result tells you |
+| --- | --- |
+| Offline correctness | Matching bytes, timestamps, link types, snap lengths, and original lengths; rejection of other TCP ports and UDP; useful errors on invalid filters and missing files. |
+| Offline timing | Wall time, thread CPU time, and matching packets per second. Python copies and constructs the same `Packet` in both cases. Orders alternate between repeats. |
+| Live correctness | Both bindings enumerate the selected loopback, apply the TCP filter, and reconstruct exact request and reply bytes using Probe's stream code. Gaps, skipped packets and filter leaks fail the check; driver drop counters are reported separately. |
+| Live responsiveness | Nonblocking idle read, idle CPU, stop/join with and without recent traffic, plus the delay from socket round trip to complete capture. Loopback round trip is a workload observation, not a binding speed guarantee. |
+| Development and packaging | Extra APIs already exposed by the wrapper, installed package size excluding dependencies, and dependency list. A prototype calls the nanosecond PCAP API and checks the exact timestamp integer when available. It does not establish live hardware timestamp accuracy. |
+
+The harness reuses Probe's ctypes signatures and native loader. It keeps the
+read loop, filter, payload copy, and stream logic equal; it does not benchmark
+the GUI, disk recording, or maximum physical-network capture capacity. A zero
+drop count does not establish that a real network was captured completely.
+The wrapper saves C signatures and structure definitions, but a switch still
+needs a frozen-package check on both platforms with and without the native
+driver available.
