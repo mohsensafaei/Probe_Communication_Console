@@ -126,7 +126,8 @@ class Reader:
 
     def drops(self):
         stats = self.api.stat()
-        return self.api.drop_values(stats) if self.api.stats(self.handle, C.byref(stats)) == 0 else None
+        pointer = C.cast(C.byref(stats), self.api.stats.argtypes[1])
+        return self.api.drop_values(stats) if self.api.stats(self.handle, pointer) == 0 else None
 
 
 def fixture_packet(i, link):
@@ -157,6 +158,7 @@ def verify_offline(api, path, link):
         expected = [p for i, p in enumerate(packets(stream)) if i % 4 in (0, 3)]
     with ExitStack() as stack:
         reader = Reader(stack, api, path=path)
+        assert reader.drops() is None, "An offline capture has no driver drop counters"
         actual = list(reader.offline_packets())
         assert actual == expected, f"PCAP content, filters, timestamps or lengths differ (link {link})"
         assert any(p.wire_size > len(p.data) for p in actual)
