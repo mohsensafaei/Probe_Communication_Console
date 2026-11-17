@@ -72,6 +72,7 @@ def backends(path):
         if fn is not None:
             fn.restype, fn.argtypes = result, args
         setattr(native_api, name, fn)
+        setattr(package_api, name, getattr(libpcap, name, None))
     extended = getattr(native, "pcap_open_offline_with_tstamp_precision", None)
     if extended is not None:
         extended.restype, extended.argtypes = C.c_void_p, (C.c_char_p, C.c_uint, C.c_char_p)
@@ -383,24 +384,32 @@ def summarize(rows, keys):
             for name, records in rows.items()}
 
 
-def tune_live(api, device, payload, repeats):
-    missing = [name for name, _, _ in TUNING_SIGNATURES if getattr(api, name) is None]
-    if missing:
-        raise OSError("Native library lacks tuning APIs: " + ", ".join(missing))
+def tune_live(apis, device, payload, repeats):
+    for binding, api in apis.items():
+        missing = [name for name, *_ in TUNING_SIGNATURES if getattr(api, name) is None]
+        if missing:
+            raise OSError(f"{binding} lacks tuning APIs: {', '.join(missing)}")
     cases = [("legacy-10ms", False, None, 10)]
     for size in (None, 4, 8):
         for delay in (10, 1, .25):
             label = "default" if size is None else f"{size}MiB"
             cases.append((f"create-{label}-{delay:g}ms", True, size * MIB if size else None, delay))
-    rows = {name: [] for name, *_ in cases}
+    rows = {binding: {name: [] for name, *_ in cases} for binding in apis}
     for i in range(repeats):
         start = i % len(cases)
-        ordered = cases[start:] + cases[:start]
+        ordered = list(range(start, len(cases))) + list(range(start))
         if i % 2:
             ordered.reverse()
-        for name, create, size, delay in ordered:
-            rows[name].append(live_trial(api, device, payload, paced=False, create=create,
-                                         buffer_bytes=size, poll_ms=delay, idle_seconds=.25))
+        for j in ordered:
+            name, create, size, delay = cases[j]
+            for binding in (apis if (i + j) % 2 == 0 else reversed(apis)):
+                rows[binding][name].append(live_trial(apis[binding], device, payload, paced=False,
+                                                     create=create, buffer_bytes=size, poll_ms=delay,
+                                                     idle_seconds=.25))
+    return dict(cases={binding: tuning_summary(cases, values) for binding, values in rows.items()}, trials=rows)
+
+
+def tuning_summary(cases, rows):
     summary = summarize(rows, ("idle_cpu_pct", "idle_stop_ms", "capture_tail_ms", "capture_thread_cpu_ms"))
     report = {}
     for name, create, size, delay in cases:
@@ -412,7 +421,7 @@ def tune_live(api, device, payload, repeats):
                                                      for d in ("TX", "RX")},
                             capture_drops_total=sum(drops) if drops else None, trials_with_stats=len(drops),
                             **summary[name])
-    return dict(cases=report, trials=rows)
+    return report
 
 
 def main():
@@ -421,7 +430,7 @@ def main():
     parser.add_argument("--packets", type=int, default=200_000, help="Number of records in the offline workload")
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--live", metavar="LOOPBACK", help="Also capture synthetic TCP on the selected loopback interface")
-    parser.add_argument("--tune-live", action="store_true", help="Run the direct-binding burst buffer/poll matrix instead of the live A/B")
+    parser.add_argument("--tune-live", action="store_true", help="Compare both bindings across burst buffer/poll settings")
     parser.add_argument("--live-bytes", type=int, default=1024 * 1024, help="TCP payload bytes per direction")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -459,8 +468,10 @@ def main():
             if not all(args.live in names for names in devices.values()):
                 raise ValueError("--live must be a loopback interface found by both bindings")
             if args.tune_live:
-                report["live"] = dict(device=args.live, **tune_live(apis["direct"], args.live, payload, args.repeats))
-                failed = any(r["filter_leaks"] or r["activation_warning"] for values in report["live"]["trials"].values() for r in values)
+                measured = tune_live(apis, args.live, payload, args.repeats)
+                report["live"] = dict(device=args.live, **measured)
+                failed = any(r["filter_leaks"] or r["activation_warning"] for profiles in measured["trials"].values()
+                             for values in profiles.values() for r in values)
             else:
                 live = trials(apis, args.repeats, lambda api: live_trial(api, args.live, payload, paced=True))
                 burst = trials(apis, min(3, args.repeats), lambda api: live_trial(api, args.live, payload, paced=False))
@@ -472,10 +483,11 @@ def main():
         except (OSError, AssertionError, ValueError) as error:
             report["live"] = dict(device=args.live, error=str(error))
             failed = True
-    output = json.dumps(report, indent=2) + "\n"
     if args.output:
-        args.output.write_text(output, encoding="utf-8")
-    print(output, end="")
+        args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        if args.tune_live:
+            report["live"].pop("trials", None)
+    print(json.dumps(report, indent=2))
     return failed
 
 

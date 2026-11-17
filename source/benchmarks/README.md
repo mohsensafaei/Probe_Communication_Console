@@ -62,7 +62,7 @@ The wrapper saves C signatures and structure definitions, but a switch still
 needs a frozen-package check on both platforms with and without the native
 driver available.
 
-To isolate buffering and polling on the direct binding, run:
+To compare both bindings at identical buffer sizes and polling intervals, run:
 
 ```sh
 python benchmarks/pcap_binding_benchmark.py --live lo --tune-live --packets 4000 --output pcap-tuning-benchmark.json
@@ -72,7 +72,8 @@ The sweep repeats the unpaced 1 MiB-per-direction loopback test with the
 current `pcap_open_live` path (10 ms wait) and with `pcap_create` plus every
 combination of driver-default, 4 MiB and 8 MiB buffer requests and waits of
 10, 1 and 0.25 ms. The capture timeout stays at 25 ms. Case order rotates
-between rounds. The report keeps raw trials and summarizes recovered bytes,
+between rounds, and the two bindings alternate which runs first for each case.
+The output file keeps raw trials and summaries for each binding: recovered bytes,
 exact runs, driver drops, idle CPU and stop latency. Buffer sizes and waits
 are requested settings; they are not measured allocations or wakeup periods.
 Incomplete burst capture is an observation rather than a test failure.

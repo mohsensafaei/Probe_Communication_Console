@@ -41,7 +41,7 @@ jobs:
           python -m venv "$RUNNER_TEMP/pcap-ab"
           "$RUNNER_TEMP/pcap-ab/bin/python" -m pip install libpcap==1.11.0b29
           sudo env PYTHONDONTWRITEBYTECODE=1 "$RUNNER_TEMP/pcap-ab/bin/python" benchmarks/pcap_binding_benchmark.py --live lo --output pcap-binding-benchmark.json
-      - name: Sweep buffer requests and polling on Linux loopback
+      - name: Compare both bindings across buffer and polling settings on Linux loopback
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: |
           sudo env PYTHONDONTWRITEBYTECODE=1 "$RUNNER_TEMP/pcap-ab/bin/python" benchmarks/pcap_binding_benchmark.py --live lo --tune-live --packets 4000 --output pcap-tuning-benchmark.json
