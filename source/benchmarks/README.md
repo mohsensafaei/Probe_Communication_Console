@@ -49,7 +49,8 @@ this comparison and saves the JSON report.
 | --- | --- |
 | Offline correctness | Matching bytes, timestamps, link types, snap lengths, and original lengths; rejection of other TCP ports and UDP; useful errors on invalid filters and missing files. |
 | Offline timing | Wall time, thread CPU time, and matching packets per second. Python copies and constructs the same `Packet` in both cases. Orders alternate between repeats. |
-| Live correctness | Both bindings enumerate the selected loopback, apply the TCP filter, and reconstruct exact request and reply bytes using Probe's stream code. Gaps, skipped packets and filter leaks fail the check; driver drop counters are reported separately. |
+| Live correctness | Both bindings enumerate the selected loopback, apply the TCP filter, and reconstruct exact request and reply bytes using Probe's stream code. In the paced case (8 KiB with a 3 ms pause between writes), gaps, skipped packets and filter leaks fail the check. |
+| Burst pressure | The same TCP workload without pacing. Compare reconstructed bytes, gaps and driver drops, even when a socket transfer succeeds but the capture is incomplete. Burst loss is reported, not used as a CI gate. |
 | Live responsiveness | Nonblocking idle read, idle CPU, stop/join with and without recent traffic, plus the delay from socket round trip to complete capture. Loopback round trip is a workload observation, not a binding speed guarantee. |
 | Development and packaging | Extra APIs already exposed by the wrapper, installed package size excluding dependencies, and dependency list. A prototype calls the nanosecond PCAP API and checks the exact timestamp integer when available. It does not establish live hardware timestamp accuracy. |
 

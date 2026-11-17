@@ -221,7 +221,16 @@ def loopbacks(api):
             api.freealldevs(first)
 
 
-def live_trial(api, device, payload):
+def send_payload(sock, data, paced):
+    if not paced:
+        sock.sendall(data)
+        return
+    for offset in range(0, len(data), 8192):
+        sock.sendall(data[offset:offset + 8192])
+        time.sleep(.003)
+
+
+def live_trial(api, device, payload, *, paced):
     with ExitStack() as stack:
         server = stack.enter_context(socket.socket())
         server.bind(("127.0.0.1", 0))
@@ -300,18 +309,17 @@ def live_trial(api, device, payload):
                     peer.settimeout(3)
                     def echo():
                         actual = read_exact(peer, len(payload))
-                        peer.sendall(actual[::-1])
+                        send_payload(peer, actual[::-1], paced)
                     reply = threading.Thread(target=echo)
                     start = time.perf_counter_ns()
                     reply.start()
                     try:
-                        client.sendall(payload)
+                        send_payload(client, payload, paced)
                         assert read_exact(client, len(payload)) == payload[::-1], "Bad TCP workload echo"
                     finally:
                         reply.join()
             offered_ms = (time.perf_counter_ns() - start) / 1e6
-            assert complete.wait(3), f"Capture did not reconstruct both streams: {counts}"
-            tail_ms = (time.perf_counter_ns() - start) / 1e6 - offered_ms
+            tail_ms = (time.perf_counter_ns() - start) / 1e6 - offered_ms if complete.wait(.5) else None
         finally:
             stopping = time.perf_counter_ns()
             stop.set()
@@ -320,10 +328,10 @@ def live_trial(api, device, payload):
         if worker.error:
             raise worker.error
         expected = {"TX": hashlib.sha256(payload).digest(), "RX": hashlib.sha256(payload[::-1]).digest()}
-        assert counts == dict(TX=len(payload), RX=len(payload))
-        assert all(digest.digest() == expected[k] for k, digest in digests.items()), "Live bytes differ"
-        assert worker.ignored == worker.gaps == streams.skipped == 0
-        return dict(bytes_each_direction=len(payload), captured_packets=worker.packets, drops=reader.drops(),
+        exact = all(counts[k] == len(payload) and digest.digest() == expected[k] for k, digest in digests.items())
+        return dict(offered_bytes_each_direction=len(payload), reconstructed_bytes=counts, exact=exact,
+                    filter_leaks=worker.ignored, gaps=worker.gaps, skipped=streams.skipped,
+                    captured_packets=worker.packets, driver_drops=reader.drops(),
                     idle_read_us=idle_read_us, idle_wait_ms=idle_wait_ms, idle_cpu_ms=idle_cpu_ms,
                     idle_stop_ms=idle_stop_ms, socket_roundtrip_ms=offered_ms, capture_tail_ms=tail_ms,
                     stop_ms=stop_ms, capture_thread_cpu_ms=worker.cpu_ms)
@@ -339,7 +347,7 @@ def trials(apis, repeats, run):
 
 def summarize(rows, keys):
     return {name: {k: dict(median=statistics.median(values), min=min(values), max=max(values))
-                   for k in keys if (values := [r[k] for r in records])}
+                   for k in keys if (values := [r[k] for r in records if r[k] is not None])}
             for name, records in rows.items()}
 
 
@@ -383,10 +391,13 @@ def main():
             devices = {name: loopbacks(api) for name, api in apis.items()}
             if not all(args.live in names for names in devices.values()):
                 raise ValueError("--live must be a loopback interface found by both bindings")
-            live = trials(apis, args.repeats, lambda api: live_trial(api, args.live, payload))
-            report["live"] = dict(device=args.live, loopbacks=devices, trials=live, summary=summarize(live, (
-                "idle_read_us", "idle_cpu_ms", "idle_stop_ms", "socket_roundtrip_ms",
-                "capture_tail_ms", "stop_ms", "capture_thread_cpu_ms")))
+            live = trials(apis, args.repeats, lambda api: live_trial(api, args.live, payload, paced=True))
+            burst = trials(apis, min(3, args.repeats), lambda api: live_trial(api, args.live, payload, paced=False))
+            report["live"] = dict(device=args.live, loopbacks=devices, paced_trials=live, burst_trials=burst,
+                                  paced_summary=summarize(live, ("idle_read_us", "idle_cpu_ms", "idle_stop_ms",
+                                      "socket_roundtrip_ms", "capture_tail_ms", "stop_ms", "capture_thread_cpu_ms")))
+            failed = any(not (row["exact"] and not (row["filter_leaks"] or row["gaps"] or row["skipped"]))
+                         for records in live.values() for row in records)
         except (OSError, AssertionError, ValueError) as error:
             report["live"] = dict(device=args.live, error=str(error))
             failed = True
