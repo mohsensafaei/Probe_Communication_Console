@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import random
 import socket
 import statistics
 import struct
@@ -46,13 +47,18 @@ def backends(path):
     library = str(native._name)
     with patch.object(ctypes.util, "find_library", side_effect=lambda name: library if name.replace("\\", "/") in ("pcap", "npcap/wpcap") else system_lookup(name)):
         import libpcap
+
+    def package_header(h):
+        stamp = h.ts
+        return stamp.tv_sec, stamp.tv_usec, h.caplen, h.len
+
     native_api = SimpleNamespace(**{name: getattr(native, "pcap_" + name) for name in FUNCTIONS},
                                  program=pcap_live.Filter, stat=C.c_uint * 16,
                                  header_values=lambda h: (h.sec, h.usec, h.captured, h.length),
                                  drop_values=lambda s: (s[1], s[2]))
     package_api = SimpleNamespace(**{name: getattr(libpcap, name) for name in FUNCTIONS},
                                   program=libpcap.bpf_program, stat=libpcap.stat,
-                                  header_values=lambda h: (h.ts.tv_sec, h.ts.tv_usec, h.caplen, h.len),
+                                  header_values=package_header,
                                   drop_values=lambda s: (s.ps_drop, s.ps_ifdrop))
     extended = getattr(native, "pcap_open_offline_with_tstamp_precision", None)
     if extended is not None:
@@ -372,7 +378,7 @@ def main():
                                  summary=summarize(offline, ("wall_ms", "cpu_ms", "packets_per_s")))
     failed = False
     if args.live:
-        payload = (bytes(range(256)) * ((args.live_bytes + 255) // 256))[:args.live_bytes]
+        payload = random.Random(1).randbytes(args.live_bytes)
         try:
             devices = {name: loopbacks(api) for name, api in apis.items()}
             if not all(args.live in names for names in devices.values()):
