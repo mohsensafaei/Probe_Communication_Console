@@ -81,25 +81,23 @@ class WorkbenchLayout:
         c = self.colors
         self.sidebar = self.bezel(self,width=252); self.sidebar.pack(side="left",fill="y",padx=(12,0),pady=12)
         self.sidebar.pack_propagate(False)
-        bottom=self.frame(self.sidebar); bottom.pack(side="bottom",fill="x",padx=16,pady=(0,12))
+        bottom=self.frame(self.sidebar); bottom.pack(side="bottom",fill="x",padx=16,pady=(0,8))
         ttk.Button(bottom,text="Help  F1",command=self.help).pack(side="left")
         ttk.Button(bottom,text="Test lab",command=self.test_lab).pack(side="right")
         self.connection_button=ttk.Button(self.sidebar,text="Connect",style="Accent.TButton",command=self.toggle)
-        self.connection_button.pack(side="bottom",fill="x",padx=16,pady=(10,8))
-        brand = tk.Frame(self.sidebar,bg=c["metal"]); brand.pack(fill="x",padx=5,pady=(5,12))
-        self.label(brand,"CONNECTIONS",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(10,3))
-        self.label(brand,"Choose a transport",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,10))
+        self.connection_button.pack(side="bottom",fill="x",padx=16,pady=(8,6))
+        brand = tk.Frame(self.sidebar,bg=c["metal"]); brand.pack(fill="x",padx=5,pady=(5,5))
+        self.label(brand,"CONNECTIONS",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(8,3))
+        self.label(brand,"Choose a transport",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,7))
         self.nav=[]
         for i,mode in enumerate(MODES):
             button=tk.Button(self.sidebar,text=f"{i+1:02}    {mode}",anchor="w",relief="flat",bd=0,
                 bg=c["panel"],fg=c["muted"],activebackground=c["select"],activeforeground=c["accent"],
                 highlightthickness=0,
-                padx=13,pady=7,font=(self.ui_font,12,"bold"),cursor="hand2",command=lambda m=mode:self.choose_mode(m))
-            button.pack(fill="x",padx=12,pady=(0,4)); self.nav.append(button)
-        self.mode_picker=ttk.Combobox(self.sidebar,textvariable=self.vars['mode'],values=MODES,state='readonly')
-        self.mode_picker.bind('<<ComboboxSelected>>',lambda _:self.choose_mode(self.mode_picker.get()))
+                padx=13,pady=1,font=(self.ui_font,-15,"bold"),cursor="hand2",command=lambda m=mode:self.choose_mode(m))
+            button.pack(fill="x",padx=12,pady=(0,1)); self.nav.append(button)
         self.config_title=self.label(self.sidebar,"ENDPOINT CONFIGURATION",9,True,color=c["blue"])
-        self.config_title.pack(anchor="w",padx=16,pady=(15,8))
+        self.config_title.pack(anchor="w",padx=16,pady=(9,6))
         config_wrap=self.frame(self.sidebar);config_wrap.pack(fill="both",expand=True,padx=16)
         self.config_canvas=tk.Canvas(config_wrap,bg=c["panel"],highlightthickness=0,height=150)
         config_scroll=ttk.Scrollbar(config_wrap,command=self.config_canvas.yview);config_scroll.pack(side="right",fill="y")
@@ -303,7 +301,6 @@ class WorkbenchLayout:
             self.tcp_combo.configure(state='disabled' if locked else 'readonly')
         if self.vars['mode'].get()=='USB Serial Monitor':
             self.usb_serial_combo.configure(state='disabled' if locked else 'readonly')
-        self.mode_picker.configure(state='disabled' if locked else 'readonly')
         for b in self.nav: b.configure(state="disabled" if locked else "normal")
 
 
@@ -341,12 +338,6 @@ class WorkbenchLayout:
         for label in self.stat_labels.values():
             label.configure(font=(self.mono,14 if compact else 17))
             label.pack_configure(pady=(2,2) if compact else (4,4))
-        if compact:
-            for button in self.nav:button.pack_forget()
-            self.mode_picker.pack(before=self.config_title,fill='x',padx=12,pady=(0,4))
-        else:
-            self.mode_picker.pack_forget()
-            for button in self.nav:button.pack(before=self.config_title,fill='x',padx=12,pady=(0,4))
 
 
     def _redraw_skin(self, widget):

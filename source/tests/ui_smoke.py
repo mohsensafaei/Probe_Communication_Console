@@ -443,8 +443,6 @@ class UISmoke(unittest.TestCase):
                 if isinstance(w,tk.Toplevel):w.destroy()
         self.app.choose_mode("TCP Client")
         self.window.geometry("1060x740");self.app.update()
-        self.assertTrue(self.app.mode_picker.winfo_ismapped())
-        self.assertEqual(tuple(self.app.mode_picker.cget('values')),MODES)
         self.assertTrue(self.app.connection_button.winfo_ismapped())
         self.assertTrue(self.app.config_canvas.winfo_ismapped())
         self.assertLess(self.app.send_button.winfo_rooty()+self.app.send_button.winfo_height(),self.app.winfo_rooty()+self.app.winfo_height())
@@ -473,21 +471,19 @@ class UISmoke(unittest.TestCase):
         self.assertTrue(flow.instate(("readonly","!disabled")))
         self.assertTrue(self.app.port_combo.instate(("!readonly","!disabled")))
 
-    def test_connections_use_direct_modes_and_compact_picker(self):
-        self.app.resized(SimpleNamespace(widget=self.app,height=900))
-        self.assertEqual(self.app.mode_picker.winfo_manager(),"")
-        serial=self.app.nav[MODES.index("USB / Serial")]
-        self.assertEqual(serial.winfo_manager(),"pack")
-        serial.invoke()
-        self.assertEqual(self.app.vars["mode"].get(),"USB / Serial")
-        self.assertEqual(serial.cget("bg"),self.app.colors["select"])
-        self.app.resized(SimpleNamespace(widget=self.app,height=700))
-        self.assertEqual(serial.winfo_manager(),"")
-        self.assertEqual(self.app.mode_picker.winfo_manager(),"pack")
-        self.app.mode_picker.current(MODES.index("USB Serial Monitor"))
-        self.app.mode_picker.event_generate("<<ComboboxSelected>>");self.app.update()
+    def test_all_connection_modes_are_visible_and_clickable_in_a_short_window(self):
+        self.window.geometry("1060x740");self.app.update()
+        self.assertEqual(tuple(w.cget("text").split("    ",1)[1] for w in self.app.nav),MODES)
+        for mode,button in zip(MODES,self.app.nav):
+            self.assertTrue(button.winfo_viewable(),mode)
+            self.assertGreaterEqual(button.winfo_height(),button.winfo_reqheight(),mode)
+            button.invoke()
+            self.assertEqual(self.app.vars["mode"].get(),mode)
+            self.assertEqual(button.cget("bg"),self.app.colors["select"])
+        self.app.update()
         self.assertEqual(self.app.connection_button.cget("text"),"Start capture")
-        self.assertEqual(self.app.vars["mode"].get(),"USB Serial Monitor")
+        self.assertTrue(self.app.connection_button.winfo_viewable())
+        self.assertTrue(self.app.config_canvas.winfo_viewable())
 
     def test_compact_proxy_settings_and_traffic_have_working_scrollbars(self):
         self.window.geometry("1060x740")
