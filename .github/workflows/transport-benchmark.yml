@@ -41,6 +41,10 @@ jobs:
           python -m venv "$RUNNER_TEMP/pcap-ab"
           "$RUNNER_TEMP/pcap-ab/bin/python" -m pip install libpcap==1.11.0b29
           sudo env PYTHONDONTWRITEBYTECODE=1 "$RUNNER_TEMP/pcap-ab/bin/python" benchmarks/pcap_binding_benchmark.py --live lo --output pcap-binding-benchmark.json
+      - name: Sweep buffer requests and polling on Linux loopback
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        run: |
+          sudo env PYTHONDONTWRITEBYTECODE=1 "$RUNNER_TEMP/pcap-ab/bin/python" benchmarks/pcap_binding_benchmark.py --live lo --tune-live --packets 4000 --output pcap-tuning-benchmark.json
       - name: Upload measured results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -49,4 +53,5 @@ jobs:
           path: |
             source/transport-benchmark.json
             source/pcap-binding-benchmark.json
+            source/pcap-tuning-benchmark.json
           if-no-files-found: error

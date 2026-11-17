@@ -28,6 +28,13 @@ from probe.pcap import Packet, packets, write_header, write_packet
 from probe.tcp_stream import TcpStreams, decode
 
 PORT = 42420
+MIB = 1024 * 1024
+TUNING_SIGNATURES = (
+    ("create", C.c_void_p, (C.c_char_p, C.c_char_p)),
+    ("activate", C.c_int, (C.c_void_p,)),
+    *((name, C.c_int, (C.c_void_p, C.c_int))
+      for name in ("set_snaplen", "set_promisc", "set_timeout", "set_buffer_size")),
+)
 FUNCTIONS = ("open_offline", "open_live", "close", "geterr", "datalink", "compile", "setfilter",
              "freecode", "next_ex", "setnonblock", "stats", "lib_version", "findalldevs", "freealldevs")
 EXTRA = ("create", "activate", "set_buffer_size", "set_immediate_mode", "set_tstamp_precision",
@@ -60,6 +67,11 @@ def backends(path):
                                   program=libpcap.bpf_program, stat=libpcap.stat,
                                   header_values=package_header,
                                   drop_values=lambda s: (s.ps_drop, s.ps_ifdrop))
+    for name, result, args in TUNING_SIGNATURES:
+        fn = getattr(native, "pcap_" + name, None)
+        if fn is not None:
+            fn.restype, fn.argtypes = result, args
+        setattr(native_api, name, fn)
     extended = getattr(native, "pcap_open_offline_with_tstamp_precision", None)
     if extended is not None:
         extended.restype, extended.argtypes = C.c_void_p, (C.c_char_p, C.c_uint, C.c_char_p)
@@ -77,16 +89,30 @@ def backends(path):
 
 
 class Reader:
-    def __init__(self, stack, api, *, path=None, device=None, port=PORT, rules=None):
+    def __init__(self, stack, api, *, path=None, device=None, port=PORT, rules=None,
+                 create=False, buffer_bytes=None):
         self.api = api
         error = C.create_string_buffer(256)
-        if path is None:
+        if create:
+            self.handle = api.create(os.fsencode(device), error)
+        elif path is None:
             self.handle = api.open_live(os.fsencode(device), pcap_live.SNAPLEN, 0, 25, error)
         else:
             self.handle = api.open_offline(os.fsencode(path), error)
         if not self.handle:
             raise OSError(error.value.decode(errors="replace"))
         stack.callback(api.close, self.handle)
+        self.activation_warning = None
+        if create:
+            for setter, value in ((api.set_snaplen, pcap_live.SNAPLEN), (api.set_promisc, 0), (api.set_timeout, 25)):
+                self.check(setter(self.handle, value))
+            if buffer_bytes is not None:
+                self.check(api.set_buffer_size(self.handle, buffer_bytes))
+            status = api.activate(self.handle)
+            if status < 0:
+                self.check(status)
+            if status > 0:
+                self.activation_warning = status
         self.link = api.datalink(self.handle)
         if self.link == 12 and os.name != "nt":
             self.link = 101
@@ -232,14 +258,16 @@ def send_payload(sock, data, paced):
         time.sleep(.003)
 
 
-def live_trial(api, device, payload, *, paced):
+def live_trial(api, device, payload, *, paced, create=False, buffer_bytes=None,
+               poll_ms=10, idle_seconds=.10):
     with ExitStack() as stack:
         server = stack.enter_context(socket.socket())
         server.bind(("127.0.0.1", 0))
         server.listen()
         server.settimeout(3)
         port = server.getsockname()[1]
-        reader = Reader(stack, api, device=device, port=port)
+        reader = Reader(stack, api, device=device, port=port, create=create, buffer_bytes=buffer_bytes)
+        sleep_seconds = poll_ms / 1000
         start = time.perf_counter_ns()
         assert reader.read() == (0, None), "Idle read must return without a packet"
         idle_read_us = (time.perf_counter_ns() - start) / 1000
@@ -264,7 +292,7 @@ def live_trial(api, device, payload, *, paced):
                 while not stop.is_set():
                     status, packet = reader.read()
                     if status == 0:
-                        stop.wait(.01)
+                        stop.wait(sleep_seconds)
                         continue
                     if status != 1:
                         raise OSError(f"Unexpected live status: {status}")
@@ -287,7 +315,7 @@ def live_trial(api, device, payload, *, paced):
         try:
             assert ready.wait(2)
             idle_start = time.perf_counter_ns()
-            time.sleep(.10)
+            time.sleep(idle_seconds)
             assert worker.packets == 0
             idle_stopping = time.perf_counter_ns()
             stop.set()
@@ -334,7 +362,9 @@ def live_trial(api, device, payload, *, paced):
         return dict(offered_bytes_each_direction=len(payload), reconstructed_bytes=counts, exact=exact,
                     filter_leaks=worker.ignored, gaps=worker.gaps, skipped=streams.skipped,
                     captured_packets=worker.packets, driver_drops=reader.drops(),
+                    activation_warning=reader.activation_warning,
                     idle_read_us=idle_read_us, idle_wait_ms=idle_wait_ms, idle_cpu_ms=idle_cpu_ms,
+                    idle_cpu_pct=100 * idle_cpu_ms / idle_wait_ms,
                     idle_stop_ms=idle_stop_ms, socket_roundtrip_ms=offered_ms, capture_tail_ms=tail_ms,
                     stop_ms=stop_ms, capture_thread_cpu_ms=worker.cpu_ms)
 
@@ -353,17 +383,52 @@ def summarize(rows, keys):
             for name, records in rows.items()}
 
 
+def tune_live(api, device, payload, repeats):
+    missing = [name for name, _, _ in TUNING_SIGNATURES if getattr(api, name) is None]
+    if missing:
+        raise OSError("Native library lacks tuning APIs: " + ", ".join(missing))
+    cases = [("legacy-10ms", False, None, 10)]
+    for size in (None, 4, 8):
+        for delay in (10, 1, .25):
+            label = "default" if size is None else f"{size}MiB"
+            cases.append((f"create-{label}-{delay:g}ms", True, size * MIB if size else None, delay))
+    rows = {name: [] for name, *_ in cases}
+    for i in range(repeats):
+        start = i % len(cases)
+        ordered = cases[start:] + cases[:start]
+        if i % 2:
+            ordered.reverse()
+        for name, create, size, delay in ordered:
+            rows[name].append(live_trial(api, device, payload, paced=False, create=create,
+                                         buffer_bytes=size, poll_ms=delay, idle_seconds=.25))
+    summary = summarize(rows, ("idle_cpu_pct", "idle_stop_ms", "capture_tail_ms", "capture_thread_cpu_ms"))
+    report = {}
+    for name, create, size, delay in cases:
+        values = rows[name]
+        drops = [r["driver_drops"][0] for r in values if r["driver_drops"] is not None]
+        report[name] = dict(create=create, requested_buffer_bytes=size, poll_ms=delay,
+                            exact_runs=sum(r["exact"] for r in values),
+                            min_reconstructed_bytes={d: min(r["reconstructed_bytes"][d] for r in values)
+                                                     for d in ("TX", "RX")},
+                            capture_drops_total=sum(drops) if drops else None, trials_with_stats=len(drops),
+                            **summary[name])
+    return dict(cases=report, trials=rows)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--library", type=Path, help="Absolute native libpcap file override (Linux)")
     parser.add_argument("--packets", type=int, default=200_000, help="Number of records in the offline workload")
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--live", metavar="LOOPBACK", help="Also capture synthetic TCP on the selected loopback interface")
+    parser.add_argument("--tune-live", action="store_true", help="Run the direct-binding burst buffer/poll matrix instead of the live A/B")
     parser.add_argument("--live-bytes", type=int, default=1024 * 1024, help="TCP payload bytes per direction")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.packets < 4 or args.repeats < 1 or args.live_bytes < 1:
         parser.error("use at least four packets, one repeat, and one live payload byte")
+    if args.tune_live and not args.live:
+        parser.error("--tune-live requires --live")
     if args.library and (os.name == "nt" or not args.library.is_absolute() or not args.library.is_file()):
         parser.error("--library requires an existing absolute libpcap path on Linux")
     apis, details = backends(str(args.library) if args.library else None)
@@ -393,13 +458,17 @@ def main():
             devices = {name: loopbacks(api) for name, api in apis.items()}
             if not all(args.live in names for names in devices.values()):
                 raise ValueError("--live must be a loopback interface found by both bindings")
-            live = trials(apis, args.repeats, lambda api: live_trial(api, args.live, payload, paced=True))
-            burst = trials(apis, min(3, args.repeats), lambda api: live_trial(api, args.live, payload, paced=False))
-            report["live"] = dict(device=args.live, loopbacks=devices, paced_trials=live, burst_trials=burst,
-                                  paced_summary=summarize(live, ("idle_read_us", "idle_cpu_ms", "idle_stop_ms",
-                                      "socket_roundtrip_ms", "capture_tail_ms", "stop_ms", "capture_thread_cpu_ms")))
-            failed = any(not (row["exact"] and not (row["filter_leaks"] or row["gaps"] or row["skipped"]))
-                         for records in live.values() for row in records)
+            if args.tune_live:
+                report["live"] = dict(device=args.live, **tune_live(apis["direct"], args.live, payload, args.repeats))
+                failed = any(r["filter_leaks"] or r["activation_warning"] for values in report["live"]["trials"].values() for r in values)
+            else:
+                live = trials(apis, args.repeats, lambda api: live_trial(api, args.live, payload, paced=True))
+                burst = trials(apis, min(3, args.repeats), lambda api: live_trial(api, args.live, payload, paced=False))
+                report["live"] = dict(device=args.live, loopbacks=devices, paced_trials=live, burst_trials=burst,
+                                      paced_summary=summarize(live, ("idle_read_us", "idle_cpu_ms", "idle_stop_ms",
+                                          "socket_roundtrip_ms", "capture_tail_ms", "stop_ms", "capture_thread_cpu_ms")))
+                failed = any(not (row["exact"] and not (row["filter_leaks"] or row["gaps"] or row["skipped"]))
+                             for records in live.values() for row in records)
         except (OSError, AssertionError, ValueError) as error:
             report["live"] = dict(device=args.live, error=str(error))
             failed = True
