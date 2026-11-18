@@ -479,7 +479,7 @@ class UISmoke(unittest.TestCase):
         self.app.vars["listen_port"].set("0")
         self.app.toggle();self.spin(lambda:self.app.engine.ready)
         self.app.toggle();self.spin(lambda:not self.app.active)
-        self.assertEqual(self.app.connection_button.cget("text"),"Start proxy")
+        self.assertEqual(self.app.connection_button.cget("text"),"Start forwarding")
 
         self.app.choose_mode("USB / Serial")
         self.app.vars["serial_port"].set("loop://")
@@ -490,23 +490,48 @@ class UISmoke(unittest.TestCase):
         self.assertTrue(flow.instate(("readonly","!disabled")))
         self.assertTrue(self.app.port_combo.instate(("!readonly","!disabled")))
 
-    def test_all_connection_modes_are_visible_and_clickable_in_a_short_window(self):
+    def test_every_connection_mode_is_reachable_through_its_task(self):
+        from probe.ui.layout import TASKS
         self.window.geometry("1060x740");self.app.update()
-        self.assertEqual(tuple(w.cget("text").split("    ",1)[1] for w in self.app.nav),MODES)
-        for mode,button in zip(MODES,self.app.nav):
-            self.assertTrue(button.winfo_viewable(),mode)
-            self.assertGreaterEqual(button.winfo_height(),button.winfo_reqheight(),mode)
+        self.assertCountEqual([mode for values in TASKS.values() for mode in values],MODES)
+        for task in ("Send and receive","Forward traffic","Watch existing traffic"):
+            button=self.app.task_buttons[task]
+            self.assertTrue(button.winfo_viewable(),task)
             button.invoke()
-            self.assertEqual(self.app.vars["mode"].get(),mode)
+            self.assertEqual(self.app.transport_combo.cget("values"),TASKS[task])
             self.assertEqual(button.cget("bg"),self.app.colors["select"])
+            for mode in TASKS[task]:
+                self.app.transport_choice.set(mode)
+                self.app.transport_combo.event_generate("<<ComboboxSelected>>")
+                self.assertEqual(self.app.vars["mode"].get(),mode)
         self.app.update()
         self.assertEqual(self.app.connection_button.cget("text"),"Start capture")
         self.assertTrue(self.app.connection_button.winfo_viewable())
         self.assertTrue(self.app.config_canvas.winfo_viewable())
 
+    def test_connected_setup_collapses_and_reconnect_uses_saved_endpoint(self):
+        self.app.choose_mode("USB / Serial");self.app.vars["serial_port"].set("loop://")
+        self.app.connection_button.invoke()
+        self.spin(lambda:not self.app.sidebar.winfo_ismapped())
+        self.assertIn("loop:// · 115200 baud · Connected",self.app.connection_detail.cget("text"))
+        for control in (self.app.record_button,self.app.pause_button,self.app.search_button):
+            self.assertTrue(control.winfo_ismapped())
+        self.app.setup_button.invoke();self.window.update()
+        self.assertTrue(self.app.sidebar.winfo_ismapped())
+        self.assertTrue(self.app.transport_combo.instate(("disabled",)))
+        self.app.connection_button.invoke()
+        self.spin(lambda:not self.app.active)
+        self.app.choose_mode("TCP Client");self.app.vars["serial_port"].set("different")
+        self.app.save_settings()
+        self.app.last_connection={};self.app._load_settings();self.app._mode_changed()
+        self.app.reconnect_button.invoke()
+        self.spin(lambda:not self.app.sidebar.winfo_ismapped())
+        self.assertEqual(self.app.vars["serial_port"].get(),"loop://")
+
     def test_compact_proxy_settings_and_traffic_have_working_scrollbars(self):
         self.window.geometry("1060x740")
         self.app.choose_mode("Serial Proxy")
+        self.app.serial_options.invoke()
         self.app.add_events([dict(kind="data",time=time.time(),direction="RX",peer="device",data=b"row")]*60)
         self.app.update()
         for content in (self.app.config_canvas,self.app.table):
@@ -750,7 +775,7 @@ class UISmoke(unittest.TestCase):
 
     def test_simulator_first_run_opens_example_and_copies_working_address(self):
         import socket
-        entry=self.app.nav[MODES.index("Device Simulator")]
+        entry=self.app.task_buttons["Simulate a device"]
         entry.invoke();self.app.update()
         win=self.app.testlab_window;win.geometry("980x680")
         pane=self.app.simulator_panel

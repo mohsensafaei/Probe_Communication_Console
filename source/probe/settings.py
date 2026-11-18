@@ -35,7 +35,9 @@ def read_settings(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def write_settings(path, last, profiles, macros):
+def write_settings(path, last, profiles, macros, last_connection=None):
     temporary=path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(dict(version=1, profiles=profiles, macros=macros, last=last), indent=2), encoding="utf-8")
+    settings=dict(version=1, profiles=profiles, macros=macros, last=last)
+    if last_connection:settings["last_connection"]=last_connection
+    temporary.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     temporary.replace(path)

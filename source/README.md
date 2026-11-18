@@ -6,7 +6,7 @@ A compact English-language Python desktop workbench for TCP, UDP and USB serial 
 
 ### Your Python plugins
 
-Open **Traffic → Plugins…** to add a Python file or folder. Analyze custom fields, edit/rebuild messages, run manual actions and plot named values. Message changes require explicit permission. See [PLUGINS.md](PLUGINS.md) and `examples/plugins` for the small API and working binary / JSON examples.
+Open **Traffic → More… → Plugins…** to add a Python file or folder. Analyze custom fields, edit/rebuild messages, run manual actions and plot named values. Message changes require explicit permission. See [PLUGINS.md](PLUGINS.md) and `examples/plugins` for the small API and working binary / JSON examples.
 
 ### Analyze traffic without sending anything
 
@@ -87,7 +87,7 @@ one Probe simulator, connect another Probe as TCP Client, then load
 code; the condition selects a STATUS request containing that ID. These are
 synthetic read-only lab messages, not a vendor POS protocol.
 
-Probe has an original instrument workbench identity: satin-edged blue panels, mint readouts and a hardware test-probe emblem. Michroma headings and Rajdhani controls recall laboratory instruments. Share Tech Mono keeps byte columns aligned. The bundled fonts are licensed under the SIL Open Font License and loaded privately on Windows/Linux without installing system fonts. The Appearance button has been replaced by Test lab; data fonts can be resized with Ctrl +/-. The layout compresses on short displays. Traffic, Live plot and Terminal each have a full workspace page; the composer and its target/injection-side controls stay visible on every page. Per-message views live together in Analyze.
+Probe has an original instrument workbench identity: satin-edged blue panels, mint readouts and a hardware test-probe emblem. Michroma headings and Rajdhani controls recall laboratory instruments. Share Tech Mono keeps byte columns aligned. The bundled fonts are licensed under the SIL Open Font License and loaded privately on Windows/Linux without installing system fonts. Data fonts can be resized with Ctrl +/-. The layout compresses on short displays. Traffic, Live plot and Terminal each have a full workspace page; the composer and its target/injection-side controls stay visible on every page. Per-message views live together in Analyze.
 
 Probe uses Tkinter, pySerial and the small pure-Python pyte/wcwidth terminal libraries. There is no browser, Electron or Qt runtime. All I/O runs off the UI thread. Windows and Linux share the same source. Hardware drivers remain the operating system's responsibility. STM32 programming is intentionally excluded.
 
@@ -147,7 +147,7 @@ Your real server is `192.168.1.50:9000`.
 1. Select **TCP Proxy**.
 2. Set Upstream host/port to `192.168.1.50` / `9000`.
 3. Set Listen address/port to `127.0.0.1` / `9001`.
-4. Start proxy; configure the other application to connect to `127.0.0.1:9001`.
+4. Select **Start forwarding**; configure the other application to connect to `127.0.0.1:9001`.
 5. TX means app → upstream. RX means upstream → app.
 
 Choose **Device / upstream** or **App / downstream** to inject a test payload into the appropriate side. Forwarded bytes are unchanged. Probe does not decrypt TLS, so encrypted traffic appears as ciphertext. It is an explicit proxy, not a packet sniffer: the app must connect through it.
@@ -190,7 +190,7 @@ The serial proxy forwards **data bytes**. Baud changes, break and modem line cha
 * Checksum covers **prefix + payload**. The final wire layout is prefix + payload + checksum + suffix + line ending. Modbus CRC16 is little-endian; CCITT is big-endian with initial FFFF; CRC32 is little-endian.
 * Send files as original binary data in 4096-byte chunks, with cancellation. Composer transformations are not applied to files.
 * Repeat at a configurable interval (minimum 50 ms).
-* Build up to 1000 named test steps in Test lab with independent millisecond delays, repeats, optional expected reply bytes and timeouts. Export/import complete sequences or legacy command shelves. Cycles 0 repeats until stopped. Samples are in `examples/test-sequence.json`.
+* Build up to 1000 named test steps under **Transmit → Sequences** with independent millisecond delays, repeats, optional expected reply bytes and timeouts. Export/import complete sequences or legacy command shelves. Cycles 0 repeats until stopped. Samples are in `examples/test-sequence.json`.
 * Automatic echo or a fixed composer reply is available in direct modes, once per receive chunk/datagram. These replies are not protocol-aware. Echo at both ends creates a loop.
 * TCP Client and USB / Serial can reconnect automatically when disconnected. This is optional and off by default; manual Disconnect stops reconnection.
 * **Live plot** is a main workspace tab. It accepts RX ASCII numbers or comma/semicolon/space-separated channels, up to four, with LF/CRLF terminating each sample. Example: `1,2\n3,4\n`. Choose a peer or use automatic selection of the first numeric peer; each peer has its own partial-line buffer and last 300 samples, with at most 16 peers. A single sample is shown as a point. JSON, binary, non-finite values and TX-only traffic are not plotted; the empty-state hint explains this. Clear plot leaves captured traffic intact. It is a numeric display, not a hardware oscilloscope.
@@ -211,7 +211,7 @@ The display retains up to **2000 events / 8 MiB**. Old entries are evicted. The 
 
 File/recording disk work runs on the transport thread. Very slow storage can reduce throughput. This first release is intended for terminal/debugging traffic; it does not promise line-rate packet capture or unbounded stress testing.
 
-Search text normally; use `hex:02 A4` for a hexadecimal substring. Profiles save endpoints and composer settings. Test lab opens device modeling and timed sequence editing. Ctrl +/- changes data font size. Existing Midnight preferences migrate to Probe II. Settings may contain endpoint addresses and saved commands.
+Search text normally; use `hex:02 A4` for a hexadecimal substring. Profiles save endpoints and composer settings. Use **Simulate a device** for modeling and **Transmit → Sequences** for timed sequence editing. Ctrl +/- changes data font size. Existing Midnight preferences migrate to Probe II. Settings may contain endpoint addresses and saved commands.
 
 ## Shortcuts
 
@@ -317,13 +317,13 @@ Click a traffic row to analyze it. **Load into composer** in Analyze, or **Load 
 
 ### Hercules-style payload tokens
 
-Choose **Hercules** input mode to use `$FF`, `#000`–`#255`, `<STX>`, `<CR>`, `<LF>` and other named controls. `##`, `$$` and `<<` produce literal characters. The parser validates tokens and never evaluates code. **LRC8** appends the two's-complement negative sum of prefix + payload. Test lab **Cycles = 0** repeats the sequence until stopped.
+Choose **Hercules** input mode to use `$FF`, `#000`–`#255`, `<STX>`, `<CR>`, `<LF>` and other named controls. `##`, `$$` and `<<` produce literal characters. The parser validates tokens and never evaluates code. **LRC8** appends the two's-complement negative sum of prefix + payload. In **Sequences**, setting **Cycles = 0** repeats the sequence until stopped.
 
 ## Device simulator and test sequences (1.1)
 
 **Device Simulator** is a separate transport mode. It does not open the original
 physical device; Windows COM simulation opens only its virtual-pair endpoint.
-Use **Test lab → Device simulator** to load a two-direction capture or a saved
+Use **Simulate a device** to load a two-direction capture or a saved
 model. Choose a peer (and RX request direction for recordings where the application
 was the receiving server). Consecutive request chunks are joined until the first
 reply; reply chunks retain their timing relative to the last request and each
@@ -539,7 +539,7 @@ opens the context menu from the keyboard. These actions never send traffic.
 
 ## Semantic device rules and fault injection (1.4)
 
-Open **Test lab → Device simulator → Add request & reply…**, or double-click an existing
+Open **Simulate a device → Write a reply…**, or double-click an existing
 rule. The **Request & reply** tab starts with exact request bytes. Choose
 **Fields → Add condition…** to match JSON paths (`data.service`, `/data/service`),
 TLV / BER-TLV tags, UTF-8 text or a selected payload byte range. All conditions
@@ -650,7 +650,7 @@ Traffic framing first if a JSON message spans reads. IDs preserve their JSON typ
 
 One match is selected automatically; repeated IDs/bytes require an explicit choice.
 **Compare messages…** opens the existing Capture Diff with the correct probe for
-each side. With **Browse other traffic**, Ctrl/Shift-select consecutive chunks
+each side. With **Choose a message manually**, Ctrl/Shift-select consecutive chunks
 of one flow to compare manually. Changed bytes do not necessarily mean corruption;
 expected protocol transformations must be interpreted by the user.
 

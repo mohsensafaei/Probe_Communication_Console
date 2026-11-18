@@ -1,6 +1,6 @@
 # Probe for Linux 1.7.0
 
-User Python plugins: **Traffic → Plugins…**, with results in Analyze / Live plot and explicit opt-in message transforms. See [the plugin guide](source/PLUGINS.md).
+User Python plugins: **Traffic → More… → Plugins…**, with results in Analyze / Live plot and explicit opt-in message transforms. See [the plugin guide](source/PLUGINS.md).
 
 TCP, UDP and USB/serial communications console with an ANSI terminal, binary
 inspector, capture/replay, serial proxy and Serial-to-TCP bridge.
@@ -15,8 +15,15 @@ Internet access is needed for that initial install. On Debian/Ubuntu, install
 `python3-tk` and `python3-venv` if needed. Set `PROBE_PYTHON=/path/to/python`
 to choose an interpreter explicitly.
 
-For a hardware-free serial check, select **USB / Serial**, enter `loop://`,
-and connect. To test the runtime from a terminal:
+In **Connection setup**, choose what you want to do: **Watch existing traffic**,
+**Send and receive**, **Forward traffic**, or **Simulate a device**. Select the
+connection type and fill in its settings. After connecting, the panel collapses
+to a status line, leaving more room for traffic. Open **Connection settings…**
+to show it again, or use **Reconnect to last setup** to reopen the last
+successful send/receive or forwarding connection.
+
+For a hardware-free serial check, select **Send and receive → USB / Serial**,
+enter `loop://`, and connect. To test the runtime from a terminal:
 
 ```sh
 ./source/start_linux.sh --self-test
@@ -71,7 +78,8 @@ MTP file-transfer interface.
 
 ## Hardware test lab
 
-Open **Test lab** at the bottom of the control panel.
+Choose **Simulate a device** in Connection setup, or open **Sequences**
+from the Transmit panel.
 
 * **Device simulator:** record TX/RX with the real device using Record, then load
   that JSONL/CSV capture (or use retained traffic history). Choose one peer and
@@ -79,6 +87,8 @@ Open **Test lab** at the bottom of the control panel.
   other application to the displayed endpoint. The original hardware is not
   opened. Exact requests produce their recorded replies and timing. Save a model
   to reuse it later; rules and reply bytes can also be edited manually.
+  For a first run, choose **Try example → Start simulator**, copy the address,
+  and send `PING` with a CRLF ending to receive `PONG`.
 * **Test sequences:** add a composer payload or create steps in Text/Hex/Escaped/
   Decimal/Hercules format. Set a separate delay after each step in milliseconds,
   per-step repeats, optional expected reply bytes and a timeout. Choose a finite
@@ -131,9 +141,11 @@ exact-byte models still load.
 ## Follow a message across probes
 
 Right-click a message → **Follow in another probe…**. Choose the tab to look in;
-Probe searches for the exact stream bytes. If the bytes differ, use **Match by
-JSON field** (for example, `sessionId`) or **Browse other traffic** for a manual
-comparison. **Refresh traffic** takes a new snapshot. No traffic is sent.
+Probe searches for the exact stream bytes. If you add a new probe here, it
+keeps your reference message while you set up the connection. Use **Compare
+with #…** in that probe once it has traffic. If the bytes differ, use **Match
+by JSON field** (for example, `sessionId`) or **Choose a message manually**.
+**Refresh traffic** takes a new snapshot. No traffic is sent.
 
 Traffic search applies only with **Search** or **Enter**. Changing the search type
 resets the applied filter; typing alone never hides rows. Invalid input preserves

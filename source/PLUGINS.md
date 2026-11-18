@@ -5,7 +5,7 @@ is needed when using a portable Probe build. No packages are downloaded at runti
 
 ## Use a plugin
 
-1. Open **Traffic → Plugins… → Add…**. Select a `.py` file, or a folder containing
+1. Open **Traffic → More… → Plugins… → Add…**. Select a `.py` file, or a folder containing
    `main.py` and optional helper files. Probe copies it into `probe-data/plugins`.
 2. Enable it, choose **RX / TX / Both**, then **Apply** while disconnected.
    Settings and activation are independent for each probe tab and are saved.
@@ -118,7 +118,7 @@ usual per-peer `state`. Request and default reply together may be at most
 1 MiB; replacement bytes have the same limit.
 
 To try it, add `examples/plugins/simulator_reply.py`, enable its changes, and
-load `examples/simulator-plugin-reply.json` under **Test lab → Device simulator**.
+load `examples/simulator-plugin-reply.json` under **Simulate a device**.
 Start the simulator, connect a TCP client, and send `{"requestId":"test-1"}`.
 It automatically returns `{"requestId":"test-1","ok":true}` followed by LF.
 The hook runs on matched simulator requests, not on the display/analysis queue.

@@ -17,7 +17,7 @@ def validate(cfg, simulator_model=None, hid_devices=None, tcp_devices=None, usb_
         if not 0<=p<=65535: raise ValueError("Listen port must be 0–65535.")
     if mode == "Device Simulator":
         from ..simulation import RequestMatcher
-        if not simulator_model: raise ValueError("Open Test lab and load a capture or build a device model first.")
+        if not simulator_model: raise ValueError("Load a capture or build a device model before starting the simulator.")
         RequestMatcher(simulator_model, cfg["simulator_matching"] == "Conversation order", cfg["simulator_repeat"])
         scale=float(cfg["simulator_timing"])
         if not math.isfinite(scale) or not 0 <= scale <= 10: raise ValueError("Reply timing multiplier must be 0–10.")
