@@ -94,6 +94,26 @@ class TraceUITests(unittest.TestCase):
         trace.geometry('920x580');self.window.update()
         self.assertLessEqual(sum(trace.view.column(c,'width') for c in trace.view.cget('columns')),trace.view.winfo_width())
 
+    def test_new_probe_remembers_selected_message_even_if_source_changes(self):
+        self.window.close_probe(self.second);self.window.update()
+        self.add(self.first,b'{"amount":100}');self.add(self.first,b'unrelated')
+        key=self.first.order[0];self.first.table.selection_set(key)
+        trace=self.window.trace_path(self.first);trace.new_target_button.invoke();self.window.update()
+        self.second=self.window.current_probe
+        self.assertFalse(trace.winfo_exists())
+        self.assertEqual(self.second.trace_button.cget('text'),f'Compare with #{key}')
+        self.assertTrue(self.second.trace_button.instate(('disabled',)))
+        self.first.clear()
+        self.add(self.second,b'\xa1\x64',direction='RX')
+        self.assertFalse(self.second.trace_button.instate(('disabled',)))
+        self.second.trace_button.invoke();trace=self.window.trace_window
+        self.assertEqual(trace.base['data'],b'{"amount":100}')
+        self.assertIs(trace.other,self.second)
+        self.assertFalse(trace.matches)
+        trace.all_rows.set(True);trace.render();trace.view.selection_set('0')
+        self.assertEqual(trace.compare().comparison.b,b'\xa1\x64')
+        self.window.close_probe(self.first);self.assertIsNone(self.second.trace_offer)
+
     def test_draft_search_never_filters_and_invalid_submit_keeps_results(self):
         self.window.probe_tabs.select(self.first);self.window.update()
         self.add(self.first,b'\0\xff');self.add(self.first,b'{"sid":"A"}')

@@ -9,8 +9,9 @@ from .widgets import Actions, entry, modal, table
 
 
 class TraceWindow(tk.Toplevel,Actions):
-    def __init__(self,window,source):
+    def __init__(self,window,source,target_probe=None,carried=None):
         super().__init__(window);self.window=window;self.app=source
+        self.carried=carried
         self.title('Probe · Trace path');self.geometry('1040x650');self.minsize(920,580)
         self.configure(bg=source.colors['panel']);self.transient(window)
         self.bind('<Escape>',lambda _:self.destroy())
@@ -21,14 +22,15 @@ class TraceWindow(tk.Toplevel,Actions):
         name=next(name for name,p in self.names.items() if p is source)
         self.source=tk.StringVar(self,value=name)
         targets=tuple(n for n in self.names if n!=name)
-        self.target=tk.StringVar(self,value=targets[0] if targets else '')
+        self.target=tk.StringVar(self,value=next((n for n in targets if self.names[n] is target_probe),targets[0] if targets else ''))
         self.reference=tk.StringVar(self);self.field=tk.StringVar(self);self.all_rows=tk.BooleanVar(self)
         self.feedback=tk.StringVar(self);self.note=tk.StringVar(self)
+        self.reference.set(self.load_references())
         if not targets:
             self.geometry('570x245');self.minsize(490,220)
             self.feedback.set('To compare two different probes, first add a tab for the other point in the link.')
             ttk.Label(body,textvariable=self.feedback,wraplength=480).pack(anchor='w',pady=8)
-            ttk.Label(body,text='Set up a live connection there or open a saved capture. Then come back to this message.',wraplength=480).pack(anchor='w',pady=(0,12))
+            ttk.Label(body,text='The new probe will remember this message while you set up a connection or open a capture.',wraplength=480).pack(anchor='w',pady=(0,12))
             self.new_target_button=ttk.Button(body,text='Add a second probe',style='Accent.TButton',command=self.add_target)
             self.new_target_button.pack(anchor='w')
             self.lift();self.focus_set()
@@ -39,6 +41,8 @@ class TraceWindow(tk.Toplevel,Actions):
         self.reference_combo.bind('<<ComboboxSelected>>',lambda _:self.action(self.match))
         target=entry(controls,'Look in this probe',self.target,0,1,values=targets,width=30)
         target.bind('<<ComboboxSelected>>',lambda _:self.snapshot())
+        if len(window.probes)<window.MAX_PROBES:
+            ttk.Button(controls,text='Add a probe…',command=self.add_target).grid(row=0,column=2,sticky='s')
         bar=ttk.Frame(body);bar.pack(fill='x',pady=8)
         options=ttk.Frame(body)
         field=entry(options,'JSON field present in both messages (e.g. data.sessionId)',self.field,0,width=34)
@@ -52,7 +56,7 @@ class TraceWindow(tk.Toplevel,Actions):
                 options.pack_forget();self.field.set('');self.action(self.match)
         ttk.Button(bar,text='Refresh traffic',command=self.snapshot).pack(side='left')
         ttk.Checkbutton(bar,text='Match by JSON field',variable=advanced,command=show_field).pack(side='left',padx=8)
-        ttk.Checkbutton(bar,text='Browse other traffic',variable=self.all_rows,command=self.render).pack(side='left')
+        ttk.Checkbutton(bar,text='Choose a message manually',variable=self.all_rows,command=self.render).pack(side='left')
         self.compare_button=ttk.Button(bar,text='Compare messages…',style='Accent.TButton',command=lambda:self.action(self.compare))
         self.compare_button.pack(side='right')
         ttk.Label(body,textvariable=self.note,wraplength=970).pack(anchor='w',pady=4)
@@ -67,23 +71,32 @@ class TraceWindow(tk.Toplevel,Actions):
         self.deiconify();self.lift();self.focus_set()
 
     def add_target(self):
+        label=self.reference.get()
         probe=self.window.new_probe()
         if probe:
-            probe.set_status('Set up the other point in the link, then follow a message from the first probe.')
+            if label in self.references:probe.offer_trace(self.app,(label,self.references[label]))
             self.destroy()
 
     def destroy(self):
         if self.window.__dict__.get('trace_window') is self:self.window.trace_window=None
         super().destroy()
 
-    def snapshot(self):
-        self.app=self.names[self.source.get()];self.other=self.names[self.target.get()]
+    def load_references(self):
+        previous=self.reference.get()
         self.references={f"#{key} · {e['direction']} · {e.get('peer','')} · {len(e['data'])} bytes":dict(e)
                          for key,e in self.app.events.items()}
-        previous=self.reference.get();selected=self.app.table.selection()
+        if self.carried:
+            label,row=self.carried;self.references[label]=row
+            return previous if previous in self.references else label
+        selected=self.app.table.selection()
         preferred=next((label for label in self.references if selected and label.startswith('#'+selected[0]+' ·')),None)
+        return previous if previous in self.references else preferred or next(reversed(self.references),'—')
+
+    def snapshot(self):
+        self.other=self.names[self.target.get()]
+        reference=self.load_references()
         self.reference_combo.configure(values=tuple(self.references) or ('—',))
-        self.reference.set(previous if previous in self.references else preferred or next(reversed(self.references),'—'))
+        self.reference.set(reference)
         self.rows=tuple((key,dict(event)) for key,event in self.other.events.items())
         self.action(self.match)
 
@@ -110,7 +123,7 @@ class TraceWindow(tk.Toplevel,Actions):
         count=len(self.matches)
         if manual:summary='Pick a message, or select consecutive chunks in the same flow.'
         elif not self.rows:summary='This probe has no traffic yet. Capture or open a file there, then refresh.'
-        elif not count:summary='No match yet in this snapshot. Try a JSON field or browse other traffic to compare manually.'
+        elif not count:summary='No match yet. Try a JSON field or choose a message manually.'
         elif count==1:summary='One match found. Compare the two messages to see what changed.'
         else:summary=f'{count}{"+" if count==100 else ""} matches; choose the intended occurrence.'
         self.note.set(summary)
@@ -123,7 +136,7 @@ class TraceWindow(tk.Toplevel,Actions):
     def compare(self):
         chosen=[self.items[key] for key in self.view.selection()]
         if not chosen:raise ValueError('Select target traffic first.')
-        if len(chosen)>1 and self.matches and not self.all_rows.get():raise ValueError('Choose one occurrence, or browse other traffic to combine chunks manually.')
+        if len(chosen)>1 and self.matches and not self.all_rows.get():raise ValueError('Choose one occurrence, or choose messages manually to combine chunks.')
         if len(chosen)>1:
             selected={key for item in chosen for key in item['keys']}
             indices=[i for i,(key,_) in enumerate(self.rows) if key in selected]
