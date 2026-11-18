@@ -23,9 +23,11 @@ class WorkspaceWindow(tk.Tk):
         self.style = ttk.Style(self)
         self.style.theme_use('clam')
         root = Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parents[2]))
+        self.icon_sizes={}
         try:
             self.icon_image=tk.PhotoImage(master=self,file=str(root/'assets'/'probe.png'))
-            self.iconphoto(True,self.icon_image)
+            self.icon_sizes={n:self.icon_image.subsample(max(1,self.icon_image.width()//n)) for n in (16,32,48,64)}
+            self.iconphoto(True,self.icon_image,*self.icon_sizes.values())
         except tk.TclError:pass
         bar=ttk.Frame(self,padding=(12,6));bar.pack(fill='x')
         ttk.Label(bar,text='Each tab watches a point in your link').pack(side='left',padx=8)
