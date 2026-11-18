@@ -1,21 +1,5 @@
-'Original Probe instrument housing and hardware test-probe emblem.'
+'Probe instrument housing and workbench trim.'
 import tkinter as tk
-
-
-def draw_mark(canvas,x,y,size,colors):
-    def pts(values):return [v*size+(x if i%2==0 else y) for i,v in enumerate(values)]
-    def polygon(values,color):canvas.create_polygon(*pts(values),fill=color,outline="")
-    # Insulated lead, sculpted grip, finger guard, metal shaft and contact tip.
-    canvas.create_line(*pts((.29,.70,.20,.79,.20,.88,.30,.92,.40,.88)),
-                       fill=colors["blue"],width=max(2,size*.065),smooth=True)
-    polygon((.24,.62,.35,.73,.65,.43,.54,.32),colors["metal"])
-    polygon((.27,.64,.31,.68,.61,.38,.57,.34),colors["shine"])
-    polygon((.48,.30,.54,.24,.73,.43,.67,.49),colors["accent"])
-    polygon((.61,.28,.66,.33,.84,.15,.79,.10),colors["metal"])
-    polygon((.79,.10,.84,.15,.91,.03),colors["accent"])
-    for delta in (0,.08,.16):
-        canvas.create_line(*pts((.32+delta,.59-delta,.37+delta,.64-delta)),
-                           fill=colors["border"],width=max(1,size*.025))
 
 
 class Chassis(tk.Canvas):
@@ -31,8 +15,9 @@ class Chassis(tk.Canvas):
                             fill=c["metal"],outline=c["shine"])
         self.create_rectangle(6,5,w-6,h-6,fill=c["panel"],outline=c["border"])
         self.create_line(12,7,w-12,7,fill=c["shine"])
-        size=35 if compact else 49
-        draw_mark(self,12,(h-size)/2,size,c)
+        size=32 if compact else 48
+        icon=self.app.window.icon_sizes.get(size)
+        if icon:self.create_image(12,h/2,image=icon,anchor="w")
         self.create_text(size+27,h/2-5,text="PROBE",anchor="w",fill=c["text"],
                          font=(self.app.display_font,16 if compact else 20))
         if not compact:
