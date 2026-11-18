@@ -242,10 +242,14 @@ class UISmoke(unittest.TestCase):
 
     def test_ctrl_click_multiselect_and_refresh_keep_selection(self):
         ids=self.selection_fixture();self.app.focus_force();self.app.table.focus_set()
+        stamp=0
         def click(key,state=0):
+            nonlocal stamp
+            stamp+=1000
+            self.app.table.see(key);self.app.update()
             x,y,w,h=self.app.table.bbox(key,"payload")
-            self.app.table.event_generate("<Button-1>",x=x+5,y=y+h//2,state=state)
-            self.app.table.event_generate("<ButtonRelease-1>",x=x+5,y=y+h//2,state=state);self.app.update()
+            self.app.table.event_generate("<Button-1>",x=x+5,y=y+h//2,state=state,time=stamp)
+            self.app.table.event_generate("<ButtonRelease-1>",x=x+5,y=y+h//2,state=state,time=stamp+50);self.app.update()
         click(ids[0]);click(ids[2],4);click(ids[3],4)
         self.assertEqual(set(self.app.table.selection()),{ids[0],ids[2],ids[3]})
         self.assertFalse(hasattr(self.app,"analysis_window"))
@@ -259,6 +263,7 @@ class UISmoke(unittest.TestCase):
     def test_context_menu_preserves_multiselect_and_targets_unselected_row(self):
         ids=self.selection_fixture();self.app.table.selection_set((ids[1],ids[3]))
         def right_click(key):
+            self.app.table.see(key);self.app.update()
             x,y,w,h=self.app.table.bbox(key,"payload")
             with patch("tkinter.Menu.tk_popup"):
                 self.app.table.event_generate("<Button-3>",x=x+5,y=y+h//2);self.app.update()
