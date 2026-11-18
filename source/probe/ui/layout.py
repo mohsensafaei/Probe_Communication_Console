@@ -326,10 +326,8 @@ class WorkbenchLayout:
         compact=event.height<840
         if compact==self.compact:return
         self.compact=compact
-        if compact:self.subtitle.pack_forget();self.preview_label.pack_forget()
-        else:
-            self.subtitle.pack(anchor="w",pady=(3,0))
-            self.preview_label.pack(side="bottom",anchor="w",pady=(5,0))
+        if compact:self.subtitle.pack_forget()
+        else:self.subtitle.pack(anchor="w",pady=(3,0))
         self.hero.configure(font=(self.display_font,10 if compact else 12))
         self.chassis.configure(height=46 if compact else 66)
         self.traffic_toolbar.grid_configure(pady=4 if compact else 6)
