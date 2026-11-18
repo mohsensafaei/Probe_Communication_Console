@@ -83,8 +83,8 @@ class WorkbenchLayout:
         self.sidebar.pack_propagate(False)
         bottom=self.frame(self.sidebar); bottom.pack(side="bottom",fill="x",padx=16,pady=(0,8))
         ttk.Button(bottom,text="Help  F1",command=self.help).pack(side="left")
-        ttk.Button(bottom,text="Test lab",command=self.test_lab).pack(side="right")
-        self.connection_button=ttk.Button(self.sidebar,text="Connect",style="Accent.TButton",command=self.toggle)
+        ttk.Button(bottom,text="Test sequences",command=self.macro_dialog).pack(side="right")
+        self.connection_button=ttk.Button(self.sidebar,text="Connect",style="Accent.TButton",command=self.connection_action)
         self.connection_button.pack(side="bottom",fill="x",padx=16,pady=(8,6))
         brand = tk.Frame(self.sidebar,bg=c["metal"]); brand.pack(fill="x",padx=5,pady=(5,5))
         self.label(brand,"CONNECTIONS",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(8,3))
@@ -94,7 +94,7 @@ class WorkbenchLayout:
             button=tk.Button(self.sidebar,text=f"{i+1:02}    {mode}",anchor="w",relief="flat",bd=0,
                 bg=c["panel"],fg=c["muted"],activebackground=c["select"],activeforeground=c["accent"],
                 highlightthickness=0,
-                padx=13,pady=1,font=(self.ui_font,-15,"bold"),cursor="hand2",command=lambda m=mode:self.choose_mode(m))
+                padx=13,pady=1,font=(self.ui_font,-15,"bold"),cursor="hand2",command=lambda m=mode:self.pick_mode(m))
             button.pack(fill="x",padx=12,pady=(0,1)); self.nav.append(button)
         self.config_title=self.label(self.sidebar,"ENDPOINT CONFIGURATION",9,True,color=c["blue"])
         self.config_title.pack(anchor="w",padx=16,pady=(9,6))
@@ -248,7 +248,6 @@ class WorkbenchLayout:
         if mode == "Device Simulator":
             self.label(self.config_frame, "Set up replies and choose how your app connects. No physical device is needed.", 9,
                        color=c["muted"], wraplength=200, justify="left").pack(anchor="w", pady=8)
-            ttk.Button(self.config_frame, text="Open simulator setup…", command=self.test_lab).pack(fill="x", pady=6)
         if "Serial" in mode and mode not in MONITOR_MODES:
             self.port_combo=field("Physical port / serial URL","serial_port",[],False)
             ttk.Button(self.config_frame,text="Refresh ports",command=self.refresh_ports).pack(anchor="e",pady=4)
@@ -284,10 +283,19 @@ class WorkbenchLayout:
         self.side_combo.configure(state="readonly" if mode in ("TCP Proxy","Serial Proxy","Serial ↔ TCP") else "disabled")
         self.vars["side"].set("Device / upstream")
 
+    def pick_mode(self,mode):
+        if self.active:return
+        self.choose_mode(mode)
+        if mode=="Device Simulator":self.test_lab()
+
+    def connection_action(self):
+        if self.vars["mode"].get()=="Device Simulator":self.test_lab()
+        else:self.toggle()
+
     def _connection_action(self):
         mode=self.vars["mode"].get()
         if mode in MONITOR_MODES:return "Start capture"
-        if mode=="Device Simulator":return "Start simulator"
+        if mode=="Device Simulator":return "Simulator setup…"
         if "Proxy" in mode:return "Start proxy"
         if mode in ("TCP Server","Serial ↔ TCP","UDP"):return "Listen"
         return "Connect"

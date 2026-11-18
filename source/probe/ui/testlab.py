@@ -82,7 +82,7 @@ class SimulatorPane(Pane):
     def __init__(self, parent, app):
         super().__init__(parent, padding=12)
         self.app = app
-        self.feedback = tk.StringVar(value="Use a recording with both requests and replies, add a rule, or try the example.")
+        self.feedback = tk.StringVar(value="New here? Try the example, then start the simulator.")
         self.rows = []
         self.peer = tk.StringVar()
         self.request_direction = tk.StringVar(value="TX")
@@ -90,8 +90,8 @@ class SimulatorPane(Pane):
         self.reply = tk.StringVar()
         self.delay = tk.StringVar(value="0")
         ttk.Label(self, text="1. Choose what the device should reply", font=(app.ui_font, 16, "bold")).pack(anchor="w")
-        self.buttons(self, [("Use recent traffic", self.use_history), ("Open a capture…", self.load_capture_file),
-                            ("Open a saved model…", self.load_model), ("Try an example", self.demo)])
+        self.buttons(self, [("Try example", self.demo), ("Use recent traffic", self.use_history),
+                            ("Open a recording…", self.load_capture_file), ("Open a saved model…", self.load_model)])
         source = self.capture_source = ttk.Frame(self)
         self.peer_combo = self.field(source, "Device in the recording", self.peer, 0, [], 30)
         self.field(source, "Requests in the recording", self.request_direction, 1, ["TX", "RX"], 8)
@@ -110,7 +110,7 @@ class SimulatorPane(Pane):
         self.table.configure(yscrollcommand=scrollbar.set)
         self.table.bind("<<TreeviewSelect>>", lambda event: self.action(self.select))
         self.table.bind("<Double-1>", lambda event: self.action(self.edit_rule))
-        self.rule_bar=self.buttons(self, [("Add request & reply…", lambda: self.edit_rule(True)), ("Edit rule…", self.edit_rule),
+        self.rule_bar=self.buttons(self, [("Write a reply…", lambda: self.edit_rule(True)), ("Edit rule…", self.edit_rule),
                             ("Remove", self.remove), ("↑", lambda: self.move(-1)), ("↓", lambda: self.move(1)),
                             ("Save model…", self.save_model)])
         ttk.Label(self, textvariable=self.feedback, wraplength=900).pack(anchor="w", pady=(0,6))
@@ -153,6 +153,7 @@ class SimulatorPane(Pane):
         self.start_button.pack(side="right")
         self.copy_button=ttk.Button(row,text="Copy address",command=self.copy_address)
         ttk.Label(footer, textvariable=app.simulator_info, wraplength=900).pack(anchor="w", pady=2)
+        self.example_hint=ttk.Label(footer,text="Send PING + CRLF   ·   Expected reply: PONG + CRLF")
         traces=[(var,var.trace_add("write",lambda *_, fn=fn:fn())) for var,fn in
                 ((transport,self.show_transport),(app.simulator_info,self.update_actions))]
         self.bind("<Destroy>",lambda e:[v.trace_remove("write",t) for v,t in traces] if e.widget is self else None,add="+")
@@ -230,6 +231,8 @@ class SimulatorPane(Pane):
     def refresh(self):
         self.table.delete(*self.table.get_children())
         model = self.app.simulator_model
+        if model is not None and model is getattr(self.app,'simulator_example',None):self.example_hint.pack(anchor='w')
+        else:self.example_hint.pack_forget()
         framing = model.framing if model else getattr(self, "pending_framing", None)
         self.framing_info.set("Request framing: " + (framing.mode if framing else "Exact stream · legacy byte matching"))
         self.update_actions()
@@ -268,7 +271,10 @@ class SimulatorPane(Pane):
     def build(self):
         if not self.peer.get():
             raise ValueError("Select one recorded peer first.")
-        self.install(compile_capture(self.rows, self.peer.get(), self.request_direction.get()))
+        model=compile_capture(self.rows,self.peer.get(),self.request_direction.get())
+        self.install(model)
+        count=len(model.exchanges);rules='rule' if count==1 else 'rules'
+        self.feedback.set(f"{count} request/reply {rules} from {self.peer.get()}.")
 
     def load_model(self):
         path = filedialog.askopenfilename(parent=self, filetypes=[("Probe device model", "*.json")])
@@ -291,10 +297,12 @@ class SimulatorPane(Pane):
             self.feedback.set("Device model saved. Load it later without the original hardware.")
 
     def demo(self):
-        self.install(DeviceModel((Exchange(b"PING\r\n", (Reply(b"PONG\r\n", 10),)),
-                                  Exchange(b"BUY:1000\r\n", (Reply(b"APPROVED\r\n", 25),)))))
+        self.ensure_editable()
+        self.app.simulator_example=DeviceModel((Exchange(b"PING\r\n", (Reply(b"PONG\r\n", 10),)),
+                                                Exchange(b"BUY:1000\r\n", (Reply(b"APPROVED\r\n", 25),))))
+        self.install(self.app.simulator_example)
         self.capture_source.pack_forget()
-        self.feedback.set("Example ready. Start the simulator, then connect your app and send PING with a CRLF ending.")
+        self.feedback.set("Example ready. Start the simulator, then connect your app to the address below.")
 
     def selected_index(self):
         selected = self.table.selection()

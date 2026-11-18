@@ -194,7 +194,8 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             if self.raw_path:self.engine.record(self.raw_path,raw=True)
             self.active=True
             self._lock_config(True)
-            self.connection_button.configure(text="Stop capture" if cfg["mode"] in MONITOR_MODES else "Disconnect")
+            self.connection_button.configure(text=self._connection_action() if cfg["mode"]=="Device Simulator" else
+                                             "Stop capture" if cfg["mode"] in MONITOR_MODES else "Disconnect")
             self.stat_labels["state"].configure(text="Connecting…")
             self.engine.start(cfg)
         except Exception as exc:
