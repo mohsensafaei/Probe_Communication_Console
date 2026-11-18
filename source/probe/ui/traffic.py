@@ -75,6 +75,29 @@ class TrafficWorkspace:
     def add_event(self,event):
         self.add_events((event,))
 
+    def offer_trace(self,source,reference):
+        self.dismiss_trace()
+        self.trace_origin=source
+        label=reference[0].split(' · ',1)[0]
+        self.trace_offer=bar=self.frame(self.traffic_tab)
+        bar.grid(row=4,column=0,sticky='ew',padx=12,pady=(0,5))
+        self.trace_button=ttk.Button(bar,text=f'Compare with {label}',
+                                    command=lambda:self.window.trace_path(source,self,reference))
+        self.trace_button.pack(side='left')
+        self.trace_hint=ttk.Label(bar);self.trace_hint.pack(side='left',padx=8)
+        ttk.Button(bar,text='Dismiss',command=self.dismiss_trace).pack(side='right')
+        self.update_trace_offer()
+
+    def update_trace_offer(self):
+        self.trace_waiting=not self.events
+        self.trace_button.state(('disabled' if self.trace_waiting else '!disabled',))
+        self.trace_hint.configure(text='Waiting for traffic here' if self.trace_waiting else 'From '+self.window.names[self.trace_origin])
+
+    def dismiss_trace(self):
+        if getattr(self,'trace_offer',None):self.trace_offer.destroy()
+        self.trace_offer=self.trace_origin=None
+        self.trace_waiting=False
+
     def add_events(self,events):
         self.history.max_rows,self.history.max_bytes=self.MAX_ROWS,self.MAX_BYTES
         change=self.history.extend(events)
@@ -82,6 +105,7 @@ class TrafficWorkspace:
             for key in change.added:self.plugins.analyze(key,self.events[key])
         removed=tuple(key for key in change.removed if self.table.exists(key))
         if removed:self.table.delete(*removed);self._shown_count-=len(removed)
+        if change.added and getattr(self,'trace_waiting',False):self.update_trace_offer()
         if change.added and self.winfo_ismapped():self.sync_traffic()
         return change
 
@@ -141,6 +165,7 @@ class TrafficWorkspace:
         self.last_capture=[]
         if self.active and self.vars['mode'].get()=='TCP Monitor':self.tcp_display_gap+=1
         self.history.clear();self.queue.reset_stats();self.dropped=0
+        if getattr(self,'trace_offer',None):self.update_trace_offer()
         self.plugins.results.clear();self.plugins.bytes=0
         self.display_framing.clear();self.plot.clear()
         self.table.delete(*self.table.get_children());self._shown_count=0

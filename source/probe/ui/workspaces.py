@@ -151,11 +151,11 @@ class WorkspaceWindow(tk.Tk):
         if name and name.strip():
             self.names[probe]=name.strip()[:40];self.update_probe_title(probe)
 
-    def trace_path(self,source=None):
+    def trace_path(self,source=None,target=None,reference=None):
         from .trace import TraceWindow
         previous=self.__dict__.get('trace_window')
         if previous and previous.winfo_exists():previous.destroy()
-        self.trace_window=TraceWindow(self,source or self.current_probe)
+        self.trace_window=TraceWindow(self,source or self.current_probe,target,reference)
         return self.trace_window
 
     def close_probe(self,probe=None):
@@ -163,6 +163,8 @@ class WorkspaceWindow(tk.Tk):
         if probe is None or not probe.shutdown():return False
         trace=self.__dict__.get('trace_window')
         if trace and trace.winfo_exists() and probe in trace.probes:trace.destroy();self.trace_window=None
+        for other in self.probes:
+            if getattr(other,'trace_origin',None) is probe:other.dismiss_trace()
         self.probe_tabs.forget(probe);self.probes.remove(probe)
         self.names.pop(probe,None);self.states.pop(probe,None);probe.destroy()
         for variable in probe.vars.values():
