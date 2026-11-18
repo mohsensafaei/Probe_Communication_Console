@@ -750,21 +750,27 @@ class UISmoke(unittest.TestCase):
 
     def test_simulator_first_run_opens_example_and_copies_working_address(self):
         import socket
-        entry=next(w for w in self.descendants(self.app.sidebar) if isinstance(w,ttk.Button) and w.cget("text")=="Test lab")
+        entry=self.app.nav[MODES.index("Device Simulator")]
         entry.invoke();self.app.update()
         win=self.app.testlab_window;win.geometry("980x680")
         pane=self.app.simulator_panel
+        self.assertEqual(self.app.testlab_notebook.select(),str(pane))
+        self.assertEqual(self.app.connection_button.cget("text"),"Simulator setup…")
+        self.assertFalse(self.app.active)
         self.assertFalse(pane.capture_source.winfo_ismapped())
         self.assertTrue(pane.start_button.instate(("disabled",)))
         self.assertFalse(pane.copy_button.winfo_ismapped())
-        sample=next(w for w in self.descendants(pane) if isinstance(w,ttk.Button) and w.cget("text")=="Try an example")
+        sample=next(w for w in self.descendants(pane) if isinstance(w,ttk.Button) and w.cget("text")=="Try example")
         sample.invoke()
-        self.assertIn("PING",pane.feedback.get())
+        self.app.update()
+        self.assertTrue(pane.example_hint.winfo_ismapped())
+        self.assertIn("Expected reply: PONG + CRLF",pane.example_hint.cget("text"))
         self.app.vars["listen_port"].set("0")
         pane.start_button.invoke()
         self.spin(lambda:bool(self.app.simulator_address))
         self.assertEqual(pane.start_button.cget("text"),"Stop simulator")
         self.assertTrue(pane.copy_button.winfo_ismapped())
+        self.assertTrue(pane.example_hint.winfo_ismapped())
         pane.copy_button.invoke()
         address=self.app.clipboard_get()
         self.assertEqual(address,self.app.simulator_address)
