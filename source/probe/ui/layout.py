@@ -4,12 +4,19 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .. import __version__
-from ..engine import MODES
 from ..transports import MONITOR_MODES
 from ..traffic_search import MODES as SEARCH_MODES
 from .plot import LivePlotPane
 from .skin import Chassis, MeterStrip, Rail
 from .terminal import TerminalPane
+
+
+TASKS = {
+    "Watch existing traffic": ("TCP Monitor", "USB Serial Monitor", "HID Monitor"),
+    "Send and receive": ("TCP Client", "TCP Server", "UDP", "USB / Serial"),
+    "Forward traffic": ("TCP Proxy", "Serial Proxy", "Serial ↔ TCP"),
+    "Simulate a device": ("Device Simulator",),
+}
 
 
 class WorkbenchLayout:
@@ -79,25 +86,26 @@ class WorkbenchLayout:
 
     def _build(self):
         c = self.colors
-        self.sidebar = self.bezel(self,width=252); self.sidebar.pack(side="left",fill="y",padx=(12,0),pady=12)
+        self.sidebar = self.bezel(self,width=252)
         self.sidebar.pack_propagate(False)
         bottom=self.frame(self.sidebar); bottom.pack(side="bottom",fill="x",padx=16,pady=(0,8))
         ttk.Button(bottom,text="Help  F1",command=self.help).pack(side="left")
-        ttk.Button(bottom,text="Test sequences",command=self.macro_dialog).pack(side="right")
-        self.connection_button=ttk.Button(self.sidebar,text="Connect",style="Accent.TButton",command=self.connection_action)
-        self.connection_button.pack(side="bottom",fill="x",padx=16,pady=(8,6))
         brand = tk.Frame(self.sidebar,bg=c["metal"]); brand.pack(fill="x",padx=5,pady=(5,5))
-        self.label(brand,"CONNECTIONS",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(8,3))
-        self.label(brand,"Choose a transport",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,7))
-        self.nav=[]
-        for i,mode in enumerate(MODES):
-            button=tk.Button(self.sidebar,text=f"{i+1:02}    {mode}",anchor="w",relief="flat",bd=0,
+        self.label(brand,"CONNECTION SETUP",14,True,color=c["ink"]).pack(anchor="w",padx=12,pady=(8,3))
+        self.label(brand,"What do you want to do?",9,color=c["ink"]).pack(anchor="w",padx=12,pady=(0,7))
+        self.task_buttons={};self.task_modes={}
+        for task,modes in TASKS.items():
+            button=tk.Button(self.sidebar,text=task,anchor="w",relief="flat",bd=0,
                 bg=c["panel"],fg=c["muted"],activebackground=c["select"],activeforeground=c["accent"],
                 highlightthickness=0,
-                padx=13,pady=1,font=(self.ui_font,-15,"bold"),cursor="hand2",command=lambda m=mode:self.pick_mode(m))
-            button.pack(fill="x",padx=12,pady=(0,1)); self.nav.append(button)
-        self.config_title=self.label(self.sidebar,"ENDPOINT CONFIGURATION",9,True,color=c["blue"])
+                padx=13,pady=2,font=(self.ui_font,-15,"bold"),cursor="hand2",command=lambda t=task:self.pick_task(t))
+            button.pack(fill="x",padx=12,pady=(0,1));self.task_buttons[task]=button;self.task_modes[task]=modes[0]
+        self.config_title=self.label(self.sidebar,"CONNECTION TYPE",9,True,color=c["blue"])
         self.config_title.pack(anchor="w",padx=16,pady=(9,6))
+        self.transport_choice=tk.StringVar(self)
+        self.transport_combo=ttk.Combobox(self.sidebar,textvariable=self.transport_choice,state="readonly")
+        self.transport_combo.pack(fill="x",padx=16,pady=(0,5))
+        self.transport_combo.bind("<<ComboboxSelected>>",lambda _:self.pick_mode(self.transport_choice.get()))
         config_wrap=self.frame(self.sidebar);config_wrap.pack(fill="both",expand=True,padx=16)
         self.config_canvas=tk.Canvas(config_wrap,bg=c["panel"],highlightthickness=0,height=150)
         config_scroll=ttk.Scrollbar(config_wrap,command=self.config_canvas.yview);config_scroll.pack(side="right",fill="y")
@@ -114,10 +122,18 @@ class WorkbenchLayout:
                 self.config_canvas.yview_scroll(step,"units")
         self._config_wheel = wheel
         self.rail=Rail(self,self);self.rail.pack(side="left",fill="y",padx=(4,0),pady=24)
+        self.show_connection_setup(True)
         self.content=tk.Frame(self,bg=c["bg"]); self.content.pack(side="left",fill="both",expand=True,padx=12,pady=12)
         self.content.columnconfigure(0,weight=1);self.content.rowconfigure(3,weight=1)
         self.chassis=Chassis(self.content,self,bg=c["bg"]);self.chassis.grid(row=0,column=0,sticky="ew",pady=(0,10))
         header=tk.Frame(self.content,bg=c["bg"]); header.grid(row=1,column=0,sticky="ew",pady=(0,10))
+        session=self.bezel(header);session.pack(side="bottom",fill="x",pady=(7,0))
+        self.connection_button=ttk.Button(session,text="Connect",style="Accent.TButton",command=self.connection_action)
+        self.connection_button.pack(side="right",padx=6,pady=4)
+        self.setup_button=ttk.Button(session,text="Connection settings…",command=self.toggle_connection_setup)
+        self.reconnect_button=ttk.Button(session,text="Reconnect to last setup",command=self.reconnect_last)
+        self.connection_detail=self.label(session,"",10,color=c["muted"],anchor="w",width=1)
+        self.connection_detail.pack(side="left",fill="x",expand=True,padx=8)
         title=tk.Frame(header,bg=c["bg"]); title.pack(side="left")
         self.hero=self.label(title,"Signal workspace",16,True);self.hero.pack(anchor="w")
         self.subtitle=self.label(title,"Inspect the link. Keep the original bytes.",10,color=c["muted"])
@@ -148,8 +164,6 @@ class WorkbenchLayout:
         self.traffic_toolbar=toolbar
         self.label(toolbar,"TRAFFIC",12,True,color=c["blue"]).pack(side="left",padx=(0,14))
         self.combo(toolbar,"direction",["All","RX","TX"],width=4,callback=lambda:self.refresh(force=True)).pack(side="left",padx=(0,6))
-        self.plugins_button=ttk.Button(toolbar,text="Plugins…",command=lambda:self.plugins.open())
-        self.plugins_button.pack(side="left",padx=(0,6))
         ttk.Button(toolbar,text="Clear",width=5,command=self.clear).pack(side="right",padx=(4,0))
         ttk.Button(toolbar,text="Export",width=6,command=self.export).pack(side="right",padx=(4,0))
         self.pause_button=ttk.Button(toolbar,text="Pause",width=6,command=self.pause); self.pause_button.pack(side="right",padx=(4,0))
@@ -185,8 +199,11 @@ class WorkbenchLayout:
         self.traffic_options=options
         self.history_label=self.label(options,"0 events",9,color=c["muted"],width=18,anchor="w"); self.history_label.pack(side="left")
         self.combo(options,"view",["Text + Hex","Text","Hex","Decimal"],width=11,callback=self.refresh).pack(side="left",padx=8)
-        ttk.Button(options,text="Framing",command=self.framing_dialog).pack(side="right",padx=4)
-        ttk.Button(options,text="Raw RX file",command=self.raw_record).pack(side="right",padx=4)
+        more=ttk.Menubutton(options,text="More…")
+        menu=tk.Menu(more,tearoff=False)
+        for title,command in (("Framing…",self.framing_dialog),("Raw RX file…",self.raw_record),("Plugins…",lambda:self.plugins.open())):
+            menu.add_command(label=title,command=command)
+        more.configure(menu=menu);more.pack(side="right",padx=4)
         ttk.Checkbutton(options,text="Follow",variable=self.vars["autoscroll"]).pack(side="right")
         self.plot=LivePlotPane(self.notebook,self);self.notebook.add(self.plot,text="Live plot")
         self.terminal=TerminalPane(self.notebook,self);self.notebook.add(self.terminal,text="Terminal")
@@ -221,21 +238,33 @@ class WorkbenchLayout:
 
     def _mode_changed(self):
         mode=self.vars["mode"].get(); c=self.colors
-        for button,m in zip(self.nav,MODES):
-            button.configure(bg=c["select"] if m==mode else c["input"],fg=c["accent"] if m==mode else c["muted"],
+        task=next(t for t,modes in TASKS.items() if mode in modes)
+        self.task_modes[task]=mode
+        self.transport_combo.configure(values=TASKS[task]);self.transport_choice.set(mode)
+        if mode=="Device Simulator":
+            self.config_title.pack_forget();self.transport_combo.pack_forget()
+        else:
+            wrap=self.config_canvas.master
+            self.config_title.pack(anchor="w",padx=16,pady=(9,6),before=wrap)
+            self.transport_combo.pack(fill="x",padx=16,pady=(0,5),before=wrap)
+        for name,button in self.task_buttons.items():
+            button.configure(bg=c["select"] if name==task else c["input"],fg=c["accent"] if name==task else c["muted"],
                              relief="flat")
         for w in self.config_frame.winfo_children(): w.destroy()
+        self.line_label=None
         self.config_canvas.yview_moveto(0)
         self.config_controls=[]
-        def field(label,key,values=None,readonly=False):
-            self.label(self.config_frame,label,9,color=c["muted"]).pack(anchor="w",pady=(6,4))
-            w=self.combo(self.config_frame,key,values,readonly=readonly,width=20) if values is not None else ttk.Entry(self.config_frame,textvariable=self.vars[key])
+        def field(label,key,values=None,readonly=False,parent=None):
+            parent=parent or self.config_frame
+            self.label(parent,label,9,color=c["muted"]).pack(anchor="w",pady=(6,4))
+            w=self.combo(parent,key,values,readonly=readonly,width=20) if values is not None else ttk.Entry(parent,textvariable=self.vars[key])
             w.pack(fill="x"); self.config_controls.append(w); return w
         if mode in ("TCP Client","TCP Proxy","UDP"):
-            field("Upstream host" if mode=="TCP Proxy" else "Remote host","host")
-            field("Upstream port" if mode=="TCP Proxy" else "Remote port","port")
+            field("Device / upstream host" if mode=="TCP Proxy" else "Remote host","host")
+            field("Device / upstream port" if mode=="TCP Proxy" else "Remote port","port")
         if mode in ("TCP Server","TCP Proxy","UDP","Serial ↔ TCP"):
-            field("Listen address","bind"); field("Listen port (0 = automatic)","listen_port")
+            prefix="App-side listen" if mode in ("TCP Proxy","Serial ↔ TCP") else "Listen"
+            field(prefix+" address","bind"); field(prefix+" port (0 = auto)","listen_port")
         if mode == "HID Monitor":
             from .hid import build_panel
             build_panel(self,field)
@@ -249,26 +278,33 @@ class WorkbenchLayout:
             self.label(self.config_frame, "Set up replies and choose how your app connects. No physical device is needed.", 9,
                        color=c["muted"], wraplength=200, justify="left").pack(anchor="w", pady=8)
         if "Serial" in mode and mode not in MONITOR_MODES:
-            self.port_combo=field("Physical port / serial URL","serial_port",[],False)
+            self.port_combo=field("Device serial port / URL","serial_port",[],False)
             ttk.Button(self.config_frame,text="Refresh ports",command=self.refresh_ports).pack(anchor="e",pady=4)
             field("Baud rate","baud",["300","1200","2400","4800","9600","19200","38400","57600","115200","230400","460800","921600"],False)
-            row=self.frame(self.config_frame); row.pack(fill="x",pady=(7,2))
-            for text,key,vals in [("Bits","bits",["5","6","7","8"]),("Parity","parity",["N","E","O","M","S"]),("Stop","stopbits",["1","1.5","2"])]:
-                part=self.frame(row);part.pack(side="left",fill="x",expand=True,padx=(0,3))
-                self.label(part,text,8,color=c["muted"]).pack(anchor="w")
-                w=self.combo(part,key,vals,width=4);w.pack(fill="x",pady=4);self.config_controls.append(w)
-            field("Flow control","flow",["None","RTS/CTS","XON/XOFF","DSR/DTR"],True)
-            controls=self.frame(self.config_frame);controls.pack(fill="x",pady=6)
-            for key in ("dtr","rts"):
-                ttk.Checkbutton(controls,text=key.upper(),variable=self.vars[key],command=lambda k=key:self.control(k)).pack(side="left")
-            ttk.Button(controls,text="Break",command=lambda:self.control("break")).pack(side="right")
-            self.line_label=self.label(self.config_frame,"CTS  —   DSR  —   DCD  —   RI  —",8,color=c["muted"]); self.line_label.pack(anchor="w")
-            self.refresh_ports()
         if mode=="Serial Proxy":
             field("Probe-side virtual port","app_port",["Auto PTY"] if os.name!="nt" else [],False)
             field("Application-side partner port", "app_peer_port")
             hint="Linux: Auto PTY creates a port for the other app." if os.name!="nt" else "COM pair: app → COM21; Probe → COM20. Install the pair first."
             self.label(self.config_frame,hint,9,color=c["muted"],wraplength=220,justify="left").pack(anchor="w",pady=7)
+        if "Serial" in mode and mode not in MONITOR_MODES:
+            advanced=self.frame(self.config_frame)
+            def show_advanced():
+                if advanced.winfo_manager():advanced.pack_forget();self.serial_options.configure(text="Serial settings…")
+                else:advanced.pack(fill="x",after=self.serial_options);self.serial_options.configure(text="Hide serial settings")
+            self.serial_options=ttk.Button(self.config_frame,text="Serial settings…",command=show_advanced)
+            self.serial_options.pack(anchor="w",pady=(6,2))
+            row=self.frame(advanced); row.pack(fill="x",pady=(7,2))
+            for text,key,vals in [("Bits","bits",["5","6","7","8"]),("Parity","parity",["N","E","O","M","S"]),("Stop","stopbits",["1","1.5","2"])]:
+                part=self.frame(row);part.pack(side="left",fill="x",expand=True,padx=(0,3))
+                self.label(part,text,8,color=c["muted"]).pack(anchor="w")
+                w=self.combo(part,key,vals,width=4);w.pack(fill="x",pady=4);self.config_controls.append(w)
+            field("Flow control","flow",["None","RTS/CTS","XON/XOFF","DSR/DTR"],True,parent=advanced)
+            controls=self.frame(advanced);controls.pack(fill="x",pady=6)
+            for key in ("dtr","rts"):
+                ttk.Checkbutton(controls,text=key.upper(),variable=self.vars[key],command=lambda k=key:self.control(k)).pack(side="left")
+            ttk.Button(controls,text="Break",command=lambda:self.control("break")).pack(side="right")
+            self.line_label=self.label(advanced,"CTS  —   DSR  —   DCD  —   RI  —",8,color=c["muted"]); self.line_label.pack(anchor="w")
+            self.refresh_ports()
         if mode=="TCP Proxy":
             self.label(self.config_frame,"Point your app at the listen address. Probe forwards both directions unchanged.",9,color=c["muted"],wraplength=220,justify="left").pack(anchor="w",pady=10)
         if mode=="USB / Serial":
@@ -276,6 +312,8 @@ class WorkbenchLayout:
         if mode in ("TCP Client","USB / Serial"):
             ttk.Checkbutton(self.config_frame,text="Reconnect on disconnect",variable=self.vars["reconnect"]).pack(anchor="w",pady=8)
         self.connection_button.configure(text=self._connection_action())
+        self.connection_detail.configure(text=f"{mode} · Ready to set up")
+        self.update_reconnect_button()
         if mode in MONITOR_MODES:
             self.composer.grid_remove()
         else:self.composer.grid()
@@ -288,6 +326,22 @@ class WorkbenchLayout:
         self.choose_mode(mode)
         if mode=="Device Simulator":self.test_lab()
 
+    def pick_task(self,task):
+        self.pick_mode(self.task_modes[task])
+
+    def show_connection_setup(self,visible):
+        if visible:self.sidebar.pack(side="left",fill="y",padx=(12,0),pady=12,before=self.rail)
+        else:self.sidebar.pack_forget()
+
+    def toggle_connection_setup(self):
+        show=not self.sidebar.winfo_manager()
+        self.show_connection_setup(show)
+        self.setup_button.configure(text="Hide connection settings" if show else "Connection settings…")
+
+    def update_reconnect_button(self):
+        if self.last_connection and not self.active:self.reconnect_button.pack(side="right",padx=(0,4))
+        else:self.reconnect_button.pack_forget()
+
     def connection_action(self):
         if self.vars["mode"].get()=="Device Simulator":self.test_lab()
         else:self.toggle()
@@ -296,8 +350,8 @@ class WorkbenchLayout:
         mode=self.vars["mode"].get()
         if mode in MONITOR_MODES:return "Start capture"
         if mode=="Device Simulator":return "Simulator setup…"
-        if "Proxy" in mode:return "Start proxy"
-        if mode in ("TCP Server","Serial ↔ TCP","UDP"):return "Listen"
+        if mode in TASKS["Forward traffic"]:return "Start forwarding"
+        if mode in ("TCP Server","UDP"):return "Listen"
         return "Connect"
 
     def _lock_config(self,locked):
@@ -309,7 +363,9 @@ class WorkbenchLayout:
             self.tcp_combo.configure(state='disabled' if locked else 'readonly')
         if self.vars['mode'].get()=='USB Serial Monitor':
             self.usb_serial_combo.configure(state='disabled' if locked else 'readonly')
-        for b in self.nav: b.configure(state="disabled" if locked else "normal")
+        for b in self.task_buttons.values():b.configure(state="disabled" if locked else "normal")
+        self.transport_combo.state(("disabled" if locked else "!disabled",))
+        self.update_reconnect_button()
 
 
     def zoom(self,delta):
@@ -388,7 +444,7 @@ class WorkbenchLayout:
         win=self.dialog("Probe · Quick guide","780x620")
         text=self.text_widget(win,height=25,wrap="word");text.pack(fill="both",expand=True,padx=16,pady=16)
         self.put_text(text,f"PROBE {__version__}\n\n"
-            "GET STARTED\nChoose a transport in Connections, enter its endpoint, then use the action at the bottom of the sidebar. Double-click a traffic row to open Analyze. Use Tools > Import capture to open a recording, or Test lab to set up a simulated device.\n\n"
+            "GET STARTED\nChoose a task in Connection setup, select a connection type, and fill in its settings. Use the action above Traffic to connect or capture. Double-click a traffic row to open Analyze. Use Tools > Import capture to open a recording, or choose Simulate a device to open simulator setup.\n\n"
             "TCP CLIENT / SERVER\nClient connects to a device. Server accepts up to 16 clients. Choose a client or All clients before sending. Bind to 0.0.0.0 to accept LAN connections.\n\n"
             "TCP PROXY\nSet Listen to 127.0.0.1:9001 and Upstream to the real server. Point the other app to 127.0.0.1:9001. TX = app to upstream; RX = upstream to app. Each client has its own upstream connection. Binary bytes and half-close are preserved. TLS traffic remains encrypted.\n\n"
             "USB / SERIAL\nSupports COM / tty serial devices, including USB CDC and USB-to-UART adapters. Refresh lists ports. Set baud, bits, parity, stop and flow. DTR/RTS start OFF. Use loop:// for a hardware-free check; rfc2217://host:port for remote serial. Use HID Monitor for read-only USB HID capture; arbitrary USB bulk terminals are not supported.\n\n"
@@ -405,7 +461,7 @@ class WorkbenchLayout:
             "SEARCH\nChoose Text or Hex bytes, then press Search or Enter. Changing the type resets the applied filter; editing alone never hides rows. Invalid input preserves previous results. Reset or Escape clears the search.\n\n"
             "LIVE PLOT\nOpen the Live plot workspace page. Receive LF/CRLF-terminated RX numbers or CSV, up to four channels: 1,2 followed by LF, then 3,4 followed by LF. Choose the RX peer or automatic selection. Auto accepts numeric lines. Custom extracts a JSON field, text column, named value or fixed binary value; configure message boundaries and the RX parameter. TX-only data is not plotted. Separate peer buffers and the last 300 samples keep plotting bounded.\n\n"
             "DYNAMIC SEQUENCES\nEdit message > Response & next step: Save reply values picks JSON/TLV/byte fields and names variables; Choose next step adds conditions and next/goto/finish/fail/timeout actions. Save rules, then Save message. Insert variable adds ${name}, ${name:json} (a JSON value without surrounding quotes) or ${name:hex}. Variables defines initial values and shows latest reply values. Outgoing frame can rebuild length/checksum after substitution. Missing values stop before sending. Version 3 exports retain rules; legacy files still load.\n\n"
-            "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Test lab for timed test sequences.\n\n"
+            "LEGACY PAYLOADS\nHercules mode supports #000–#255, $HH, named controls such as <CR> and <STX>, and ## / $$ / << for literal characters. LRC8 appends the negative byte sum. Open Sequences in Transmit for timed test sequences.\n\n"
             "TEST LAB\nIn Device simulator, choose replies from a recording, a saved model or the built-in example. Choose how your app connects, press Start simulator and copy the address shown. Matching, timing and request framing are under Advanced options. No physical device is needed.\n\n"
             "TEST SEQUENCES\nChoose messages, then Send next message: After interval or After a reply. Reply mode sends the first immediately and waits after every send, including the last, with no interval delay. Set Reply timeout; missing replies stop the run. Any nonempty incoming chunk from the destination counts, including unsolicited data. Edit message > Advanced > Expected reply can require specific hex bytes across chunks. Interval mode retains shared/individual delays and optional reply checks. Run once, Repeat a set number or Repeat until stopped. Stop cancels waits and pending sends. Save/Load preserves the effective behavior. Timing is best effort, not hard real-time.\n\n"
             "VENDOR FEATURES\nHW-group proprietary UDP discovery, device IP configuration and TEA/I/O extensions are not implemented without verified protocol/SDK information. STM32 programming is intentionally outside this application's scope. See FEATURE_MATRIX.md.\n")

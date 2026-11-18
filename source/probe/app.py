@@ -38,6 +38,17 @@ LIGHT = dict(bg="#ccd7e2", panel="#edf2f7", input="#ffffff", border="#8198ae",
              red="#b42b43", select="#c9ddeb", metal="#bdcddd", shine="#f7faff",
              ink="#203247", lcd="#e0ede7")
 
+SERIAL_SETUP = "serial_port baud bits parity stopbits flow dtr rts "
+CONNECTION_KEYS = {
+    "TCP Client": "host port reconnect",
+    "TCP Server": "bind listen_port",
+    "UDP": "host port bind listen_port",
+    "TCP Proxy": "host port bind listen_port",
+    "USB / Serial": SERIAL_SETUP+"reconnect",
+    "Serial Proxy": SERIAL_SETUP+"app_port app_peer_port",
+    "Serial ↔ TCP": SERIAL_SETUP+"bind listen_port",
+}
+
 
 class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
     MAX_ROWS = 2000
@@ -56,6 +67,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         self.style = self.window.style
         self.settings_path = data_directory() / ("settings.json" if slot == 1 else f"settings-probe-{slot}.json")
         self.profiles = {}; self.macros = []
+        self.last_connection = {}
         self.history = TrafficHistory(self.MAX_ROWS, self.MAX_BYTES)
         self._shown_count=0
         self._traffic_cursor=0
@@ -142,6 +154,25 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             self.set_status("Disconnect the current session before changing transport.",error=True); return
         self.vars["mode"].set(mode); self._mode_changed()
 
+    def reconnect_last(self):
+        if self.active or not self.last_connection:return
+        for key,value in self.last_connection.items():self.vars[key].set(value)
+        self._mode_changed()
+        self.toggle()
+
+    def show_connected(self,event):
+        mode=self.vars["mode"].get()
+        if mode in CONNECTION_KEYS:
+            self.last_connection={"mode":mode} | {key:self.vars[key].get() for key in CONNECTION_KEYS[mode].split()}
+        endpoint=event.get("message","")
+        if mode=="USB / Serial":
+            endpoint=f'{self.vars["serial_port"].get()} · {self.vars["baud"].get()} baud'
+        elif mode=="Device Simulator":endpoint=self.simulator_address
+        self.connection_detail.configure(text=" · ".join(filter(None,(mode,endpoint,"Connected"))))
+        self.show_connection_setup(False)
+        self.setup_button.configure(text="Connection settings…")
+        self.setup_button.pack(side="right",before=self.connection_detail,padx=(0,4))
+
     def refresh_ports(self):
         try:
             from serial.tools import list_ports
@@ -196,12 +227,14 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
             self._lock_config(True)
             self.connection_button.configure(text=self._connection_action() if cfg["mode"]=="Device Simulator" else
                                              "Stop capture" if cfg["mode"] in MONITOR_MODES else "Disconnect")
+            self.connection_detail.configure(text=f'{cfg["mode"]} · Connecting…')
             self.stat_labels["state"].configure(text="Connecting…")
             self.engine.start(cfg)
         except Exception as exc:
             if self.engine and (not self.engine.thread or not self.engine.thread.is_alive()):self.engine.stop();self.engine.join()
             self.active=False;self._lock_config(False);self.set_status(str(exc),True)
             self.connection_button.configure(text=self._connection_action(),state="normal")
+            self.connection_detail.configure(text=f'{self.vars["mode"].get()} · Disconnected')
 
 
     def set_status(self,message,error=False):
@@ -247,8 +280,11 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                     if "app_path" in event:
                         self.set_status("App-side port: "+event["app_path"]+(" · simulated device; no hardware connected." if self.vars["mode"].get()=="Device Simulator" else " · app uses this port; Probe owns the physical device."))
                         self.clipboard_clear(); self.clipboard_append(event["app_path"])
+                    self.show_connected(event)
                 else:
                     self.flush_frames(); self.active=False; self._lock_config(False)
+                    self.show_connection_setup(True);self.setup_button.pack_forget()
+                    self.connection_detail.configure(text=f'{self.vars["mode"].get()} · {state}')
                     if self.vars["mode"].get() == "Device Simulator":
                         self.simulator_address=""
                         self.simulator_info.set(self.last_error or "Simulator stopped.")
@@ -269,7 +305,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
                 peers=["All clients"]+event["peers"];self.target_combo.configure(values=peers)
                 if self.vars["target"].get() not in peers:
                     self._terminal_target="All clients";self.vars["target"].set("All clients")
-            elif kind=="lines" and hasattr(self,"line_label"):
+            elif kind=="lines" and self.line_label is not None:
                 self.line_label.configure(text="   ".join(f"{k} {'●' if event[k] else '○'}" for k in ("CTS","DSR","DCD","RI")))
             elif kind in ("error","info"):
                 if kind=="error":self.last_error=event.get("message","")
@@ -472,6 +508,11 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
         try:
             config=read_settings(self.settings_path)
             self.profiles=config.get("profiles",{});self.macros=config.get("macros",[])[:1000]
+            connection=config.get("last_connection")
+            if isinstance(connection,dict) and isinstance(mode:=connection.get("mode"),str) and mode in CONNECTION_KEYS:
+                keys=CONNECTION_KEYS[mode].split()
+                if all(isinstance(connection.get(key),type((DEFAULTS|BOOL_DEFAULTS)[key])) for key in keys):
+                    self.last_connection={key:connection[key] for key in ("mode",*keys)}
             for k,v in config.get("last",{}).items():
                 if k in self.vars and k not in ("repeat","search","target","auto"):self.vars[k].set(v)
             if self.vars["mode"].get() not in MODES:self.vars["mode"].set("TCP Client")
@@ -480,7 +521,7 @@ class ProbeWorkspace(WorkbenchLayout, TrafficWorkspace, tk.Frame):
 
     def save_settings(self):
         try:
-            write_settings(self.settings_path,self.values(),self.profiles,self.macros)
+            write_settings(self.settings_path,self.values(),self.profiles,self.macros,self.last_connection)
         except OSError as exc:self.set_status(f"Preferences could not be saved: {exc}",True)
 
     def save_profile(self):

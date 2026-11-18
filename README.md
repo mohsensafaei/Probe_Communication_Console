@@ -1,6 +1,6 @@
 # Probe for Windows 1.7.0
 
-User Python plugins: **Traffic → Plugins…**, with results in Analyze / Live plot and explicit opt-in message transforms. See [the plugin guide](source/PLUGINS.md).
+User Python plugins: **Traffic → More… → Plugins…**, with results in Analyze / Live plot and explicit opt-in message transforms. See [the plugin guide](source/PLUGINS.md).
 
 Portable TCP, UDP and USB/COM workbench with traffic recording/replay, a live
 ANSI terminal, serial proxies, recorded device simulation and timed test sequences.
@@ -27,18 +27,25 @@ source\start_windows.bat --self-test
 
 The launcher creates `.windows-venv` and installs pinned dependencies on first use.
 Initial dependency installation requires Internet access. Set `PROBE_PYTHON` to a
-Python executable path to select an interpreter explicitly. Use `loop://` in
-**USB / Serial** for a hardware-free check. For a USB device, select its actual
-COM port and serial parameters. Close other software that already owns that COM.
+Python executable path to select an interpreter explicitly.
+
+In **Connection setup**, choose **Watch existing traffic**, **Send and receive**,
+**Forward traffic**, or **Simulate a device**. Select the connection type and fill
+in its settings. After connecting, the panel collapses to a status line. Open
+**Connection settings…** to show it again, or use **Reconnect to last setup** to
+reopen the last successful send/receive or forwarding connection.
+
+For a hardware-free check, choose **Send and receive → USB / Serial**, enter
+`loop://`, and connect. For a USB device, select its actual COM port and serial
+parameters. Close other software that already owns that COM.
 
 ## Hardware test lab
 
-**Test lab** is at the bottom of the control panel; **Appearance** is removed.
-The title shows version 1.7.0, and the sidebar has eight modes including
-**Device Simulator**.
+Choose **Simulate a device** in Connection setup, or open **Sequences**
+from the Transmit panel.
 
 * **Device simulator:** record TX/RX with the real device, then load the capture
-  in Test lab or use retained traffic history. Select one peer and build/save a
+  in simulator setup or use retained traffic history. Select one peer and build/save a
   model. Expose it as a TCP socket or an installed virtual COM pair. The other
   application receives recorded replies to exact matching requests, including
   response timing and stateful conversations. The original physical device can
@@ -46,6 +53,8 @@ The title shows version 1.7.0, and the sidebar has eight modes including
   reproducible faults (delay, timeout, error, truncation, corruption, duplicate,
   split and disconnect). Request framing validates lengths/checksums. Models
   remain reusable through import/export; legacy exact-byte models still load.
+  For a first run, choose **Try example → Start simulator**, copy the address,
+  and send `PING` with a CRLF ending to receive `PONG`.
 * **Test sequences:** choose messages, select **After interval** or **After a reply**, then Run.
   **Choose captured messages…** opens an RX/TX picker (RX initially selected)
   with source/peer filters, previews and explicit message selection. Add the
@@ -117,7 +126,7 @@ cd source
 The build launcher creates `.windows-build-venv`, installs pinned runtime/build
 requirements, builds natively and runs the frozen executable's real I/O self-test.
 CI additionally extracts both ZIPs outside the repository and checks the frozen
-GUI, all eight modes and both Test lab tabs. Artifacts upload only after checks
+GUI, connection modes and both Test lab tabs. Artifacts upload only after checks
 pass. Build outputs, local preferences and environments are excluded from Git.
 
 Physical AT-capable USB hardware checks require explicit port selection:
@@ -165,9 +174,11 @@ No vendor logo or proprietary skin is used.
 ## Follow a message across probes
 
 Right-click a message → **Follow in another probe…**. Choose the tab to look in;
-Probe searches for the exact stream bytes. If the bytes differ, use **Match by
-JSON field** (for example, `sessionId`) or **Browse other traffic** for a manual
-comparison. **Refresh traffic** takes a new snapshot. No traffic is sent.
+Probe searches for the exact stream bytes. If you add a new probe here, it
+keeps your reference message while you set up the connection. Use **Compare
+with #…** in that probe once it has traffic. If the bytes differ, use **Match
+by JSON field** (for example, `sessionId`) or **Choose a message manually**.
+**Refresh traffic** takes a new snapshot. No traffic is sent.
 
 Traffic search applies only with **Search** or **Enter**. Changing the search type
 resets the applied filter; typing alone never hides rows. Invalid input preserves
