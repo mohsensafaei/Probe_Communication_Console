@@ -143,7 +143,7 @@ class UISmoke(unittest.TestCase):
         patcher=patch("probe.app.data_directory",return_value=Path(directory.name))
         patcher.start();self.addCleanup(patcher.stop)
         self.window=Probe();self.app=self.window.current_probe;self.errors=[]
-        self.window.report_callback_exception=lambda *e:self.errors.append(e)
+        self.window.report_callback_exception=lambda *e,errors=self.errors:errors.append(e)
         self.app.update()
 
     def tearDown(self):

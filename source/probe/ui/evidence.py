@@ -45,7 +45,11 @@ class CaseDialog(Actions):
         self.save_button=ttk.Button(footer,text='Save case…',state='disabled',command=lambda:self.action(self.save));self.save_button.pack(side='right',padx=6)
         ttk.Label(body,textvariable=self.feedback,wraplength=800).pack(side='bottom',anchor='w')
         self.output=app.text_widget(body,height=8,wrap='word');self.output.pack(fill='both',expand=True,pady=6)
-        for variable in (self.context,self.others,self.payload):variable.trace_add('write',self.invalidate)
+        watches=[(var,var.trace_add('write',self.invalidate)) for var in (self.context,self.others,self.payload)]
+        def unwatch(event):
+            if event.widget is self.window:
+                for var,token in watches:var.trace_remove('write',token)
+        self.window.bind('<Destroy>',unwatch,add='+')
         self.preview()
 
     def text(self,parent,label,height):

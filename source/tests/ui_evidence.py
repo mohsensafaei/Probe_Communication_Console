@@ -1,17 +1,20 @@
+import gc
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+import weakref
 
 from probe.app import Probe
 
 
 class EvidenceUI(unittest.TestCase):
     def setUp(self):
+        gc.collect()
         self.directory=tempfile.TemporaryDirectory()
         self.settings=patch('probe.app.data_directory',return_value=Path(self.directory.name));self.settings.start()
         self.window=Probe();self.app=self.window.current_probe;self.errors=[]
-        self.window.report_callback_exception=lambda *e:self.errors.append(e)
+        self.window.report_callback_exception=lambda *e,errors=self.errors:errors.append(e)
         self.window.update()
         for direction,data in (('TX',b'one'),('RX',b'two')):
             self.app.add_event(dict(kind='data',time=1,direction=direction,peer='device',data=data))
@@ -76,6 +79,8 @@ class EvidenceUI(unittest.TestCase):
             rows=[json.loads(line) for line in archive.read('traffic.jsonl').splitlines()]
             self.assertEqual([e['hex'] for e in rows],['6F6E65','74776F'])
         self.assertIsNone(self.app.engine);dialog.window.destroy()
+        ref=weakref.ref(dialog);del dialog;gc.collect()
+        self.assertIsNone(ref())
 
     def test_case_other_probes_are_opt_in_and_masked_copy_is_separate(self):
         second=self.window.new_probe();second.add_event(dict(kind='data',time=2,direction='RX',peer='other',data=b'secret'))

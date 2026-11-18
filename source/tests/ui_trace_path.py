@@ -13,7 +13,7 @@ class TraceUITests(unittest.TestCase):
         self.directory=tempfile.TemporaryDirectory()
         self.patch=patch('probe.app.data_directory',return_value=Path(self.directory.name));self.patch.start()
         self.window=Probe();self.errors=[]
-        self.window.report_callback_exception=lambda *error:self.errors.append(error)
+        self.window.report_callback_exception=lambda *error,errors=self.errors:errors.append(error)
         self.first=self.window.current_probe;self.second=self.window.new_probe();self.window.update()
 
     def tearDown(self):

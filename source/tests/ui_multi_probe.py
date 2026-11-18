@@ -16,7 +16,7 @@ class MultiProbeTests(unittest.TestCase):
         self.directory=tempfile.TemporaryDirectory()
         self.patch=patch('probe.app.data_directory',return_value=Path(self.directory.name));self.patch.start()
         self.window=Probe();self.errors=[]
-        self.window.report_callback_exception=lambda *e:self.errors.append(e)
+        self.window.report_callback_exception=lambda *e,errors=self.errors:errors.append(e)
         self.window.update()
 
     def tearDown(self):

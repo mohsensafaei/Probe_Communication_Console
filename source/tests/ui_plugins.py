@@ -22,7 +22,7 @@ class PluginUITests(unittest.TestCase):
         gc.collect();self.temp=tempfile.TemporaryDirectory();self.base=Path(self.temp.name)
         self.patcher=patch('probe.app.data_directory',return_value=self.base);self.patcher.start()
         self.window=Probe();self.app=self.window.current_probe;self.errors=[]
-        self.window.report_callback_exception=lambda *e:self.errors.append(e)
+        self.window.report_callback_exception=lambda *e,errors=self.errors:errors.append(e)
         self.window.update()
 
     def tearDown(self):
@@ -93,7 +93,7 @@ class PluginUITests(unittest.TestCase):
         self.install(changes=True);worker=self.app.plugins.worker
         Path(worker.entries[0]['path']).unlink()
         self.app.save_settings();self.window.close();self.window=Probe();self.app=self.window.current_probe
-        self.window.report_callback_exception=lambda *e:self.errors.append(e)
+        self.window.report_callback_exception=lambda *e,errors=self.errors:errors.append(e)
         self.window.update();self.assertIsNone(self.app.plugins.worker)
         self.assertIn('Plugins unavailable',self.app.status.cget('text'))
         self.app.choose_mode('USB / Serial');self.app.vars['serial_port'].set('loop://');self.app.toggle()
