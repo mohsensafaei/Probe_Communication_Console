@@ -14,6 +14,25 @@ from probe.app import Probe
 from probe.engine import MODES
 
 class UISmoke(unittest.TestCase):
+    def test_transmit_byte_count_stays_visible_when_resized(self):
+        self.app.vars["send_mode"].set("Text")
+        for size in ("1060x700", "1400x1000", "1060x740"):
+            self.window.geometry(size);self.window.update()
+            for text, encoding, ending, count in (("Hello", "utf-8", "None", 5),
+                                                  ("سلام", "utf-8", "None", 8),
+                                                  ("Hello", "utf-16-le", "CRLF", 12),
+                                                  ("", "utf-8", "None", 0)):
+                with self.subTest(size=size, encoding=encoding, ending=ending, text=text):
+                    self.app.vars["encoding"].set(encoding);self.app.encoding_changed()
+                    self.app.vars["ending"].set(ending)
+                    self.app.payload.delete("1.0", "end");self.app.payload.insert("1.0", text)
+                    self.window.update()
+                    label=self.app.preview_label
+                    self.assertTrue(label.winfo_ismapped())
+                    self.assertTrue(label.cget("text").startswith(f"{count} bytes ·"), label.cget("text"))
+                    self.assertGreaterEqual(label.winfo_rooty(), self.app.payload.winfo_rooty()+self.app.payload.winfo_height())
+                    self.assertLessEqual(label.winfo_rooty()+label.winfo_height(), self.window.winfo_rooty()+self.window.winfo_height())
+
     def test_usb_serial_monitor_selects_port_without_elevation(self):
         port='COM34' if os.name=='nt' else '/dev/ttyACM0'
         self.app.choose_mode('USB Serial Monitor')
